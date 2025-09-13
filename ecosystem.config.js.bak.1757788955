@@ -1,0 +1,18 @@
+module.exports = {
+  apps: [
+    {
+      name: "slimyai-cmds",
+      script: "new_threads_commands.js",
+      cwd: "/home/mint/Desktop/slimyai_setup",
+      env: { NODE_OPTIONS: "--dns-result-order=ipv4first" },
+      time: true
+    },
+    {
+      name: "slimyai-gate",
+      script: "role_gate.js",
+      cwd: "/home/mint/Desktop/slimyai_setup",
+      env: { NODE_OPTIONS: "--dns-result-order=ipv4first" },
+      time: true
+    }
+  ]
+}
