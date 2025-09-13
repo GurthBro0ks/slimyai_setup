@@ -1,14 +1,11 @@
 // new_threads_commands.js
-// Registers & handles: /new_bug, /new_calc, /new_feature, /new_test
-// Notifies testers on /new_feature by @mentioning the role in the first post.
+// Registers & handles: /new_bug, /new_calc, /new_feature, /new_test, /new_analysis
+// Uses .env in this folder.
 //
-// .env next to this file: DISCORD_TOKEN, GUILD_ID, CLIENT_ID
-// Optional overrides:
-//  BUG_FORUM_NAME=bug_tracker_forum_exe
-//  CALC_FORUM_NAME=snail_math_den_forum_exe
-//  FEATURE_FORUM_NAME=feature_requests_forum_exe
-//  PHASE1_FORUM_NAME..PHASE4_FORUM_NAME
-//  TESTERS_ROLE_NAME=testers
+// Optional .env overrides for forum names and roles:
+// BUG_FORUM_NAME, FEATURE_FORUM_NAME, CALC_FORUM_NAME, ANALYSIS_FORUM_NAME
+// PHASE1_FORUM_NAME..PHASE4_FORUM_NAME
+// TESTERS_ROLE_NAME
 
 require('dotenv').config({ path: require('node:path').join(__dirname, '.env') });
 
@@ -17,10 +14,12 @@ const {
   ChannelType, SlashCommandBuilder
 } = require('discord.js');
 
-const BUG_FORUM_NAME     = process.env.BUG_FORUM_NAME     || 'bug_tracker_forum_exe';
-const CALC_FORUM_NAME    = process.env.CALC_FORUM_NAME    || 'snail_math_den_forum_exe';
-const FEATURE_FORUM_NAME = process.env.FEATURE_FORUM_NAME || 'feature_requests_forum_exe';
-const TESTERS_ROLE_NAME  = process.env.TESTERS_ROLE_NAME  || 'testers';
+const BUG_FORUM_NAME      = process.env.BUG_FORUM_NAME      || 'bug_tracker_forum_exe';
+const CALC_FORUM_NAME     = process.env.CALC_FORUM_NAME     || 'snail_math_den_forum_exe';
+const FEATURE_FORUM_NAME  = process.env.FEATURE_FORUM_NAME  || 'feature_requests_forum_exe';
+const ANALYSIS_FORUM_NAME = process.env.ANALYSIS_FORUM_NAME || 'snail_analysis_forum_exe';
+const TESTERS_ROLE_NAME   = process.env.TESTERS_ROLE_NAME   || 'testers.txt';
+
 const PHASE_FORUMS = {
   1: process.env.PHASE1_FORUM_NAME || 'phase1_forum_exe',
   2: process.env.PHASE2_FORUM_NAME || 'phase2_forum_exe',
@@ -61,9 +60,8 @@ async function nextVersion(forum) {
   }
   return String(max + 1);
 }
-function tagIdByName(forum, wantedName) {
-  const tag = forum?.availableTags?.find(t => t.name.toLowerCase() === wantedName.toLowerCase());
-  return tag?.id;
+function tagIdByName(forum, n) {
+  return forum?.availableTags?.find(t => t.name.toLowerCase() === n.toLowerCase())?.id;
 }
 async function findForumByName(guild, name) {
   await guild.channels.fetch();
@@ -122,6 +120,20 @@ const commands = [
     ))
     .addStringOption(o => o.setName('goal').setDescription('what this test tries to prove'))
     .addStringOption(o => o.setName('steps').setDescription('1; 2; 3;')),
+  new SlashCommandBuilder()
+    .setName('new_analysis')
+    .setDescription('Create an analysis thread in snail_analysis_forum_exe')
+    .addStringOption(o => o.setName('title').setDescription('topic').setRequired(true))
+    .addStringOption(o => o.setName('dataset').setDescription('dataset name or link').setRequired(true))
+    .addStringOption(o => o.setName('method').setDescription('approach/model/experiment').setRequired(true))
+    .addStringOption(o => o.setName('metric').setDescription('target metric (e.g., winrate, mse)').setRequired(true))
+    .addStringOption(o => o.setName('baseline').setDescription('baseline number or summary'))
+    .addStringOption(o => o.setName('result').setDescription('result number or summary'))
+    .addStringOption(o => o.setName('confidence').setDescription('confidence tag').addChoices(
+      { name:'needs_data', value:'needs_data' },
+      { name:'needs_review', value:'needs_review' },
+      { name:'verified', value:'verified' }
+    )),
 ].map(c => c.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
@@ -132,7 +144,7 @@ async function registerCommands() {
     Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
     { body: commands }
   );
-  console.log('✅ Slash commands registered: /new_bug, /new_calc, /new_feature, /new_test');
+  console.log('✅ Slash commands registered: /new_bug, /new_calc, /new_feature, /new_test, /new_analysis');
 }
 
 client.once('ready', async (c) => {
@@ -246,7 +258,7 @@ client.on('interactionCreate', async (ix) => {
       const tagId = tagIdByName(forum, status);
 
       const content = [
-        testersRole ? testersMention : '', // ping testers
+        testersRole ? testersMention : '',
         '# feature request',
         `**title**: ${title}`,
         problem ? `**problem**: ${problem}` : '**problem**:',
@@ -311,6 +323,52 @@ client.on('interactionCreate', async (ix) => {
 
       return ix.reply({ content: `✅ created <#${thread.id}>`, ephemeral: true });
     }
+
+    if (ix.commandName === 'new_analysis') {
+      const forum = await findForumByName(ANALYSIS_FORUM_NAME);
+      if (!forum) return ix.reply({ content: `⚠️ Forum not found: ${ANALYSIS_FORUM_NAME}`, ephemeral: true });
+
+      const title = ix.options.getString('title', true);
+      const dataset = ix.options.getString('dataset', true);
+      const method = ix.options.getString('method', true);
+      const metric = ix.options.getString('metric', true);
+      const baseline = ix.options.getString('baseline') || '';
+      const result = ix.options.getString('result') || '';
+      const confTag = ix.options.getString('confidence') || 'needs_review';
+
+      const short = toSnakeShort(title);
+      const id = await nextId(forum, 'analysis');
+      const name = `analysis_${id}_${short}`;
+      const tagId = tagIdByName(forum, confTag);
+
+      const body = [
+        '# analysis',
+        `**title**: ${title}`,
+        `**dataset**: ${dataset}`,
+        `**method**: ${method}`,
+        `**metric**: ${metric}`,
+        baseline ? `**baseline**: ${baseline}` : '**baseline**:',
+        result ? `**result**: ${result}` : '**result**:',
+        '',
+        '**protocol**:',
+        '1.',
+        '2.',
+        '3.',
+        '',
+        '**artifacts**: (links, images, logs)',
+        `**confidence**: ${confTag}`,
+      ].join('\n');
+
+      const thread = await forum.threads.create({
+        name,
+        autoArchiveDuration: 4320,
+        message: { content: body },
+        appliedTags: tagId ? [tagId] : undefined,
+      });
+
+      return ix.reply({ content: `✅ created <#${thread.id}>`, ephemeral: true });
+    }
+
   } catch (err) {
     console.error('handler error:', err);
     if (ix.isRepliable()) {
@@ -320,3 +378,4 @@ client.on('interactionCreate', async (ix) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
