@@ -1,4 +1,0 @@
-2025-09-13 16:49:40: (node:9572) Warning: Supplying "ephemeral" for interaction response options is deprecated. Utilize flags instead.
-2025-09-13 16:49:40: (Use `node --trace-warnings ...` to show where the warning was created)
-2025-09-13 16:52:45: (node:9684) Warning: Supplying "ephemeral" for interaction response options is deprecated. Utilize flags instead.
-2025-09-13 16:52:45: (Use `node --trace-warnings ...` to show where the warning was created)
