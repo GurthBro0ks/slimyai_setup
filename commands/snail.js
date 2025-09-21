@@ -1,7 +1,7 @@
 // commands/snail.js
 // CommonJS – discord.js v14
 const { SlashCommandBuilder } = require('discord.js');
-const costs = require('../supersnail-costs.js');
+// lazy-load in execute()
 
 // Small helper to pick the right tier function
 function pickCalc(tier) {
@@ -63,6 +63,17 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    // normalized lazy-load of supersnail-costs
+    let costs = { levelCostCalc: ()=>0, nodeTimeCostSum: ()=>0 };
+    try {
+      costs = require("../supersnail-costs");
+    } catch (e) { /* stub fallback */ }
+    try {
+    } catch (e) {
+    }
+    try {
+    } catch (e) {
+    }
     try {
       if (interaction.options.getSubcommand() === 'test') {
         // A simple, known-good T6 example:

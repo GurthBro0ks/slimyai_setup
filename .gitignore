@@ -1,10 +1,15 @@
 node_modules/
-logs/
 .env
-
-# slimy extras
-.env
-logs/
-node_modules/
-data_*.db
-slimy-ai-*.json
+*.key
+*.pem
+*.p12
+*service-account*.json
+npm-debug.log*
+yarn-error.log*
+pids/
+*.pid
+*.bak.*
+*.broken.*
+.DS_Store
+.vscode/
+.idea/
