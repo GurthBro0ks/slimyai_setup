@@ -14,3 +14,5 @@ pids/
 .DS_Store
 .vscode/
 .idea/
+data_memos.db
+data_prefs.db
