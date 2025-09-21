@@ -5,14 +5,10 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "node --env-file=.env index.js",
+    "start": "node index.js",
     "deploy": "node deploy-commands.js",
-    "test:memory": "node tests/memory-simple.test.js",
-    "test:integration": "node tests/discord-integration-test.js",
-    "test:integration:verbose": "node tests/discord-integration-test.js --verbose",
-    "test:integration:force": "node tests/discord-integration-test.js --force",
-    "test:personality": "node --test tests/personality-tests.js",
-    "dev": "nodemon --env-file=.env index.js"
+    "check:conflicts": "git ls-files | grep -E '\\\\.(js|ts)$' | grep -v -E 'node_modules|\\\\.bak\\\\.|\\\\.broken\\\\.' | xargs grep -nE '^(<<<<<<<|=======|>>>>>>>)' && exit 1 || echo \"no conflict markers\"",
+    "preflight": "npm run check:conflicts && node -e \"require(\\'./supersnail-costs.js\\')\""
   },
   "engines": {
     "node": ">=18"

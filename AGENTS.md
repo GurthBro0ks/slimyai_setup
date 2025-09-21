@@ -1,21 +1,36 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`index.js` boots the Discord client, enforces singleton startup, and wires global utilities. Slash command handlers live in `commands/*.js` (e.g., `commands/snail.js`), while reactive listeners are in `handlers/` for mention and auto-detect flows. Shared services and integrations sit in `lib/`, including memory persistence (`lib/memory.js`), Google Sheets helpers, and OpenAI adapters. Operational scripts reside in `scripts/` for database migrations and sheet seeding, and persona configuration is versioned under `config/`. Tests, fixtures, and manual checklists are grouped in `tests/` alongside validation docs.
+- `index.js` loads `.env`, registers slash commands from `commands/`, and wires the mention handler.
+- `commands/` contains one CommonJS module per slash command (`chat`, `snail`, `consent`, etc.), each exporting `{ data, execute }` for the loader and `deploy-commands.js`.
+- Shared listeners live in `handlers/`, while `lib/` carries persistence (`memory.js`) and API helpers (`openai.js`).
+- Ops scripts (`run_slimy.sh`, `setup_roles_and_structure.js`, `perms_*.js`, `seed_*.js`) manage guild setup and deployment chores.
+- NeDB state (`data_memos.db`, `data_prefs.db`) and `supersnail-costs*.js` backups are runtime artefacts—keep them local and back up before edits.
 
 ## Build, Test, and Development Commands
-- `npm start` loads `.env`, connects to Discord, and starts the production bot.
-- `npm run deploy` refreshes slash command definitions via `deploy-commands.js`.
-- `npm run test:memory` exercises `tests/memory-simple.test.js` for datastore regressions.
-- `npm run test:integration[:verbose|:force]` runs the Discord integration smoke test; provide valid tokens before use.
-- `npm run test:personality` executes Node’s built-in test runner for persona scenarios.
-For local DB validation or sheet seeding, run `node scripts/migrate-to-database.js` or `node scripts/seed-sheets.js` with the required `.env` values.
+- `npm install` (Node 18+) installs deps; use `npm ci` for automation.
+- `npm run start` launches the bot locally with your `.env`.
+- `npm run deploy` re-registers slash metadata for `DISCORD_CLIENT_ID`/`DISCORD_GUILD_ID`; run after command changes.
+- `npm run preflight` aborts on merge markers and smoke-tests `supersnail-costs.js`.
+- `./run_slimy.sh` checks secrets (`SNAIL_SHEET_ID`, `SNAIL_GID`), installs deps, redeploys commands, and restarts PM2 for production.
 
 ## Coding Style & Naming Conventions
-Use Node.js ≥18 and CommonJS modules. Follow the prevailing two-space indentation, trailing semicolons, and single quotes in string literals. Prefer `camelCase` for functions and variables, `SCREAMING_SNAKE_CASE` for environment keys, and kebab-case filenames inside `handlers/` when the module encapsulates a feature (e.g., `snail-auto-detect`). Keep command exports consistent with Discord.js expectations (`data`, `execute`).
+- CommonJS, two-space indentation, semicolons, and `const` by default; rely on `async`/`await` around Discord or OpenAI calls.
+- Command filenames mirror the slash name (`chat.js`, `snail.js`); move reusable helpers into `lib/`.
+- Default to ephemeral replies (`flags: 64`) when user data is involved and reuse the `✅`/`❌` feedback tone.
+- No auto-linter runs; keep UTF-8/LF files and self-check formatting.
 
 ## Testing Guidelines
-Place automated tests in `tests/` and name them `*.test.js` or `*-test.js` to match existing patterns. Fast feedback should come from `npm run test:memory`; run integration tests only after confirming Discord credentials in `.env`. When adding new flows, include harness helpers from `tests/test-helpers.js` and document manual scenarios in the adjacent markdown checklists. Capture command output for any non-trivial test run when sharing results.
+- No automated suite: run `npm run preflight` and manual drills in a staging guild.
+- Extend `/snail test`-style fixtures for new calculators and confirm `/chat` keeps the “Where we left off → Next step.” suffix.
+- When persistence changes, copy or reset `data_*.db`, validate `/export` and `/forget`, and capture the steps in your PR.
 
 ## Commit & Pull Request Guidelines
-Follow the repository’s history by writing imperative, topic-prefixed commit subjects (e.g., `Fix: reconcile duplicate command loads`, `Phase 2: expand vision coverage`). Limit body text to problem, approach, and test notes. Pull requests should summarize behavior changes, link associated issues or Trello cards, list relevant test commands, and attach screenshots or logs for Discord-facing features. Mention configuration updates (e.g., `.env` keys or Google service accounts) so deployers can replicate the setup.
+- Write imperative, scoped commits (e.g., `Adjust snail tier caps`) and keep secrets or artefacts out of diffs.
+- Reference Discord threads or tickets when helpful, and highlight schema, permission, or env changes in the PR body.
+- Include a Testing section listing commands or scripts executed (`npm run preflight`, `/snail test`, `./run_slimy.sh`).
+
+## Security & Configuration Tips
+- `.env` must provide `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_GUILD_ID`, `OPENAI_API_KEY`, plus snail sheet IDs for calculator sync.
+- Keep `tokens.txt`, `google-service-account.json`, NeDB databases, and `.bak` snapshots out of git; extend `.gitignore` for new secrets.
+- Scrub user IDs and memo contents before sharing logs, and delete stale `supersnail-costs.js.bak.*` copies after validation.
