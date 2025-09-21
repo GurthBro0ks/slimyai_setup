@@ -6,7 +6,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "deploy": "node deploy-commands.js"
+    "deploy": "node deploy-commands.js",
+    "check:conflicts": "git ls-files | grep -E '\\\\.(js|ts)$' | grep -v -E 'node_modules|\\\\.bak\\\\.|\\\\.broken\\\\.' | xargs grep -nE '^(<<<<<<<|=======|>>>>>>>)' && exit 1 || echo \"no conflict markers\"",
+    "preflight": "npm run check:conflicts && node -e \"require(\\'./supersnail-costs.js\\')\""
   },
   "engines": {
     "node": ">=18"
