@@ -16,3 +16,4 @@ pids/
 .idea/
 data_memos.db
 data_prefs.db
+data.sqlite3

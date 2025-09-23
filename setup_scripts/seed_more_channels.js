@@ -48,7 +48,7 @@ const TEXT_CONTENT = {
   playground_tmp: [
     '# playground',
     '',
-    '**purpose**: noisy @mention tests and casual pokes. use `/ask` for clean logs.',
+    '**purpose**: noisy @mention tests and casual pokes. use `/chat` for clean logs.',
     '',
     'rules:',
     '- don’t spam global pings',
@@ -58,11 +58,11 @@ const TEXT_CONTENT = {
   sandbox_env: [
     '# sandbox',
     '',
-    '**purpose**: slash command tests (`/ask`, `/mode`, etc.).',
+    '**purpose**: slash command tests (`/chat`, `/mode`, etc.).',
     '',
     'try:',
-    '- `/ask what’s our next milestone?`',
-    '- `/mode operator` then `/ask give me a two-step plan`',
+    '- `/chat what’s our next milestone?`',
+    '- `/mode operator` then `/chat give me a two-step plan`',
     '',
     'if something breaks, capture details and open a bug.',
   ].join('\n'),

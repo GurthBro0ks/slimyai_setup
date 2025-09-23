@@ -1,104 +1,77 @@
 // handlers/mention.js
-const { Events } = require('discord.js');
-const chat = require('../commands/chat');
-const modeHelper = require('../lib/modes');
-const { maybeReplyWithImage } = require('../lib/auto-image');
-const { detectImageIntent } = require('../lib/image-intent');
+// Robust @mention handler for guild text channels.
+// - Replies to "@bot pingtest" with "pong"
+// - Replies to "@bot <your message>" with an echo-style confirmation
+// - Safe against double-firing and bot loops
+// - Logs when DEBUG_MENTION=1
 
-const COOLDOWN_MS = 5000;
-const mentionCooldown = new Map(); // key = `${guildId}:${userId}` -> ts
+const ACTIVE = new Set(); // dedupe per-message
 
-function attachMentionHandler(client) {
-  if (client._mentionHandlerAttached) {
-    console.log('[mention-handler] ALREADY ATTACHED - SKIPPING');
-    return;
-  }
-  console.log('[mention-handler] ATTACHING NOW');
-  client._mentionHandlerAttached = true;
-
-  const markReady = () => {
-    client.mentionHandlerReady = true;
-  };
-  client.mentionHandlerReady = false;
-  if (client.isReady?.()) {
-    markReady();
-  } else {
-    client.once(Events.ClientReady, markReady);
-  }
-
-  client.on(Events.MessageCreate, async (message) => {
+module.exports = (client) => {
+  client.on('messageCreate', async (message) => {
     try {
-      if (!client.user) return;
-      if (message.author.bot) return;
+      // Ignore bots, system messages, and DMs by default
+      if (!message || message.author?.bot) return;
+      if (!message.guild) return; // comment this line if you want DMs too
 
-      // was the bot mentioned?
-      if (!message.mentions.users.has(client.user.id)) return;
+      const me = client.user;
+      if (!me) return;
 
-      console.log(`[mention-handler] Processing mention from ${message.author.tag} - ListenerCount:`, client.listenerCount(Events.MessageCreate));
+      // Must START with our mention to trigger
+      const mentionAtStart = new RegExp(`^<@!?${me.id}>`);
+      const raw = (message.content || '').trim();
+      if (!mentionAtStart.test(raw)) return;
 
-      // strip the mention(s)
-      const mentionRegex = new RegExp(`<@!?${client.user.id}>`, 'g');
-      const clean = (message.content || '').replace(mentionRegex, '').trim();
+      // Avoid double-processing the same message id
+      if (ACTIVE.has(message.id)) return;
+      ACTIVE.add(message.id);
+      setTimeout(() => ACTIVE.delete(message.id), 10_000);
 
-      if (!clean) {
-        return message.reply({
-          content: '👋 Drop a message or question with your mention so I can help.',
-          allowedMentions: { repliedUser: false },
+      // Extract the text after the mention
+      const text = raw.replace(mentionAtStart, '').trim();
+
+      if (process.env.DEBUG_MENTION) {
+        console.log('[mention] hit', {
+          guild: message.guild?.id,
+          channel: message.channel?.id,
+          author: message.author?.id,
+          text,
         });
       }
 
-      const key = `${message.guildId || 'dm'}:${message.author.id}`;
-      const now = Date.now();
-      const last = mentionCooldown.get(key) || 0;
-      const imageIntent = detectImageIntent(clean);
-
-      if (!imageIntent && now - last < COOLDOWN_MS) return;
-      mentionCooldown.set(key, now);
-
-      if (!process.env.OPENAI_API_KEY) {
-        return message.reply({
-          content: '❌ OPENAI_API_KEY not set.',
+      // Quick health check path
+      if (/^pingtest$/i.test(text)) {
+        await message.reply({
+          content: 'pong',
           allowedMentions: { repliedUser: false },
         });
+        return;
       }
 
-      const parentId = message.channel?.parentId || message.channel?.parent?.id;
-      const effectiveModes = modeHelper.getEffectiveModesForChannel(message.guild, message.channel);
-      const rating = effectiveModes.rating_unrated
-        ? 'unrated'
-        : effectiveModes.rating_pg13
-        ? 'pg13'
-        : 'default';
+      // If no text after the mention, nudge the user
+      if (!text) {
+        await message.reply({
+          content: "👋 I'm here. Try: `@slimy.ai pingtest` or `@slimy.ai hi there`",
+          allowedMentions: { repliedUser: false },
+        });
+        return;
+      }
 
-      const handledImage = await maybeReplyWithImage({ message, prompt: clean, rating });
-      if (handledImage) return;
-
-      const result = await chat.runConversation({
-        userId: message.author.id,
-        channelId: message.channelId,
-        guildId: message.guildId || undefined,
-        parentId,
-        userMsg: clean,
-        context: 'mention',
-        effectiveOverride: effectiveModes,
-      });
-
-      console.log(`[mention-handler] Sending response to ${message.author.tag}`);
-      return message.reply({
-        content: result.response,
+      // --- Simple default reply (safe & self-contained) ---
+      // You can later swap this block to call your LLM/chat pipeline.
+      await message.reply({
+        content: `You said: **${text}**\n_(@mention path is live.)_`,
         allowedMentions: { repliedUser: false },
       });
     } catch (err) {
-      console.error('Mention handler error:', err);
-      const msg = err?.response?.data?.error?.message || err.message || String(err);
-      return message
-        .reply({
-          content: `❌ OpenAI error: ${msg}`,
+      console.error('[mention] error:', err);
+      try {
+        await message.reply({
+          content: 'squeak? (mention handler errored)',
           allowedMentions: { repliedUser: false },
-        })
-        .catch(() => {});
+        });
+      } catch {}
     }
   });
-}
-
-module.exports = { attachMentionHandler };
+  client.mentionHandlerReady = true;
+};
