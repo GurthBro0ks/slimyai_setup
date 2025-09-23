@@ -1,76 +1,101 @@
-// index.js
+// index.js — slimy.ai entrypoint (CommonJS)
+// - Loads .env
+// - Wires @mention handler (handlers/mention.js)
+// - Loads slash commands from ./commands (expects { data, execute })
+// - Uses flags (MessageFlags.Ephemeral) instead of deprecated `ephemeral: true`
+
 require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
+
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   Client,
+  Collection,
   GatewayIntentBits,
   Partials,
-  Collection,
-  Events
+  Events,
+  MessageFlags,
 } = require('discord.js');
-const { attachMentionHandler } = require('./handlers/mention');
 
-// ---- Client ----
+// ----- Env sanity (non-fatal warnings if missing) -----
+['DISCORD_TOKEN', 'DISCORD_CLIENT_ID', 'DISCORD_GUILD_ID', 'OPENAI_API_KEY'].forEach((k) => {
+  if (!process.env[k]) console.warn(`[env] ${k} not set`);
+});
+
+// ----- Client -----
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,   // REQUIRED for @mentions
-    GatewayIntentBits.MessageContent,  // MUST be enabled in Dev Portal too
-    GatewayIntentBits.DirectMessages   // optional
+    GatewayIntentBits.GuildMessages,     // required for @mentions
+    GatewayIntentBits.MessageContent,    // must also be enabled in Dev Portal
   ],
-  partials: [Partials.Channel],        // allow DMs
+  partials: [Partials.Channel],
 });
 
-// ---- Command loader (from ./commands/*.js) ----
 client.commands = new Collection();
+
+// ----- Load slash commands from ./commands -----
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
-  const files = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
+  const files = fs.readdirSync(commandsPath).filter((f) => f.endsWith('.js'));
   for (const file of files) {
-    const fp = path.join(commandsPath, file);
-    const cmd = require(fp);
-    if (cmd?.data && cmd?.execute) {
-      client.commands.set(cmd.data.name, cmd);
-    } else {
-      console.warn(`[WARN] Skipping ${file}: missing data/execute`);
+    try {
+      const mod = require(path.join(commandsPath, file));
+      const name = mod?.data?.name || mod?.name;
+      if (name && typeof mod.execute === 'function') {
+        client.commands.set(name, mod);
+        console.log(`↳ loaded /${name}`);
+      } else {
+        console.warn(`⚠️ skipped ${file} (missing data.name or execute)`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ failed loading ${file}: ${e.message}`);
     }
   }
 } else {
-  console.warn('[WARN] ./commands directory not found');
+  console.warn('⚠️ ./commands not found');
 }
 
-// ---- Ready ----
+// ----- Wire handlers (mention) -----
+try {
+  require('./handlers/mention')(client);
+  console.log('✅ mention handler attached');
+} catch (e) {
+  console.warn(`⚠️ mention handler not attached: ${e.message}`);
+}
+
+// ----- Ready -----
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Logged in as ${c.user.tag}`);
 });
 
-// ---- Slash command dispatcher ----
+// ----- Slash command router -----
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const cmd = client.commands.get(interaction.commandName);
+  if (!cmd) {
+    return interaction
+      .reply({ content: 'Command not found.', flags: MessageFlags.Ephemeral })
+      .catch(() => {});
+  }
+
   try {
-    if (!interaction.isChatInputCommand()) return;
-    const command = client.commands.get(interaction.commandName);
-    if (!command) {
-      return interaction.reply({ content: '❌ Unknown command.', ephemeral: true });
-    }
-    await command.execute(interaction);
+    await cmd.execute(interaction);
   } catch (err) {
-    console.error('Command error:', err);
+    console.error(`❌ /${interaction.commandName} error:`, err);
+    const payload = {
+      content: 'Something went sideways executing that command.',
+      flags: MessageFlags.Ephemeral,
+    };
     if (interaction.deferred || interaction.replied) {
-      await interaction.editReply('❌ Command failed.');
+      await interaction.followUp(payload).catch(() => {});
     } else {
-      await interaction.reply({ content: '❌ Command failed.', ephemeral: true });
+      await interaction.reply(payload).catch(() => {});
     }
   }
 });
 
-// ---- Mention handler ----
-attachMentionHandler(client);
-
-// ---- Login ----
-if (!process.env.DISCORD_TOKEN) {
-  console.error('❌ DISCORD_TOKEN not set in environment.');
-  process.exit(1);
-}
+// ----- Boot -----
 client.login(process.env.DISCORD_TOKEN);
 

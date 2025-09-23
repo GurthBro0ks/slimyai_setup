@@ -1,54 +1,77 @@
 // handlers/mention.js
-const { Events } = require('discord.js');
+// Robust @mention handler for guild text channels.
+// - Replies to "@bot pingtest" with "pong"
+// - Replies to "@bot <your message>" with an echo-style confirmation
+// - Safe against double-firing and bot loops
+// - Logs when DEBUG_MENTION=1
 
-const COOLDOWN_MS = 5000;
-const mentionCooldown = new Map(); // key = `${guildId}:${userId}` -> ts
+const ACTIVE = new Set(); // dedupe per-message
 
-function attachMentionHandler(client) {
-  client.mentionHandlerReady = true;
-
-  client.on(Events.MessageCreate, async (message) => {
+module.exports = (client) => {
+  client.on('messageCreate', async (message) => {
     try {
-      if (!client.user) return;
-      if (message.author.bot) return;
+      // Ignore bots, system messages, and DMs by default
+      if (!message || message.author?.bot) return;
+      if (!message.guild) return; // comment this line if you want DMs too
 
-      // was the bot mentioned?
-      if (!message.mentions.users.has(client.user.id)) return;
+      const me = client.user;
+      if (!me) return;
 
-      // cooldown per user per guild/dm
-      const key = `${message.guildId || 'dm'}:${message.author.id}`;
-      const now = Date.now();
-      const last = mentionCooldown.get(key) || 0;
-      if (now - last < COOLDOWN_MS) return;
-      mentionCooldown.set(key, now);
+      // Must START with our mention to trigger
+      const mentionAtStart = new RegExp(`^<@!?${me.id}>`);
+      const raw = (message.content || '').trim();
+      if (!mentionAtStart.test(raw)) return;
 
-      // strip the mention(s)
-      const mentionRegex = new RegExp(`<@!?${client.user.id}>`, 'g');
-      const clean = (message.content || '').replace(mentionRegex, '').trim();
+      // Avoid double-processing the same message id
+      if (ACTIVE.has(message.id)) return;
+      ACTIVE.add(message.id);
+      setTimeout(() => ACTIVE.delete(message.id), 10_000);
 
-      if (!clean) {
-        return message.reply({
-          content: `👋 You pinged me? Ask away or use \`/chat\`. Example: “<@${client.user.id}> what are you doing?”`,
-          allowedMentions: { repliedUser: false }
+      // Extract the text after the mention
+      const text = raw.replace(mentionAtStart, '').trim();
+
+      if (process.env.DEBUG_MENTION) {
+        console.log('[mention] hit', {
+          guild: message.guild?.id,
+          channel: message.channel?.id,
+          author: message.author?.id,
+          text,
         });
       }
 
-      if (/what('?|’)?\s+are\s+you\s+doing\??/i.test(clean)) {
-        return message.reply({
-          content: `Plotting world-saving shenanigans and monitoring snack levels. What’s up?`,
-          allowedMentions: { repliedUser: false }
+      // Quick health check path
+      if (/^pingtest$/i.test(text)) {
+        await message.reply({
+          content: 'pong',
+          allowedMentions: { repliedUser: false },
         });
+        return;
       }
 
-      return message.reply({
-        content: `You called? You said: “${clean}”. For deeper answers, try \`/chat\` so I can respond ephemerally.`,
-        allowedMentions: { repliedUser: false }
+      // If no text after the mention, nudge the user
+      if (!text) {
+        await message.reply({
+          content: "👋 I'm here. Try: `@slimy.ai pingtest` or `@slimy.ai hi there`",
+          allowedMentions: { repliedUser: false },
+        });
+        return;
+      }
+
+      // --- Simple default reply (safe & self-contained) ---
+      // You can later swap this block to call your LLM/chat pipeline.
+      await message.reply({
+        content: `You said: **${text}**\n_(@mention path is live.)_`,
+        allowedMentions: { repliedUser: false },
       });
     } catch (err) {
-      console.error('Mention handler error:', err);
+      console.error('[mention] error:', err);
+      try {
+        await message.reply({
+          content: 'squeak? (mention handler errored)',
+          allowedMentions: { repliedUser: false },
+        });
+      } catch {}
     }
   });
-}
-
-module.exports = { attachMentionHandler };
-
+  client.mentionHandlerReady = true;
+};
