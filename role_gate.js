@@ -24,6 +24,8 @@ const {
   PermissionsBitField,
   ModalBuilder, TextInputBuilder, TextInputStyle,
   EmbedBuilder,
+  MessageFlags,
+  Events,
 } = require('discord.js');
 
 const WELCOME_CHANNEL_NAME = process.env.WELCOME_CHANNEL_NAME || 'welcome_md';
@@ -125,7 +127,7 @@ async function ensurePanelMessage(guild, channelName) {
   return ch.send(payload);
 }
 
-client.once('ready', async (c) => {
+client.once(Events.ClientReady, async (c) => {
   console.log(`✅ Logged in as ${c.user.tag}`);
   try { await registerCommands(); } catch (e) { console.error('Register error:', e); }
 });
@@ -134,7 +136,7 @@ client.on('interactionCreate', async (ix) => {
   try {
     // /setup_gate
     if (ix.isChatInputCommand() && ix.commandName === 'setup_gate') {
-      await ix.deferReply({ ephemeral: true });
+      await ix.deferReply({ flags: MessageFlags.Ephemeral });
       const channelName = ix.options.getString('channel') || WELCOME_CHANNEL_NAME;
 
       const guild = ix.guild;
@@ -157,18 +159,18 @@ client.on('interactionCreate', async (ix) => {
     if (ix.isButton() && ix.customId.startsWith('gate_toggle:')) {
       const key = ix.customId.split(':')[1];
       const cfg = ROLES.find(r => r.customId.endsWith(key));
-      if (!cfg) return ix.reply({ content: '⚠️ Unknown role button.', ephemeral: true });
+      if (!cfg) return ix.reply({ content: '⚠️ Unknown role button.', flags: MessageFlags.Ephemeral });
 
       const guild = ix.guild;
       const member = await guild.members.fetch(ix.user.id);
       const role = await ensureRole(guild, cfg.name, cfg.color);
       const me = await guild.members.fetchMe();
       if (me.roles.highest.comparePositionTo(role) <= 0)
-        return ix.reply({ content: `⚠️ Move my highest role above \`${role.name}\`.`, ephemeral: true });
+        return ix.reply({ content: `⚠️ Move my highest role above \`${role.name}\`.`, flags: MessageFlags.Ephemeral });
 
       const has = member.roles.cache.has(role.id);
-      if (has) { await member.roles.remove(role.id, 'gate toggle'); return ix.reply({ content:`🧹 Removed \`${role.name}\`.`, ephemeral:true }); }
-      else { await member.roles.add(role.id, 'gate toggle'); return ix.reply({ content:`✅ Added \`${role.name}\`.`, ephemeral:true }); }
+      if (has) { await member.roles.remove(role.id, 'gate toggle'); return ix.reply({ content:`🧹 Removed \`${role.name}\`.`, flags: MessageFlags.Ephemeral }); }
+      else { await member.roles.add(role.id, 'gate toggle'); return ix.reply({ content:`✅ Added \`${role.name}\`.`, flags: MessageFlags.Ephemeral }); }
     }
 
     // Request builders -> show modal
@@ -215,7 +217,7 @@ client.on('interactionCreate', async (ix) => {
       await review.send({ content: `@here Builders request pending for <@${ix.user.id}>`, embeds: [embed], components: [row],
         allowedMentions: { parse: ['everyone', 'roles'] } }).catch(()=>review.send({ embeds: [embed], components: [row] }));
 
-      return ix.reply({ content: '✅ Request sent to moderators. You’ll be notified after review.', ephemeral: true });
+      return ix.reply({ content: '✅ Request sent to moderators. You’ll be notified after review.', flags: MessageFlags.Ephemeral });
     }
 
     // Approve / Deny
@@ -223,7 +225,7 @@ client.on('interactionCreate', async (ix) => {
       // Only admins/managers can approve
       if (!ix.memberPermissions?.has(PermissionsBitField.Flags.ManageRoles) &&
           !ix.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
-        return ix.reply({ content: '⛔ You need Manage Roles to approve/deny.', ephemeral: true });
+        return ix.reply({ content: '⛔ You need Manage Roles to approve/deny.', flags: MessageFlags.Ephemeral });
       }
       const targetId = ix.customId.split(':')[1];
       const action = ix.customId.startsWith('builders_approve:') ? 'approve' : 'deny';
@@ -232,13 +234,13 @@ client.on('interactionCreate', async (ix) => {
       const buildersRole = await ensureRole(guild, BUILDERS_ROLE_NAME, 0x00C2FF);
       const me = await guild.members.fetchMe();
       if (action === 'approve') {
-        if (!member) return ix.reply({ content: '⚠️ User not found.', ephemeral: true });
+        if (!member) return ix.reply({ content: '⚠️ User not found.', flags: MessageFlags.Ephemeral });
         if (me.roles.highest.comparePositionTo(buildersRole) <= 0)
-          return ix.reply({ content: `⚠️ Move my highest role above \`${buildersRole.name}\`.`, ephemeral: true });
+          return ix.reply({ content: `⚠️ Move my highest role above \`${buildersRole.name}\`.`, flags: MessageFlags.Ephemeral });
         await member.roles.add(buildersRole.id, 'Builders request approved');
-        await ix.reply({ content: `✅ Approved. Granted \`${buildersRole.name}\` to <@${targetId}>.`, ephemeral: true });
+        await ix.reply({ content: `✅ Approved. Granted \`${buildersRole.name}\` to <@${targetId}>.`, flags: MessageFlags.Ephemeral });
       } else {
-        await ix.reply({ content: `🧹 Denied builders request for <@${targetId}>.`, ephemeral: true });
+        await ix.reply({ content: `🧹 Denied builders request for <@${targetId}>.`, flags: MessageFlags.Ephemeral });
       }
       // disable buttons on the review message
       try {
@@ -253,7 +255,7 @@ client.on('interactionCreate', async (ix) => {
   } catch (err) {
     console.error('gate error:', err);
     if (ix.isRepliable()) {
-      await ix.reply({ content: `⚠️ Error: ${err.message || err}`, ephemeral: true }).catch(()=>{});
+      await ix.reply({ content: `⚠️ Error: ${err.message || err}`, flags: MessageFlags.Ephemeral }).catch(()=>{});
     }
   }
 });

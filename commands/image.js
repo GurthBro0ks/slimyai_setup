@@ -1,5 +1,5 @@
 // commands/image.js
-const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder, MessageFlags } = require('discord.js');
 const openai = require('../lib/openai');
 
 module.exports = {
@@ -21,7 +21,7 @@ module.exports = {
     ),
   async execute(interaction) {
     if (!process.env.OPENAI_API_KEY) {
-      return interaction.reply({ ephemeral: true, content: 'OPENAI_API_KEY is not set.' });
+      return interaction.reply({ flags: MessageFlags.Ephemeral, content: 'OPENAI_API_KEY is not set.' });
     }
 
     const prompt = interaction.options.getString('prompt', true);

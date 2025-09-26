@@ -1,87 +1,58 @@
 // commands/mode.js
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const mem = require('../lib/memory');
-
-const MODES = ['mentor','partner','mirror','operator'];
-
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('mode')
-    .setDescription('Get or set slimy.ai mode')
-    .addStringOption(o =>
-      o.setName('value')
-       .setDescription('mentor | partner | mirror | operator (omit to view)')
-       .addChoices(...MODES.map(m => ({ name: m, value: m })))
-    ),
-
-  async execute(interaction) {
-    const value = interaction.options.getString('value');
-    const guildId = interaction.guildId || null;
-    const userId = interaction.user.id;
-
-    if (value) {
-      await mem.setMode({ userId, guildId, mode: value });
-      return interaction.reply({
-        content: `🧭 Mode set to **${value}**.`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-// commands/mode.js
 const { SlashCommandBuilder } = require('discord.js');
 const memory = require('../lib/memory');
 
+// UI presets (Phase-1 voices); memory.VALID_MODES still accepts legacy values.
+const MODE_CHOICES = ['mentor', 'partner', 'mirror', 'operator'];
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('mode')
-    .setDescription('Get or set the channel mode')
-    .addStringOption((opt) =>
-      opt
-        .setName('value')
-        .setDescription('mentor | partner | mirror | operator')
+    .setDescription('Get or set this channel’s mode.')
+    .addStringOption(o =>
+      o.setName('value')
+        .setDescription(`One of: ${MODE_CHOICES.join(', ')}, or leave blank to view`)
         .setRequired(false)
-        .addChoices(
-          { name: 'mentor', value: 'mentor' },
-          { name: 'partner', value: 'partner' },
-          { name: 'mirror', value: 'mirror' },
-          { name: 'operator', value: 'operator' },
-        )
+        .addChoices(...MODE_CHOICES.map(v => ({ name: v, value: v })))
     ),
 
   async execute(interaction) {
-    try {
-      const wanted = interaction.options.getString('value');
-      const channelId = interaction.channelId;
+    const guildId = interaction.guildId;
+    const channelId = interaction.channelId;
+    const raw = interaction.options.getString('value');
+    const val = typeof raw === 'string' ? raw.trim().toLowerCase() : null;
 
-      if (!wanted) {
-        const current = await memory.getMode(channelId);
-        return interaction.reply({
-          content: `Mode here: **${current ?? 'not set'}**`,
-          flags: 64, // ephemeral replacement
-        });
-      }
-
-      await memory.setMode(channelId, wanted);
+    // GET (no value supplied)
+    if (!val) {
+      const cur = await memory.getMode(guildId, channelId);
       return interaction.reply({
-        content: `Mode set to **${wanted}**`,
+        content: `Mode here: **${cur ?? 'not set'}**`,
+        flags: 64, // ephemeral
+      });
+    }
+
+    // SET
+    if (!memory.VALID_MODES.includes(val)) {
+      const allowed = MODE_CHOICES.join(', ');
+      return interaction.reply({
+        content: `Invalid mode. Allowed: ${allowed}`,
         flags: 64,
       });
-    } catch (err) {
-      console.error('❌ /mode error:', err);
-      // Try not to crash the process on bad DB state
-      const msg = err?.message ? `Error: ${err.message}` : 'Something went sideways.';
-      if (interaction.deferred || interaction.replied) {
-        return interaction.followUp({ content: msg, flags: 64 }).catch(()=>{});
-      }
-      return interaction.reply({ content: msg, flags: 64 }).catch(()=>{});
     }
+
+    try {
+      await memory.setMode(guildId, channelId, val);
+    } catch (err) {
+      console.error('/mode set error:', err);
+      return interaction.reply({
+        content: 'Could not persist that mode — please try again in a moment.',
+        flags: 64,
+      });
+    }
+
+    return interaction.reply({
+      content: `Mode set to **${val}** for this channel.`,
+      flags: 64,
+    });
   },
 };
-
-    const current = await mem.getMode({ userId, guildId }) || '(auto)';
-    return interaction.reply({
-      content: `🧭 Current mode: **${current}**.`,
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-};
-

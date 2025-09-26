@@ -2,8 +2,11 @@
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
-  GatewayIntentBits
+  GatewayIntentBits,
+  Events,
+  MessageFlags
 } = require('discord.js');
+const mentionHandler = require('../handlers/mention');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,6 +21,12 @@ module.exports = {
 
     const chanPerms = interaction.channel?.permissionsFor?.(c.user) || null;
     const need = (flag) => chanPerms?.has?.(flag) ? '✅' : '❌';
+
+    const mentionReady = Boolean(
+      (typeof mentionHandler?.isReady === 'function' && mentionHandler.isReady(c)) ||
+      c.mentionHandlerReady ||
+      (typeof c.listenerCount === 'function' && c.listenerCount(Events.MessageCreate) > 0)
+    );
 
     const lines = [
       `**Runtime**`,
@@ -39,7 +48,7 @@ module.exports = {
       `• ReadMessageHistory: ${need(PermissionFlagsBits.ReadMessageHistory)}`,
       ``,
       `**Handlers**`,
-      `• mentionHandlerReady: ${c.mentionHandlerReady ? '✅ attached' : '❌ not attached'}`,
+      `• mentionHandlerReady: ${mentionReady ? '✅ attached' : '❌ not attached'}`,
       ``,
       `**How to test @mention**`,
       `1) In this channel, type:  @${c.user?.username} pingtest`,
@@ -49,7 +58,6 @@ module.exports = {
       `   - Intents here show ✅`,
     ];
 
-    return interaction.reply({ content: lines.join('\n'), ephemeral: true });
+    return interaction.reply({ content: lines.join('\n'), flags: MessageFlags.Ephemeral });
   }
 };
-
