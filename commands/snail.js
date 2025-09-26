@@ -1,6 +1,6 @@
 // commands/snail.js
 // CommonJS – discord.js v14
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 // lazy-load in execute()
 
 // Small helper to pick the right tier function
@@ -221,7 +221,7 @@ module.exports = {
             `**Form Cells:** ${formCells.toLocaleString()}\n` +
             `**BTADs:** ${btads.toLocaleString()}\n` +
             `**Hours:** ${hours.toLocaleString()}`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -530,7 +530,7 @@ module.exports = {
       if (!in01(r3, 10)) bad.push('r3');
       if (!in01(ritual, 1)) bad.push('ritual(0-1)');
       if (bad.length) {
-        return interaction.reply({ content: `❌ Invalid values: ${bad.join(', ')}`, ephemeral: true });
+        return interaction.reply({ content: `❌ Invalid values: ${bad.join(', ')}`, flags: MessageFlags.Ephemeral });
       }
 
       const calc = pickCalc(tier);
@@ -564,12 +564,12 @@ module.exports = {
           `• **Hours:** ${hours.toLocaleString()}`;
       }
 
-      return interaction.reply({ content: reply, ephemeral: true });
+      return interaction.reply({ content: reply, flags: MessageFlags.Ephemeral });
     } catch (err) {
       console.error('[snail] error:', err);
       return interaction.reply({
         content: `❌ Error: ${err.message || err}`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   },

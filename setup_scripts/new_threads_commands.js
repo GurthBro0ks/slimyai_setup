@@ -11,7 +11,7 @@ require('dotenv').config({ path: require('node:path').join(__dirname, '.env') })
 
 const {
   Client, GatewayIntentBits, REST, Routes,
-  ChannelType, SlashCommandBuilder
+  ChannelType, SlashCommandBuilder, MessageFlags, Events
 } = require('discord.js');
 
 const BUG_FORUM_NAME      = process.env.BUG_FORUM_NAME      || 'bug_tracker_forum_exe';
@@ -147,7 +147,7 @@ async function registerCommands() {
   console.log('✅ Slash commands registered: /new_bug, /new_calc, /new_feature, /new_test, /new_analysis');
 }
 
-client.once('ready', async (c) => {
+client.once(Events.ClientReady, async (c) => {
   console.log(`✅ Logged in as ${c.user.tag}`);
   try { await registerCommands(); } catch (e) { console.error('Register error:', e); }
 });
@@ -165,7 +165,7 @@ client.on('interactionCreate', async (ix) => {
 
     if (ix.commandName === 'new_bug') {
       const forum = await findForumByName(BUG_FORUM_NAME);
-      if (!forum) return ix.reply({ content: `⚠️ Forum not found: ${BUG_FORUM_NAME}`, ephemeral: true });
+      if (!forum) return ix.reply({ content: `⚠️ Forum not found: ${BUG_FORUM_NAME}`, flags: MessageFlags.Ephemeral });
 
       const title = ix.options.getString('title', true);
       const severity = ix.options.getString('severity', true);
@@ -202,12 +202,12 @@ client.on('interactionCreate', async (ix) => {
         },
         appliedTags: tagId ? [tagId] : undefined,
       });
-      return ix.reply({ content: `✅ created <#${thread.id}>`, ephemeral: true });
+      return ix.reply({ content: `✅ created <#${thread.id}>`, flags: MessageFlags.Ephemeral });
     }
 
     if (ix.commandName === 'new_calc') {
       const forum = await findForumByName(CALC_FORUM_NAME);
-      if (!forum) return ix.reply({ content: `⚠️ Forum not found: ${CALC_FORUM_NAME}`, ephemeral: true });
+      if (!forum) return ix.reply({ content: `⚠️ Forum not found: ${CALC_FORUM_NAME}`, flags: MessageFlags.Ephemeral });
 
       const title = ix.options.getString('title', true);
       const confidence = ix.options.getString('confidence', true);
@@ -236,12 +236,12 @@ client.on('interactionCreate', async (ix) => {
         },
         appliedTags: tagId ? [tagId] : undefined,
       });
-      return ix.reply({ content: `✅ created <#${thread.id}>`, ephemeral: true });
+      return ix.reply({ content: `✅ created <#${thread.id}>`, flags: MessageFlags.Ephemeral });
     }
 
     if (ix.commandName === 'new_feature') {
       const forum = await findForumByName(FEATURE_FORUM_NAME);
-      if (!forum) return ix.reply({ content: `⚠️ Forum not found: ${FEATURE_FORUM_NAME}`, ephemeral: true });
+      if (!forum) return ix.reply({ content: `⚠️ Forum not found: ${FEATURE_FORUM_NAME}`, flags: MessageFlags.Ephemeral });
 
       const testersRole = ix.guild.roles.cache.find(r => r.name === TESTERS_ROLE_NAME);
       const testersMention = testersRole ? `<@&${testersRole.id}>` : '**[testers]**';
@@ -278,14 +278,14 @@ client.on('interactionCreate', async (ix) => {
         appliedTags: tagId ? [tagId] : undefined,
       });
 
-      return ix.reply({ content: `✅ created <#${thread.id}> (notified ${TESTERS_ROLE_NAME})`, ephemeral: true });
+      return ix.reply({ content: `✅ created <#${thread.id}> (notified ${TESTERS_ROLE_NAME})`, flags: MessageFlags.Ephemeral });
     }
 
     if (ix.commandName === 'new_test') {
       const phase = ix.options.getInteger('phase', true);
       const forumName = PHASE_FORUMS[phase];
       const forum = await findForumByName(forumName);
-      if (!forum) return ix.reply({ content: `⚠️ Forum not found: ${forumName}`, ephemeral: true });
+      if (!forum) return ix.reply({ content: `⚠️ Forum not found: ${forumName}`, flags: MessageFlags.Ephemeral });
 
       const title = ix.options.getString('title', true);
       const givenVersion = ix.options.getInteger('version');
@@ -321,12 +321,12 @@ client.on('interactionCreate', async (ix) => {
         appliedTags: tagId ? [tagId] : undefined,
       });
 
-      return ix.reply({ content: `✅ created <#${thread.id}>`, ephemeral: true });
+      return ix.reply({ content: `✅ created <#${thread.id}>`, flags: MessageFlags.Ephemeral });
     }
 
     if (ix.commandName === 'new_analysis') {
       const forum = await findForumByName(ANALYSIS_FORUM_NAME);
-      if (!forum) return ix.reply({ content: `⚠️ Forum not found: ${ANALYSIS_FORUM_NAME}`, ephemeral: true });
+      if (!forum) return ix.reply({ content: `⚠️ Forum not found: ${ANALYSIS_FORUM_NAME}`, flags: MessageFlags.Ephemeral });
 
       const title = ix.options.getString('title', true);
       const dataset = ix.options.getString('dataset', true);
@@ -366,13 +366,13 @@ client.on('interactionCreate', async (ix) => {
         appliedTags: tagId ? [tagId] : undefined,
       });
 
-      return ix.reply({ content: `✅ created <#${thread.id}>`, ephemeral: true });
+      return ix.reply({ content: `✅ created <#${thread.id}>`, flags: MessageFlags.Ephemeral });
     }
 
   } catch (err) {
     console.error('handler error:', err);
     if (ix.isRepliable()) {
-      await ix.reply({ content: `⚠️ Error: ${err.message || err}`, ephemeral: true }).catch(()=>{});
+      await ix.reply({ content: `⚠️ Error: ${err.message || err}`, flags: MessageFlags.Ephemeral }).catch(()=>{});
     }
   }
 });

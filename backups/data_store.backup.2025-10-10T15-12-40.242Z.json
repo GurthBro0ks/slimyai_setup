@@ -1,0 +1,38 @@
+{
+  "prefs": [
+    {
+      "userId": "123",
+      "guildId": "456",
+      "key": "consent",
+      "value": "1"
+    },
+    {
+      "userId": "u1",
+      "guildId": "g1",
+      "key": "consent",
+      "value": "1"
+    },
+    {
+      "userId": "user1",
+      "guildId": "guild1",
+      "key": "consent",
+      "value": "1"
+    },
+    {
+      "userId": "user123",
+      "guildId": "guild456",
+      "key": "consent",
+      "value": "1"
+    }
+  ],
+  "memos": [
+    {
+      "_id": "1759579124763y3agseluxr",
+      "userId": "user1",
+      "guildId": "guild1",
+      "content": "note",
+      "createdAt": 1759579124763
+    }
+  ],
+  "channelModes": []
+}

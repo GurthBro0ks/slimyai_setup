@@ -4,10 +4,9 @@ const {
   PermissionFlagsBits,
   GatewayIntentBits,
   Events,
+  MessageFlags
 } = require('discord.js');
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+const mentionHandler = require('../handlers/mention');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -90,14 +89,11 @@ module.exports = {
     const chanPerms = interaction.channel?.permissionsFor?.(c.user) || null;
     const need = (flag) => chanPerms?.has?.(flag) ? '✅' : '❌';
 
-    const mentionListeners = c.listenerCount?.(Events.MessageCreate) ?? 0;
-    const mentionStatus = (() => {
-      if (mentionListeners <= 0) return '❌ not attached';
-      return c.mentionHandlerReady ? '✅ ready' : '⚠ attached (pending ready)';
-    })();
-
-    // Check snail auto-detect handler
-    const snailAutoDetectStatus = c._snailAutoDetectAttached ? '✅ attached' : '❌ not attached';
+    const mentionReady = Boolean(
+      (typeof mentionHandler?.isReady === 'function' && mentionHandler.isReady(c)) ||
+      c.mentionHandlerReady ||
+      (typeof c.listenerCount === 'function' && c.listenerCount(Events.MessageCreate) > 0)
+    );
 
     const lines = [
       `**🤖 Slimy.ai Diagnostics v2**`,
@@ -126,9 +122,8 @@ module.exports = {
       `• SendMessages: ${need(PermissionFlagsBits.SendMessages)}`,
       `• ReadMessageHistory: ${need(PermissionFlagsBits.ReadMessageHistory)}`,
       ``,
-      `**⚙️ Handlers**`,
-      `• mention handler: ${mentionStatus} (listeners: ${mentionListeners})`,
-      `• snail auto-detect: ${snailAutoDetectStatus}`,
+      `**Handlers**`,
+      `• mentionHandlerReady: ${mentionReady ? '✅ attached' : '❌ not attached'}`,
       ``,
       `**🧪 How to test @mention**`,
       `1) In this channel, type:  @${c.user?.username} pingtest`,
@@ -138,6 +133,6 @@ module.exports = {
       `   - Intents here show ✅`,
     ].filter(line => line !== ''); // Remove empty strings from conditional lines
 
-    return interaction.reply({ content: lines.join('\n'), ephemeral: true });
+    return interaction.reply({ content: lines.join('\n'), flags: MessageFlags.Ephemeral });
   }
 };

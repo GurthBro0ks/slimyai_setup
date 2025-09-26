@@ -33,6 +33,7 @@ const client = new Client({
 });
 
 client.commands = new Collection();
+client.mentionHandlerReady = false;
 
 // ----- Load slash commands from ./commands -----
 const commandsPath = path.join(__dirname, 'commands');
@@ -99,7 +100,4 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 // ----- Boot -----
-client.login(process.env.DISCORD_TOKEN);
-
-console.log('🚀 Starting Discord bot...');
 client.login(process.env.DISCORD_TOKEN);

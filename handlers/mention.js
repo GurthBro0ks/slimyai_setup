@@ -1,77 +1,37 @@
 // handlers/mention.js
-// Robust @mention handler for guild text channels.
-// - Replies to "@bot pingtest" with "pong"
-// - Replies to "@bot <your message>" with an echo-style confirmation
-// - Safe against double-firing and bot loops
-// - Logs when DEBUG_MENTION=1
+let attached = false;
 
-const ACTIVE = new Set(); // dedupe per-message
+function attachMentionHandler(client) {
+  if (attached) {
+    client.mentionHandlerReady = true;
+    return; // already wired
+  }
 
-module.exports = (client) => {
-  client.on('messageCreate', async (message) => {
-    try {
-      // Ignore bots, system messages, and DMs by default
-      if (!message || message.author?.bot) return;
-      if (!message.guild) return; // comment this line if you want DMs too
+  const onMessage = async (msg) => {
+    if (msg.author.bot) return;
 
-      const me = client.user;
-      if (!me) return;
+    const self = client.user;
+    if (!self) return; // client not logged in yet
+    if (!msg.mentions.has(self)) return;
 
-      // Must START with our mention to trigger
-      const mentionAtStart = new RegExp(`^<@!?${me.id}>`);
-      const raw = (message.content || '').trim();
-      if (!mentionAtStart.test(raw)) return;
-
-      // Avoid double-processing the same message id
-      if (ACTIVE.has(message.id)) return;
-      ACTIVE.add(message.id);
-      setTimeout(() => ACTIVE.delete(message.id), 10_000);
-
-      // Extract the text after the mention
-      const text = raw.replace(mentionAtStart, '').trim();
-
-      if (process.env.DEBUG_MENTION) {
-        console.log('[mention] hit', {
-          guild: message.guild?.id,
-          channel: message.channel?.id,
-          author: message.author?.id,
-          text,
-        });
-      }
-
-      // Quick health check path
-      if (/^pingtest$/i.test(text)) {
-        await message.reply({
-          content: 'pong',
-          allowedMentions: { repliedUser: false },
-        });
-        return;
-      }
-
-      // If no text after the mention, nudge the user
-      if (!text) {
-        await message.reply({
-          content: "👋 I'm here. Try: `@slimy.ai pingtest` or `@slimy.ai hi there`",
-          allowedMentions: { repliedUser: false },
-        });
-        return;
-      }
-
-      // --- Simple default reply (safe & self-contained) ---
-      // You can later swap this block to call your LLM/chat pipeline.
-      await message.reply({
-        content: `You said: **${text}**\n_(@mention path is live.)_`,
-        allowedMentions: { repliedUser: false },
-      });
-    } catch (err) {
-      console.error('[mention] error:', err);
-      try {
-        await message.reply({
-          content: 'squeak? (mention handler errored)',
-          allowedMentions: { repliedUser: false },
-        });
-      } catch {}
+    const reSelf = new RegExp(`<@!?${self.id}>`, 'g');
+    const text = msg.content.replace(reSelf, '').trim();
+    if (/^pingtest\b/i.test(text)) {
+      await msg.reply({ content: 'pong — @mention path is live.' });
+      return;
     }
-  });
+    // Minimal echo; your chat flow can replace this.
+    await msg.reply({ content: `You said: ${text || '(no text)'}` });
+  };
+
+  client.on('messageCreate', onMessage);
+  attached = true;
   client.mentionHandlerReady = true;
+}
+
+attachMentionHandler.isReady = (client) => {
+  if (client && typeof client.mentionHandlerReady !== 'undefined') return Boolean(client.mentionHandlerReady);
+  return attached;
 };
+
+module.exports = attachMentionHandler;
