@@ -2,7 +2,8 @@
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
-  GatewayIntentBits
+  GatewayIntentBits,
+  Events,
 } = require('discord.js');
 
 module.exports = {
@@ -18,6 +19,12 @@ module.exports = {
 
     const chanPerms = interaction.channel?.permissionsFor?.(c.user) || null;
     const need = (flag) => chanPerms?.has?.(flag) ? '✅' : '❌';
+
+    const mentionListeners = c.listenerCount?.(Events.MessageCreate) ?? 0;
+    const mentionStatus = (() => {
+      if (mentionListeners <= 0) return '❌ not attached';
+      return c.mentionHandlerReady ? '✅ ready' : '⚠ attached (pending ready)';
+    })();
 
     const lines = [
       `**Runtime**`,
@@ -39,11 +46,11 @@ module.exports = {
       `• ReadMessageHistory: ${need(PermissionFlagsBits.ReadMessageHistory)}`,
       ``,
       `**Handlers**`,
-      `• mentionHandlerReady: ${c.mentionHandlerReady ? '✅ attached' : '❌ not attached'}`,
+      `• mention handler: ${mentionStatus} (listeners: ${mentionListeners})`,
       ``,
       `**How to test @mention**`,
       `1) In this channel, type:  @${c.user?.username} pingtest`,
-      `2) Expect a reply within ~1s. If no reply:`,
+      `2) Expect a fast “🏓 pong!” reply. If no reply:`,
       `   - Dev Portal → Bot → Message Content Intent = ON`,
       `   - This channel’s perms (see above)`,
       `   - Intents here show ✅`,
@@ -52,4 +59,3 @@ module.exports = {
     return interaction.reply({ content: lines.join('\n'), ephemeral: true });
   }
 };
-

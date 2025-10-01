@@ -5,7 +5,16 @@ const COOLDOWN_MS = 5000;
 const mentionCooldown = new Map(); // key = `${guildId}:${userId}` -> ts
 
 function attachMentionHandler(client) {
-  client.mentionHandlerReady = true;
+  if (client._mentionHandlerAttached) return;
+  client._mentionHandlerAttached = true;
+
+  const markReady = () => { client.mentionHandlerReady = true; };
+  client.mentionHandlerReady = false;
+  if (client.isReady?.()) {
+    markReady();
+  } else {
+    client.once(Events.ClientReady, markReady);
+  }
 
   client.on(Events.MessageCreate, async (message) => {
     try {
@@ -33,6 +42,13 @@ function attachMentionHandler(client) {
         });
       }
 
+      if (/^pingtest$/i.test(clean)) {
+        return message.reply({
+          content: '🏓 pong! If you still do not see replies, re-run `/diag` and double-check intents/perms.',
+          allowedMentions: { repliedUser: false }
+        });
+      }
+
       if (/what('?|’)?\s+are\s+you\s+doing\??/i.test(clean)) {
         return message.reply({
           content: `Plotting world-saving shenanigans and monitoring snack levels. What’s up?`,
@@ -51,4 +67,3 @@ function attachMentionHandler(client) {
 }
 
 module.exports = { attachMentionHandler };
-
