@@ -45,10 +45,10 @@ module.exports = {
     }
 
     const result = await openai.images.generate({
-      model: process.env.IMAGE_MODEL || 'gpt-image-1',
+      model: process.env.IMAGE_MODEL || 'dall-e-2',
       prompt,
       size,            // '512x512' | '1024x1024'
-      // You can also pass: background: 'transparent', or 'png' via response_format
+      response_format: 'b64_json',
     });
 
     const b64 = result.data?.[0]?.b64_json;

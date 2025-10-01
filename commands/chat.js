@@ -1,9 +1,6 @@
 // commands/chat.js
 const { SlashCommandBuilder } = require('discord.js');
-const personaStore = require('../lib/persona');
-const { maybeReplyWithImage } = require('../lib/auto-image');
-const modeHelper = require('../lib/modes');
-const { formatChatDisplay } = require('../lib/text-format');
+const openai = require('../lib/openai');
 
 // Short history per (channelId,userId)
 const histories = new Map();
@@ -21,58 +18,6 @@ function autoDetect(text = '') {
   if (/\b(plan|organize|schedule|task|checklist)\b/i.test(t)) s.operator += 2;
   const top = MODES.reduce((a, m) => (s[m] > s[a] ? m : a), 'mentor');
   return s[top] > 0 ? top : 'mentor';
-}
-
-async function runConversation({
-  userId,
-  channelId,
-  guildId,
-  parentId,
-  userMsg,
-  reset = false,
-  context = 'slash',
-  effectiveOverride = null,
-}) {
-  const key = `${channelId}:${userId}`;
-  if (reset) histories.delete(key);
-
-  let history = histories.get(key) || [];
-  history.push({ role: 'user', content: userMsg });
-  if (history.length > MAX_TURNS * 2) history = history.slice(-MAX_TURNS * 2);
-  histories.set(key, history);
-
-  const detectedMode = autoDetect(userMsg);
-  let persona = personaStore.getPersona(detectedMode);
-
-  let effectiveModes = effectiveOverride;
-  if (!effectiveModes) {
-    const channel = global.client?.channels?.cache?.get(channelId);
-    const guild = guildId ? global.client?.guilds?.cache?.get(guildId) : null;
-    effectiveModes = modeHelper.getEffectiveModesForChannel(guild, channel);
-  }
-
-  if (effectiveModes.personality) {
-    persona = personaStore.getPersona('personality');
-  } else if (effectiveModes.no_personality) {
-    persona = personaStore.getPersona('no_personality');
-  }
-
-  const systemPrompt = persona.prompt || 'You are a helpful assistant.';
-  const messages = [{ role: 'system', content: systemPrompt }, ...history];
-
-  const openai = require('../lib/openai');
-  const completion = await openai.chat.completions.create({
-    model: process.env.OPENAI_MODEL || 'gpt-4o',
-    messages,
-    temperature: 0.8,
-    max_tokens: 1000,
-  });
-
-  const response = completion.choices[0]?.message?.content || 'No response.';
-  history.push({ role: 'assistant', content: response });
-  histories.set(key, history);
-
-  return { response, persona: persona.name };
 }
 
 module.exports = {
@@ -110,24 +55,10 @@ module.exports = {
         ? 'pg13'
         : 'default';
 
-      const handledImage = await maybeReplyWithImage({
-        interaction,
-        prompt: userMsg,
-        rating,
-      });
-      if (handledImage) {
-        return;
-      }
-
-      const result = await runConversation({
-        userId: interaction.user.id,
-        channelId: interaction.channelId,
-        guildId: interaction.guildId || undefined,
-        parentId,
-        userMsg,
-        reset,
-        context: 'slash',
-        effectiveOverride: effectiveModes,
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: system }, ...history],
+        temperature: 0.6,
       });
 
       const userLabel = interaction.member?.displayName || interaction.user.username;
