@@ -1,0 +1,39 @@
+name: Restart Pterodactyl on push
+
+on:
+  push:
+    branches: ["main"]    # change if your default branch is different
+  workflow_dispatch:       # allow manual runs from the Actions tab
+
+concurrency:
+  group: ptero-restart
+  cancel-in-progress: true
+
+jobs:
+  restart:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restart server via Pterodactyl Client API
+        env:
+          PTERO_BASE_URL:  ${{ secrets.PTERO_BASE_URL }}
+          PTERO_API_KEY:   ${{ secrets.PTERO_API_KEY }}
+          PTERO_SERVER_ID: ${{ secrets.PTERO_SERVER_ID }}
+        run: |
+          set -euo pipefail
+          for SIGNAL in restart start; do
+            echo "Sending $SIGNAL to $PTERO_SERVER_ID ..."
+            HTTP_CODE=$(curl -sS -o /tmp/resp.txt -w "%{http_code}" \
+              -X POST "$PTERO_BASE_URL/api/client/servers/$PTERO_SERVER_ID/power" \
+              -H "Authorization: Bearer $PTERO_API_KEY" \
+              -H "Content-Type: application/json" \
+              -H "Accept: application/json" \
+              --data "{\"signal\":\"$SIGNAL\"}")
+            echo "HTTP $HTTP_CODE"
+            cat /tmp/resp.txt || true
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "Power $SIGNAL accepted."
+              exit 0
+            fi
+          done
+          echo "Power requests failed. See response above."
+          exit 1
