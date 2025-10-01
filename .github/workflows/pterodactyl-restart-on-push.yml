@@ -13,26 +13,39 @@ jobs:
   restart:
     runs-on: ubuntu-latest
     env:
-      PTERO_BASE_URL:  ${{ secrets.PTERO_BASE_URL }}
-      PTERO_API_KEY:   ${{ secrets.PTERO_API_KEY }}
-      PTERO_SERVER_ID: ${{ secrets.PTERO_SERVER_ID }}
+      RAW_BASE:         ${{ secrets.PTERO_BASE_URL }}
+      PTERO_API_KEY:    ${{ secrets.PTERO_API_KEY }}
+      PTERO_SERVER_ID:  ${{ secrets.PTERO_SERVER_ID }}
     steps:
-      - name: Normalize base (strip trailing slash)
+      - name: Normalize base
+        id: norm
         run: |
-          BASE="${PTERO_BASE_URL%/}"
-          echo "BASE=$BASE" >> $GITHUB_ENV
-          echo "ID=$PTERO_SERVER_ID" >> $GITHUB_ENV
+          set -euo pipefail
+          BASE="${RAW_BASE%/}"           # strip trailing slash
+          BASE="${BASE%/api}"            # strip accidental /api
+          BASE="${BASE%/panel}"          # strip accidental /panel
+          echo "BASE=$BASE" >> "$GITHUB_ENV"
+          echo "ID=$PTERO_SERVER_ID" >> "$GITHUB_ENV"
+          # print just the host (not the secret) for sanity
+          echo "Using host: $(echo "$BASE" | sed -E 's#https?://([^/]+).*#\1#')"
 
-      - name: Preflight — list servers (diagnose base/key)
+      - name: Preflight (best-effort) — list servers
+        continue-on-error: true
         run: |
           set -euo pipefail
           echo "GET $BASE/api/client/servers"
-          curl -sS --fail-with-body \
+          curl -sS -o /tmp/servers.json -w "HTTP %{http_code}\n" \
             -H "Authorization: Bearer $PTERO_API_KEY" \
             -H "Accept: application/json" \
-            "$BASE/api/client/servers" | jq '.data[].attributes | {identifier,name}'
+            "$BASE/api/client/servers" | tee /tmp/preflight.status
+          if grep -q "HTTP 2" /tmp/preflight.status; then
+            jq '.data[].attributes | {identifier,name}' /tmp/servers.json || true
+          else
+            echo "::warning::Preflight did not return 2xx (continuing anyway)"
+            head -c 200 /tmp/servers.json || true; echo
+          fi
 
-      - name: Restart server via Pterodactyl Client API
+      - name: Restart server via Client API
         run: |
           set -euo pipefail
           for SIGNAL in restart start; do
