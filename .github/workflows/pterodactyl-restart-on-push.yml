@@ -2,8 +2,8 @@ name: Restart Pterodactyl on push
 
 on:
   push:
-    branches: ["main"]    # change if your default branch is different
-  workflow_dispatch:       # allow manual runs from the Actions tab
+    branches: ["main"]
+  workflow_dispatch:
 
 concurrency:
   group: ptero-restart
@@ -12,18 +12,33 @@ concurrency:
 jobs:
   restart:
     runs-on: ubuntu-latest
+    env:
+      PTERO_BASE_URL:  ${{ secrets.PTERO_BASE_URL }}
+      PTERO_API_KEY:   ${{ secrets.PTERO_API_KEY }}
+      PTERO_SERVER_ID: ${{ secrets.PTERO_SERVER_ID }}
     steps:
+      - name: Normalize base (strip trailing slash)
+        run: |
+          BASE="${PTERO_BASE_URL%/}"
+          echo "BASE=$BASE" >> $GITHUB_ENV
+          echo "ID=$PTERO_SERVER_ID" >> $GITHUB_ENV
+
+      - name: Preflight — list servers (diagnose base/key)
+        run: |
+          set -euo pipefail
+          echo "GET $BASE/api/client/servers"
+          curl -sS --fail-with-body \
+            -H "Authorization: Bearer $PTERO_API_KEY" \
+            -H "Accept: application/json" \
+            "$BASE/api/client/servers" | jq '.data[].attributes | {identifier,name}'
+
       - name: Restart server via Pterodactyl Client API
-        env:
-          PTERO_BASE_URL:  ${{ secrets.PTERO_BASE_URL }}
-          PTERO_API_KEY:   ${{ secrets.PTERO_API_KEY }}
-          PTERO_SERVER_ID: ${{ secrets.PTERO_SERVER_ID }}
         run: |
           set -euo pipefail
           for SIGNAL in restart start; do
-            echo "Sending $SIGNAL to $PTERO_SERVER_ID ..."
+            echo "Sending $SIGNAL to $ID ..."
             HTTP_CODE=$(curl -sS -o /tmp/resp.txt -w "%{http_code}" \
-              -X POST "$PTERO_BASE_URL/api/client/servers/$PTERO_SERVER_ID/power" \
+              -X POST "$BASE/api/client/servers/$ID/power" \
               -H "Authorization: Bearer $PTERO_API_KEY" \
               -H "Content-Type: application/json" \
               -H "Accept: application/json" \
@@ -37,3 +52,4 @@ jobs:
           done
           echo "Power requests failed. See response above."
           exit 1
+
