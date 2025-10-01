@@ -1,5 +1,6 @@
 // commands/chat.js
 const { SlashCommandBuilder } = require('discord.js');
+const openai = require('../lib/openai');
 
 // Short history per (channelId,userId)
 const histories = new Map();
@@ -19,16 +20,6 @@ function autoDetect(text = '') {
   return Object.entries(s).sort((a, b) => b[1] - a[1])[0][0];
 }
 const stamp = (body) => `${body}\n\nWhere we left off → Next step.`;
-
-// Lazy OpenAI client (so requiring this file never throws)
-let openai = null;
-function getOpenAI() {
-  if (!openai) {
-    const OpenAI = require('openai');
-    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-  return openai;
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -73,8 +64,7 @@ module.exports = {
         `Always end with: "Where we left off → Next step."`,
       ].join(' ');
 
-      const ai = getOpenAI();
-      const response = await ai.chat.completions.create({
+      const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [{ role: 'system', content: system }, ...history],
         temperature: 0.6,

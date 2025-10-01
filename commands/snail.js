@@ -68,12 +68,7 @@ module.exports = {
     try {
       costs = require("../supersnail-costs");
     } catch (e) { /* stub fallback */ }
-    try {
-    } catch (e) {
-    }
-    try {
-    } catch (e) {
-    }
+
     try {
       if (interaction.options.getSubcommand() === 'test') {
         // A simple, known-good T6 example:
