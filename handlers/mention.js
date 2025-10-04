@@ -61,10 +61,8 @@ function attachMentionHandler(client) {
         userMsg: clean,
       });
 
-      const content = chat.trimForDiscord(result.response, 2000);
-
       return message.reply({
-        content,
+        content: result.response,
         allowedMentions: { repliedUser: false },
       });
     } catch (err) {
