@@ -54,8 +54,14 @@ function attachMentionHandler(client) {
       }
 
       const parentId = message.channel?.parentId || message.channel?.parent?.id;
+      const effectiveModes = chat.getEffectiveModesForChannel(message.guild, message.channel);
+      const rating = effectiveModes.rating_unrated
+        ? 'unrated'
+        : effectiveModes.rating_pg13
+        ? 'pg13'
+        : 'default';
 
-      const handledImage = await maybeReplyWithImage({ message, prompt: clean });
+      const handledImage = await maybeReplyWithImage({ message, prompt: clean, rating });
       if (handledImage) return;
 
       const result = await chat.runConversation({
@@ -65,6 +71,7 @@ function attachMentionHandler(client) {
         parentId,
         userMsg: clean,
         context: 'mention',
+        effectiveOverride: effectiveModes,
       });
 
       return message.reply({
