@@ -49,11 +49,11 @@ module.exports = {
     const reset = interaction.options.getBoolean('reset') || false;
 
     if (!process.env.OPENAI_API_KEY) {
-      return interaction.reply({ content: '❌ OPENAI_API_KEY not set.', flags: 64 });
+      return interaction.reply({ content: '❌ OPENAI_API_KEY not set.' });
     }
 
     // acknowledge quickly so the token doesn’t expire
-    await interaction.deferReply({ flags: 64 }); // ephemeral
+    await interaction.deferReply();
 
     // manage short history
     const key = keyOf(interaction);
@@ -96,4 +96,3 @@ module.exports = {
     }
   },
 };
-

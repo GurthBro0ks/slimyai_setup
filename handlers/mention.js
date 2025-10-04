@@ -57,7 +57,7 @@ function attachMentionHandler(client) {
       }
 
       return message.reply({
-        content: `You called? You said: “${clean}”. For deeper answers, try \`/chat\` so I can respond ephemerally.`,
+        content: `You called? You said: “${clean}”. For deeper answers, try \`/chat\` to keep longer threads organized.`,
         allowedMentions: { repliedUser: false }
       });
     } catch (err) {

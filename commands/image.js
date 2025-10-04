@@ -21,7 +21,7 @@ module.exports = {
     ),
   async execute(interaction) {
     if (!process.env.OPENAI_API_KEY) {
-      return interaction.reply({ ephemeral: true, content: 'OPENAI_API_KEY is not set.' });
+      return interaction.reply({ content: '❌ OPENAI_API_KEY is not set.' });
     }
 
     const prompt = interaction.options.getString('prompt', true);
@@ -59,4 +59,3 @@ module.exports = {
     return interaction.editReply({ content: `Prompt: ${prompt}`, files: [file] });
   },
 };
-
