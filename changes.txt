@@ -1,0 +1,32 @@
+**slimy.ai** is a Discord-native AI that adapts to your crew’s rhythm (remembers conversations, adapts over time, and slowly evolves with server participation). 
+
+It has **four modes** that can be turned on/off independently per *channel* or *category*.
+
+### Modes
+- **1) admin** — locks admin panel/commands for server settings (gated by channel perms or admin-only visibility).  
+  • Keep mode, channel, and general settings accessible for admins while other modes run.
+
+- **2) personality** — playful sparks, big ideas, dopamine fuel. Optional photo generator; uses sheets or a temp cache for user-specific data and chat memory. Attitude grows with users.  
+  _Examples_: “show me a snail wearing sunglasses, Picasso style, Discord-ready (not Mike from yesterday).” “Make me a meme (remember my inside jokes).”
+
+- **3) no_personality** — straight answers and image generation; minimal voice.
+
+- **4) super_snail** — listens for Super Snail chat data, organizes, plans, and uses Google Sheets.  
+  • Listens to assigned channels in this mode.  
+  • Personality can still adapt via member chat.  
+  • Sources: Super Snail wiki, subreddit, and snelp.com; plus Google Sheets + image refs.  
+  • Players can upload stat screenshots; slimy.ai asks for any missing details and proposes upgrade paths.  
+  • Admins can upload Species War screenshots to a weekly sheet for club-wide stats (participation, etc.).
+
+### Scope
+- Conversational core with memory  
+- Per-channel personas (modes) + admin controls  
+- Image generation with safety filters  
+- Super Snail specialist flow: screenshot → OCR → Sheets → wiki/snelp enrichment; @mention for chat
+
+### Design values
+- Phase-by-phase plan  
+- Small loops > long lectures  
+- Clear status, crisp tags, humane defaults  
+- “Repo” feel: channels as files, forums as folders
+
