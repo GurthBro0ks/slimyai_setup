@@ -2,6 +2,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const mem = require('../lib/memory');
 const personaStore = require('../lib/persona');
+const { maybeReplyWithImage } = require('../lib/auto-image');
 
 // Short history per (channelId,userId)
 const histories = new Map();
@@ -31,22 +32,7 @@ function getOpenAI() {
   return openai;
 }
 
-function trimForDiscord(text, limit) {
-  if (!text) return '';
-  if (text.length <= limit) return text;
-  return text.slice(0, Math.max(0, limit - 1)) + '…';
-}
-
-function formatChatDisplay({ userLabel, userMsg, persona, response }) {
-  const personaName = persona?.name || 'slimy.ai';
-  const safeUser = trimForDiscord(userMsg || '(no input)', 400);
-  const userLine = `**${userLabel || 'You'}:** ${safeUser}`;
-  const prefix = `**${personaName}:** `;
-  const available = Math.max(50, 2000 - userLine.length - 2 - prefix.length);
-  const safeResponse = trimForDiscord(response || '(no content)', available);
-  const botLine = `${prefix}${safeResponse}`;
-  return `${userLine}\n\n${botLine}`;
-}
+const { formatChatDisplay } = require('../lib/text-format');
 
 function summarizeCapabilities(persona) {
   if (!persona?.core_capabilities) return '';
@@ -231,6 +217,12 @@ module.exports = {
 
     try {
       const parentId = interaction.channel?.parentId || interaction.channel?.parent?.id;
+
+      const handledImage = await maybeReplyWithImage({ interaction, prompt: userMsg });
+      if (handledImage) {
+        return;
+      }
+
       const result = await runConversation({
         userId: interaction.user.id,
         channelId: interaction.channelId,

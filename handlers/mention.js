@@ -1,6 +1,7 @@
 // handlers/mention.js
 const { Events } = require('discord.js');
 const chat = require('../commands/chat');
+const { maybeReplyWithImage } = require('../lib/auto-image');
 
 const COOLDOWN_MS = 5000;
 const mentionCooldown = new Map(); // key = `${guildId}:${userId}` -> ts
@@ -53,6 +54,10 @@ function attachMentionHandler(client) {
       }
 
       const parentId = message.channel?.parentId || message.channel?.parent?.id;
+
+      const handledImage = await maybeReplyWithImage({ message, prompt: clean });
+      if (handledImage) return;
+
       const result = await chat.runConversation({
         userId: message.author.id,
         channelId: message.channelId,
