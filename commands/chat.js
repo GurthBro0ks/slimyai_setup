@@ -5,7 +5,6 @@ const personaStore = require('../lib/persona');
 
 // Short history per (channelId,userId)
 const histories = new Map();
-const keyOf = (interaction) => `${interaction.channelId}:${interaction.user.id}`;
 const MAX_TURNS = 8;
 
 // Lightweight auto-mode detect
@@ -21,6 +20,33 @@ function autoDetect(text = '') {
   return Object.entries(s).sort((a, b) => b[1] - a[1])[0][0];
 }
 const stamp = (body) => `${body}\n\nWhere we left off → Next step.`;
+
+// Lazy OpenAI client (so requiring this file never throws)
+let openai = null;
+function getOpenAI() {
+  if (!openai) {
+    const OpenAI = require('openai');
+    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openai;
+}
+
+function trimForDiscord(text, limit) {
+  if (!text) return '';
+  if (text.length <= limit) return text;
+  return text.slice(0, Math.max(0, limit - 1)) + '…';
+}
+
+function formatChatDisplay({ userLabel, userMsg, persona, response }) {
+  const personaName = persona?.name || 'slimy.ai';
+  const safeUser = trimForDiscord(userMsg || '(no input)', 400);
+  const userLine = `**${userLabel || 'You'}:** ${safeUser}`;
+  const prefix = `**${personaName}:** `;
+  const available = Math.max(50, 2000 - userLine.length - 2 - prefix.length);
+  const safeResponse = trimForDiscord(response || '(no content)', available);
+  const botLine = `${prefix}${safeResponse}`;
+  return `${userLine}\n\n${botLine}`;
+}
 
 function summarizeCapabilities(persona) {
   if (!persona?.core_capabilities) return '';
@@ -112,14 +138,51 @@ function buildSystemPrompt({ persona, focus, activeModes, effective }) {
   return lines.join(' ');
 }
 
-// Lazy OpenAI client (so requiring this file never throws)
-let openai = null;
-function getOpenAI() {
-  if (!openai) {
-    const OpenAI = require('openai');
-    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-  return openai;
+function historyKey({ guildId, channelId, userId }) {
+  return `${guildId || 'dm'}:${channelId}:${userId}`;
+}
+
+async function runConversation({ userId, channelId, guildId, parentId, userMsg, reset = false }) {
+  const key = historyKey({ guildId, channelId, userId });
+  if (reset) histories.delete(key);
+  const history = histories.get(key) || [];
+  history.push({ role: 'user', content: userMsg });
+  while (history.length > MAX_TURNS * 2) history.shift();
+  histories.set(key, history);
+
+  const persona = personaStore.getPersona();
+  const effective = await mem.getEffectiveModes({
+    guildId,
+    channelId: guildId ? channelId : undefined,
+    parentId: guildId ? parentId : undefined,
+  });
+  const activeModes = Object.entries(effective)
+    .filter(([, value]) => value)
+    .map(([key]) => key);
+
+  const focus = autoDetect(userMsg);
+  const system = buildSystemPrompt({ persona, focus, activeModes, effective });
+
+  const ai = getOpenAI();
+  const response = await ai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'system', content: system }, ...history],
+    temperature: 0.6,
+  });
+
+  let text = response.choices?.[0]?.message?.content?.trim() || '(no content)';
+  text = stamp(text);
+
+  history.push({ role: 'assistant', content: text });
+  histories.set(key, history);
+
+  const truncated = text.length > 1900 ? text.slice(0, 1900) + '…' : text;
+  return {
+    response: truncated,
+    persona,
+    effective,
+    focus,
+  };
 }
 
 module.exports = {
@@ -144,57 +207,34 @@ module.exports = {
       return interaction.reply({ content: '❌ OPENAI_API_KEY not set.' });
     }
 
-    // acknowledge quickly so the token doesn’t expire
     await interaction.deferReply();
 
-    // manage short history
-    const key = keyOf(interaction);
-    if (reset) histories.delete(key);
-    const history = histories.get(key) || [];
-    history.push({ role: 'user', content: userMsg });
-    while (history.length > MAX_TURNS * 2) history.shift();
-    histories.set(key, history);
-
     try {
-      const mode = autoDetect(userMsg);
-      const persona = personaStore.getPersona();
-      const effective = await mem.getEffectiveModes({
+      const parentId = interaction.channel?.parentId || interaction.channel?.parent?.id;
+      const result = await runConversation({
+        userId: interaction.user.id,
+        channelId: interaction.channelId,
         guildId: interaction.guildId || undefined,
-        channelId: interaction.guildId ? interaction.channelId : undefined,
-        parentId: interaction.guildId
-          ? interaction.channel?.parentId || interaction.channel?.parent?.id
-          : undefined,
-      });
-      const activeModes = Object.entries(effective)
-        .filter(([, value]) => value)
-        .map(([key]) => key);
-      const system = buildSystemPrompt({
-        persona,
-        focus: mode,
-        activeModes,
-        effective,
+        parentId,
+        userMsg,
+        reset,
       });
 
-      const ai = getOpenAI();
-      const response = await ai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'system', content: system }, ...history],
-        temperature: 0.6,
+      const userLabel = interaction.member?.displayName || interaction.user.username;
+      const content = formatChatDisplay({
+        userLabel,
+        userMsg,
+        persona: result.persona,
+        response: result.response,
       });
-
-      let text = response.choices?.[0]?.message?.content?.trim() || '(no content)';
-      text = stamp(text);
-
-      // record assistant turn
-      history.push({ role: 'assistant', content: text });
-      histories.set(key, history);
-
-      const out = text.length > 1900 ? text.slice(0, 1900) + '…' : text;
-      await interaction.editReply({ content: out });
+      await interaction.editReply({ content });
     } catch (err) {
       console.error('OpenAI error:', err);
-      const msg = (err?.response?.data?.error?.message) || err.message || String(err);
+      const msg = err?.response?.data?.error?.message || err.message || String(err);
       await interaction.editReply({ content: `❌ OpenAI error: ${msg}` });
     }
   },
+
+  runConversation,
+  formatChatDisplay,
 };
