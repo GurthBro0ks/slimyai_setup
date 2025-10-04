@@ -156,7 +156,15 @@ async function runConversation({
 }) {
   const key = historyKey({ guildId, channelId, userId });
   if (reset) histories.delete(key);
-  const history = histories.get(key) || [];
+  let history = histories.get(key) || [];
+  if (context === 'mention' && history.length) {
+    const cleaned = history.filter(
+      (entry) => !(entry.role === 'assistant' && /\/[a-z]+/i.test(entry.content || '')),
+    );
+    if (cleaned.length !== history.length) {
+      history = cleaned;
+    }
+  }
   history.push({ role: 'user', content: userMsg });
   while (history.length > MAX_TURNS * 2) history.shift();
   histories.set(key, history);
