@@ -1,0 +1,26 @@
+Session Summary (auto-generated)
+===============================
+
+1. Consent Command Improvements
+   - Deferred interactions and standardized crash handling to avoid ephemeral-only failures.
+
+2. Mode System Overhaul
+   - Replaced legacy per-user mode helpers with robust channel/category/thread storage (JSON-backed).
+   - Rebuilt `/mode` with subcommands (set/view/list), admin gating, inheritance awareness, and cleaner summaries.
+   - Added typed helper (`lib/modes.ts` + `lib/modes.js`) for future TS integration and wired the command to it.
+   - Introduced content rating modes (`rating_unrated`, `rating_pg13`) with automatic validation and summaries.
+
+3. Persona & Mentions
+   - Moved persona spec to `config/` and generated runtime loader.
+   - Unified `/chat` and mention replies around persona-aware prompts, shared history, and consistent formatting.
+   - Mentions now mirror `/chat`, obeying cooldowns and suppressing slash-command hints.
+
+4. Auto Image Generation
+   - Added intent detection and OpenAI image helper; `/chat` and mentions auto-reply with images when prompted.
+   - Image prompts respect content ratings (default, PG-13, Unrated) alongside text tone adjustments.
+
+5. Additional Enhancements
+   - Slash commands redeployed after key changes to keep Discord schema up to date.
+   - Configured rating logic to auto-enable Chat + Personality and enforce mutual exclusivity.
+   - Adjusted chat responses to remove redundant “Where we left off” tag line and tailor tone to modes.
+
