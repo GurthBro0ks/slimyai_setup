@@ -66,135 +66,13 @@ const MODES = ['mentor', 'partner', 'mirror', 'operator'];
 function autoDetect(text = '') {
   const t = text.toLowerCase();
   const s = { mentor: 0, partner: 0, mirror: 0, operator: 0 };
-  if (/\b(help|stuck|overwhelm|reset)\b/.test(t)) s.mentor += 2;
-  if (/\bidea|brainstorm|wild|meme|crazy\b/.test(t)) s.partner += 2;
-  if (/\bcheck|verify|compare|risk|why\b/.test(t)) s.mirror += 2;
-  if (/\bplan|steps|todo|ship|deploy|task|finish|close\b/.test(t)) s.operator += 2;
-  for (const k of MODES) s[k] += Math.random() * 0.4; // tiny jitter
-  return Object.entries(s).sort((a, b) => b[1] - a[1])[0][0];
-}
-const stamp = (body) => body;
-
-// Lazy OpenAI client (so requiring this file never throws)
-let openai = null;
-function getOpenAI() {
-  if (!openai) {
-    const OpenAI = require('openai');
-    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-  return openai;
-}
-
-function summarizeCapabilities(persona) {
-  if (!persona?.core_capabilities) return '';
-  const parts = [];
-  for (const [domain, skills] of Object.entries(persona.core_capabilities)) {
-    if (!Array.isArray(skills) || !skills.length) continue;
-    parts.push(`${domain}: ${skills.slice(0, 4).join(', ')}`);
-  }
-  return parts.length ? `Core capabilities → ${parts.join(' | ')}.` : '';
-}
-
-const FOCUS_MAP = {
-  mentor: 'Mentor focus — calm reset and reduce overwhelm.',
-  partner: 'Partner focus — playful idea generation.',
-  mirror: 'Mirror focus — verify assumptions and reflect back risks.',
-  operator: 'Operator focus — ship the next concrete step.',
-};
-
-function pickCatchphrase(persona, playful) {
-  const phrases =
-    (persona?.tone_and_voice?.catchphrases || persona?.catchphrases || []).filter(Boolean);
-  if (!playful || !phrases.length) return '';
-  return `Optional catchphrases when it fits: ${phrases.join(' / ')}.`;
-}
-
-function buildSystemPrompt({ persona, focus, activeModes, effective, context }) {
-  const lines = [];
-  if (persona?.tagline) lines.push(persona.tagline);
-  if (persona?.about) lines.push(persona.about);
-
-  const capabilities = summarizeCapabilities(persona);
-  if (capabilities) lines.push(capabilities);
-
-  if (activeModes.length) {
-    lines.push(`Active channel modes → ${activeModes.join(', ')}.`);
-    for (const mode of activeModes) {
-      const detail = persona?.modes?.[mode];
-      if (detail?.description) {
-        lines.push(`${mode}: ${detail.description}`);
-      }
-      if (detail?.effects?.length) {
-        lines.push(`Effects: ${detail.effects.join(', ')}.`);
-      }
-    }
-  } else {
-    lines.push('No explicit channel modes active — use baseline persona.');
-  }
-
-  const focusLine = FOCUS_MAP[focus] || 'Keep pace with the user and surface quick wins.';
-  lines.push(focusLine);
-
-  const playful = effective.personality && !effective.no_personality;
-  const ratingUnrated = !!effective.rating_unrated;
-  const ratingPG13 = !!effective.rating_pg13;
-  if (effective.no_personality) {
-    lines.push(
-      `Tone → ${
-        persona?.tone_and_voice?.no_personality || 'Stay neutral, concise, and low-flair.'
-      }`,
-    );
-  } else if (playful) {
-    lines.push(
-      `Tone → ${
-        persona?.tone_and_voice?.default || 'Playful banter with practical grounding.'
-      }`,
-    );
-    const catchphraseLine = pickCatchphrase(persona, true);
-    if (catchphraseLine) lines.push(catchphraseLine);
-  } else {
-    lines.push(
-      `Tone → ${
-        persona?.tone_and_voice?.technical || 'Direct, concise, lightly sassy when helpful.'
-      }`,
-    );
-  }
-
-  if (ratingUnrated) {
-    lines.push(
-      'Content rating: Unrated — respond with maximum creative freedom allowed by platform policies. Swear lightly if it matches the user’s energy, and keep imagery vivid unless explicitly unsafe.',
-    );
-  } else if (ratingPG13) {
-    lines.push(
-      'Content rating: Rated PG-13 — keep language, humor, and imagery within PG-13 guidelines; no explicit adult content.',
-    );
-  } else {
-    lines.push('Content rating: default — keep replies suitable for a general audience.');
-  }
-
-  if (effective.admin) {
-    lines.push('When admin topics surface, surface sharp configuration guidance.');
-  }
-
-  if (effective.super_snail && persona?.message_handling?.snail_pipeline) {
-    const steps = persona.message_handling.snail_pipeline.steps?.join(' → ');
-    if (steps) {
-      lines.push(`Super Snail pipeline: ${steps}.`);
-    }
-  }
-
-  lines.push('Keep replies Discord-sized, ADHD-aware, with quick wins and branching next steps.');
-  if (context === 'mention') {
-    lines.push('Answer inline directly. Never mention, suggest, or reference any slash commands like /chat, /mode, or any other commands. Provide complete answers without referring to other bot features.');
-  } else {
-    lines.push('Close with the clearest next actions—no specific catchphrase required.');
-  }
-
-  return lines.join(' ');
-}
-
-function historyKey({ guildId, channelId, userId }) {
-  return `${guildId || 'dm'}:${channelId}:${userId}`;
+  if (/\b(help|guide|teach|explain|stuck)\b/i.test(t)) s.mentor += 2;
+  if (/\b(calm|slow|reset|pause|breathe)\b/i.test(t)) s.mentor += 3;
+  if (/\b(brainstorm|idea|creative|wild|fun)\b/i.test(t)) s.partner += 2;
+  if (/\b(evaluate|compare|option|choose|decide)\b/i.test(t)) s.mirror += 2;
+  if (/\b(plan|organize|schedule|task|checklist)\b/i.test(t)) s.operator += 2;
+  const top = MODES.reduce((a, m) => (s[m] > s[a] ? m : a), 'mentor');
+  return s[top] > 0 ? top : 'mentor';
 }
 
 async function runConversation({
@@ -205,52 +83,48 @@ async function runConversation({
   userMsg,
   reset = false,
   context = 'slash',
-  effectiveOverride,
+  effectiveOverride = null,
 }) {
-  const key = historyKey({ guildId, channelId, userId });
+  const key = `${channelId}:${userId}`;
   if (reset) histories.delete(key);
+
   let history = histories.get(key) || [];
-  if (context === 'mention' && history.length) {
-    const cleaned = history.filter(
-      (entry) => !(entry.role === 'assistant' && /\/[a-z]+/i.test(entry.content || '')),
-    );
-    if (cleaned.length !== history.length) {
-      history = cleaned;
-    }
-  }
   history.push({ role: 'user', content: userMsg });
-  while (history.length > MAX_TURNS * 2) history.shift();
+  if (history.length > MAX_TURNS * 2) history = history.slice(-MAX_TURNS * 2);
   histories.set(key, history);
 
-  const persona = personaStore.getPersona();
-  const effective = effectiveOverride || buildEmptyModeState();
-  const activeModes = Object.entries(effective)
-    .filter(([, value]) => value)
-    .map(([key]) => key);
+  const detectedMode = autoDetect(userMsg);
+  let persona = personaStore.getPersona(detectedMode);
 
-  const focus = autoDetect(userMsg);
-  const system = buildSystemPrompt({ persona, focus, activeModes, effective, context });
+  let effectiveModes = effectiveOverride;
+  if (!effectiveModes) {
+    const channel = global.client?.channels?.cache?.get(channelId);
+    const guild = guildId ? global.client?.guilds?.cache?.get(guildId) : null;
+    effectiveModes = getEffectiveModesForChannel(guild, channel);
+  }
 
-  const ai = getOpenAI();
-  const response = await ai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'system', content: system }, ...history],
-    temperature: 0.6,
+  if (effectiveModes.personality) {
+    persona = personaStore.getPersona('personality');
+  } else if (effectiveModes.no_personality) {
+    persona = personaStore.getPersona('no_personality');
+  }
+
+  const systemPrompt = persona.prompt || 'You are a helpful assistant.';
+  const messages = [{ role: 'system', content: systemPrompt }, ...history];
+
+  const openai = require('../lib/openai');
+  const completion = await openai.chat.completions.create({
+    model: process.env.OPENAI_MODEL || 'gpt-4o',
+    messages,
+    temperature: 0.8,
+    max_tokens: 1000,
   });
 
-  let text = response.choices?.[0]?.message?.content?.trim() || '(no content)';
-  text = stamp(text);
-
-  history.push({ role: 'assistant', content: text });
+  const response = completion.choices[0]?.message?.content || 'No response.';
+  history.push({ role: 'assistant', content: response });
   histories.set(key, history);
 
-  const truncated = text.length > 1900 ? text.slice(0, 1900) + '…' : text;
-  return {
-    response: truncated,
-    persona,
-    effective,
-    focus,
-  };
+  return { response, persona: persona.name };
 }
 
 module.exports = {
@@ -258,13 +132,10 @@ module.exports = {
     .setName('chat')
     .setDescription('Chat with slimy.ai')
     .addStringOption((o) =>
-      o.setName('message')
-        .setDescription('What do you want to say?')
-        .setRequired(true)
+      o.setName('message').setDescription('Your message').setRequired(true),
     )
     .addBooleanOption((o) =>
-      o.setName('reset')
-        .setDescription('Forget previous context in this channel')
+      o.setName('reset').setDescription('Start a fresh conversation'),
     ),
 
   async execute(interaction) {
@@ -272,7 +143,10 @@ module.exports = {
     const reset = interaction.options.getBoolean('reset') || false;
 
     if (!process.env.OPENAI_API_KEY) {
-      return interaction.reply({ content: '❌ OPENAI_API_KEY not set.' });
+      return interaction.reply({
+        content: '❌ OPENAI_API_KEY is not set.',
+        ephemeral: true,
+      });
     }
 
     await interaction.deferReply();
@@ -280,10 +154,12 @@ module.exports = {
     try {
       const parentId = interaction.channel?.parentId || interaction.channel?.parent?.id;
       const effectiveModes = getEffectiveModesForChannel(interaction.guild, interaction.channel);
-      const rating = effectiveModes.rating_unrated
+      
+      // FIX: Use the new mode keys
+      const rating = effectiveModes.unrated
         ? 'unrated'
-        : effectiveModes.rating_pg13
-        ? 'pg13'
+        : effectiveModes.rated
+        ? 'rated'
         : 'default';
 
       const handledImage = await maybeReplyWithImage({
