@@ -12,6 +12,7 @@ const MODE_CHOICES = [
   { name: 'no_personality', value: 'no_personality' },
   { name: 'super_snail', value: 'super_snail' },
 ];
+const MODE_SET = new Set(MODE_CHOICES.map((m) => m.value));
 
 function formatModes(modes) {
   return MODE_CHOICES.map(({ value }) => `${value}: ${modes[value] ? '✅' : '❌'}`).join(' | ');
@@ -57,16 +58,19 @@ module.exports = {
         .setDescription('Enable or disable a mode')
         .addStringOption((opt) =>
           opt
-            .setName('mode')
-            .setDescription('Which mode to toggle')
-            .setRequired(true)
-            .addChoices(...MODE_CHOICES),
-        )
-        .addBooleanOption((opt) =>
-          opt
-            .setName('enabled')
-            .setDescription('Enable (true) or disable (false) the mode')
+            .setName('modes')
+            .setDescription('Comma or space separated list of modes to apply')
             .setRequired(true),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('operation')
+            .setDescription('How to apply the provided modes')
+            .addChoices(
+              { name: 'merge (enable in addition to current)', value: 'merge' },
+              { name: 'replace (overwrite with provided modes)', value: 'replace' },
+              { name: 'remove (disable provided modes)', value: 'remove' },
+            ),
         )
         .addChannelOption((opt) =>
           opt
@@ -79,6 +83,9 @@ module.exports = {
               ChannelType.GuildStageVoice,
               ChannelType.GuildForum,
               ChannelType.GuildMedia,
+              ChannelType.PublicThread,
+              ChannelType.PrivateThread,
+              ChannelType.AnnouncementThread,
               ChannelType.GuildCategory,
             ),
         ),
@@ -98,6 +105,9 @@ module.exports = {
               ChannelType.GuildStageVoice,
               ChannelType.GuildForum,
               ChannelType.GuildMedia,
+              ChannelType.PublicThread,
+              ChannelType.PrivateThread,
+              ChannelType.AnnouncementThread,
               ChannelType.GuildCategory,
             ),
         ),
@@ -105,7 +115,32 @@ module.exports = {
     .addSubcommand((sub) =>
       sub
         .setName('list')
-        .setDescription('List all explicit mode overrides in this server'),
+        .setDescription('List all explicit mode overrides in this server')
+        .addStringOption((opt) =>
+          opt
+            .setName('scope')
+            .setDescription('Limit output to specific targets')
+            .addChoices(
+              { name: 'Guild (all)', value: 'guild' },
+              { name: 'Categories only', value: 'category' },
+              { name: 'Channels only', value: 'channel' },
+            ),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('filter')
+            .setDescription('Filter by mode presence')
+            .addChoices(
+              { name: 'Has mode', value: 'has' },
+              { name: 'Missing mode', value: 'missing' },
+            ),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('mode')
+            .setDescription('Mode to use for filtering (optional)')
+            .addChoices(...MODE_CHOICES),
+        ),
     ),
 
   async execute(interaction) {
@@ -119,25 +154,53 @@ module.exports = {
       if (sub === 'set') {
         requireAdmin(interaction);
         const { target, targetType } = resolveTarget(interaction);
-        const mode = interaction.options.getString('mode', true);
-        const enabled = interaction.options.getBoolean('enabled', true);
+        const rawModes = interaction.options.getString('modes', true);
+        let operation = interaction.options.getString('operation') || 'merge';
+        let modeList = rawModes
+          .split(/[\s,]+/)
+          .map((m) => m.trim().toLowerCase())
+          .filter((m) => m);
 
-        await mem.setChannelMode({
+        const shortcut = ['none', 'clear', 'reset'].includes(rawModes.trim().toLowerCase());
+        if (!modeList.length && shortcut) {
+          operation = 'replace';
+        }
+
+        if (!modeList.length && !shortcut) {
+          return interaction.editReply({
+            content: '❌ Provide at least one mode (comma or space separated).',
+          });
+        }
+
+        const invalid = modeList.filter((m) => !MODE_SET.has(m));
+        if (invalid.length) {
+          return interaction.editReply({
+            content: `❌ Invalid mode(s): ${invalid.join(', ')}. Valid: ${MODE_CHOICES.map((c) => c.value).join(', ')}`,
+          });
+        }
+
+        if (shortcut) {
+          modeList = [];
+        }
+
+        if (!modeList.length && operation === 'replace' && !shortcut) {
+          return interaction.editReply({
+            content: '❌ Provide at least one mode when using operation: replace.',
+          });
+        }
+
+        const applied = await mem.patchChannelModes({
           guildId,
           targetId: target.id,
           targetType,
-          mode,
-          enabled,
+          modes: modeList,
+          operation,
         });
 
-        const modes = await mem.getChannelModes({
-          guildId,
-          targetId: target.id,
-          targetType,
-        });
-
+        const summaryModes = modeList.length ? modeList.join(', ') : 'none';
+        const verb = operation === 'remove' ? 'Removed' : operation === 'replace' ? 'Replaced with' : 'Merged';
         return interaction.editReply({
-          content: `📂 ${enabled ? 'Enabled' : 'Disabled'} **${mode}** for ${describeTarget(target, targetType)}.\nCurrent: ${formatModes(modes)}`,
+          content: `📂 ${verb} [${summaryModes}] for ${describeTarget(target, targetType)}.\nCurrent: ${formatModes(applied)}`,
         });
       }
 
@@ -147,6 +210,12 @@ module.exports = {
           guildId,
           targetId: target.id,
           targetType,
+        });
+
+        const effective = await mem.getEffectiveModes({
+          guildId,
+          channelId: targetType === 'channel' ? target.id : undefined,
+          parentId: targetType === 'channel' ? target.parentId : target.id,
         });
 
         let parentLine = '';
@@ -164,12 +233,15 @@ module.exports = {
         }
 
         return interaction.editReply({
-          content: `🔎 Modes for ${describeTarget(target, targetType)}: ${formatModes(direct)}.${parentLine}`,
+          content: `🔎 Direct modes for ${describeTarget(target, targetType)}: ${formatModes(direct)}.\nEffective (with inheritance): ${formatModes(effective)}.${parentLine}`,
         });
       }
 
       if (sub === 'list') {
         requireAdmin(interaction);
+        const scope = interaction.options.getString('scope') || 'guild';
+        const filter = interaction.options.getString('filter');
+        const filterMode = interaction.options.getString('mode');
         const rows = await mem.listChannelModes({ guildId });
         if (!rows.length) {
           return interaction.editReply({
@@ -177,12 +249,29 @@ module.exports = {
           });
         }
 
-        const lines = rows
+        const filtered = rows.filter((row) => {
+          if (scope === 'category' && row.targetType !== 'category') return false;
+          if (scope === 'channel' && row.targetType !== 'channel') return false;
+          if (!filter || !filterMode) return true;
+          const isActive = !!row.modes[filterMode];
+          return filter === 'has' ? isActive : !isActive;
+        });
+
+        if (!filtered.length) {
+          return interaction.editReply({
+            content: '📭 No entries match that filter.',
+          });
+        }
+
+        const lines = filtered
           .sort((a, b) => a.targetId.localeCompare(b.targetId))
           .map((row) => {
+            const cached = interaction.guild?.channels?.cache?.get(row.targetId);
             const label =
               row.targetType === 'category'
-                ? `category ${row.targetId}`
+                ? cached?.name
+                  ? `category **${cached.name}**`
+                  : `category ${row.targetId}`
                 : `<#${row.targetId}>`;
             return `• ${label}: ${formatModes(row.modes)}`;
           });
