@@ -19,7 +19,7 @@ function autoDetect(text = '') {
   for (const k of MODES) s[k] += Math.random() * 0.4; // tiny jitter
   return Object.entries(s).sort((a, b) => b[1] - a[1])[0][0];
 }
-const stamp = (body) => `${body}\n\nWhere we left off → Next step.`;
+const stamp = (body) => body;
 
 // Lazy OpenAI client (so requiring this file never throws)
 let openai = null;
@@ -133,7 +133,7 @@ function buildSystemPrompt({ persona, focus, activeModes, effective }) {
   }
 
   lines.push('Keep replies Discord-sized, ADHD-aware, with quick wins and branching next steps.');
-  lines.push('Always end with: "Where we left off → Next step."');
+  lines.push('Close with the clearest next actions—no specific catchphrase required.');
 
   return lines.join(' ');
 }
