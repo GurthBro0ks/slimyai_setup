@@ -1,17 +1,34 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export type ModeKey = 'admin' | 'chat' | 'personality' | 'no_personality' | 'super_snail';
+export type ModeKey =
+  | 'admin'
+  | 'chat'
+  | 'personality'
+  | 'no_personality'
+  | 'super_snail'
+  | 'rating_unrated'
+  | 'rating_pg13';
 export type TargetType = 'category' | 'channel' | 'thread';
 export type ModeOperation = 'merge' | 'replace' | 'remove' | 'clear';
 export type ScopeFilter = 'guild' | 'category' | 'channel';
 export type PresenceFilter = 'has' | 'missing';
 
-export const MODE_KEYS: ModeKey[] = ['admin', 'chat', 'personality', 'no_personality', 'super_snail'];
+export const MODE_KEYS: ModeKey[] = [
+  'admin',
+  'chat',
+  'personality',
+  'no_personality',
+  'super_snail',
+  'rating_unrated',
+  'rating_pg13',
+];
 export const PRIMARY_MODES: ModeKey[] = ['admin', 'chat', 'super_snail'];
 export const OPTIONAL_MODES: ModeKey[] = ['personality', 'no_personality'];
+export const RATING_MODES: ModeKey[] = ['rating_unrated', 'rating_pg13'];
 
 const STORE_PATH = path.join(process.cwd(), 'data_store.json');
+const TARGET_TYPE_SET = new Set<TargetType>(['category', 'channel', 'thread']);
 
 type ModeState = Record<ModeKey, boolean>;
 
@@ -154,11 +171,49 @@ function isEmpty(state: ModeState): boolean {
   return MODE_KEYS.every((mode) => !state[mode]);
 }
 
+function sanitizeRatings(
+  state: ModeState,
+  options: { ratingSelected?: ModeKey; operation: ModeOperation },
+): ModeState {
+  const next = { ...state };
+  const chatActive = !!next.chat;
+  const personalityActive = !!next.personality;
+  if (!chatActive || !personalityActive) {
+    for (const mode of RATING_MODES) next[mode] = false;
+    return next;
+  }
+
+  const selected = options.ratingSelected && RATING_MODES.includes(options.ratingSelected)
+    ? options.ratingSelected
+    : undefined;
+
+  if (options.operation !== 'remove' && selected) {
+    for (const rating of RATING_MODES) {
+      next[rating] = rating === selected;
+    }
+  } else {
+    const activeRatings = RATING_MODES.filter((rating) => next[rating]);
+    if (activeRatings.length > 1) {
+      const [keep] = activeRatings;
+      for (const rating of RATING_MODES) next[rating] = rating === keep;
+    }
+  }
+  return next;
+}
+
 export function setModes(options: SetModeOptions): SetModeResult {
   ensureAdmin(options.actorHasManageGuild);
-  const modeList = uniqueModes(options.modes);
+  if (!TARGET_TYPE_SET.has(options.targetType)) {
+    throw new Error(`Unsupported target type: ${options.targetType}`);
+  }
+  let modeList = uniqueModes(options.modes);
   if (!modeList.length && options.operation !== 'clear') {
     throw new Error('Select at least one mode.');
+  }
+
+  const ratingSelected = modeList.find((mode) => RATING_MODES.includes(mode));
+  if (ratingSelected && options.operation !== 'remove') {
+    modeList = uniqueModes([...modeList, 'chat', 'personality']);
   }
 
   const store = loadStore();
@@ -176,6 +231,7 @@ export function setModes(options: SetModeOptions): SetModeResult {
     updatedModes = emptyState();
   } else {
     updatedModes = applyOperation(normalized.modes, modeList, options.operation);
+    updatedModes = sanitizeRatings(updatedModes, { ratingSelected, operation: options.operation });
   }
 
   if (isEmpty(updatedModes)) {

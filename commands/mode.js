@@ -29,7 +29,12 @@ const OPTIONAL_MODE_CHOICES = modeHelper.OPTIONAL_MODES.map((mode) => ({
   value: mode,
 }));
 
-const ALL_MODE_CHOICES = [...PRIMARY_MODE_CHOICES, ...OPTIONAL_MODE_CHOICES];
+const RATING_MODE_CHOICES = modeHelper.RATING_MODES.map((mode) => ({
+  name: mode === 'rating_unrated' ? 'Unrated' : 'Rated PG-13',
+  value: mode,
+}));
+
+const ALL_MODE_CHOICES = [...PRIMARY_MODE_CHOICES, ...OPTIONAL_MODE_CHOICES, ...RATING_MODE_CHOICES];
 
 function formatModes(state) {
   return modeHelper.MODE_KEYS.map((mode) => `${mode}: ${state[mode] ? '✅' : '❌'}`).join(' | ');
@@ -123,6 +128,12 @@ module.exports = {
             .setName('optional_mode')
             .setDescription('Optional Mode')
             .addChoices(...OPTIONAL_MODE_CHOICES),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('rating_mode')
+            .setDescription('Safety profile (requires Chat + Personality)')
+            .addChoices(...RATING_MODE_CHOICES),
         )
         .addStringOption((opt) =>
           opt
@@ -220,7 +231,8 @@ module.exports = {
         const operation = interaction.options.getString('operation') || 'merge';
         const primaryMode = interaction.options.getString('primary_mode');
         const optionalMode = interaction.options.getString('optional_mode');
-        const modeList = [primaryMode, optionalMode].filter(Boolean);
+        const ratingMode = interaction.options.getString('rating_mode');
+        const modeList = [primaryMode, optionalMode, ratingMode].filter(Boolean);
         const actorHasManageGuild =
           interaction.memberPermissions?.has?.(PermissionFlagsBits.ManageGuild) ?? false;
 
@@ -247,8 +259,17 @@ module.exports = {
         const verb =
           operation === 'remove' ? 'Removed' : operation === 'replace' ? 'Replaced with' : 'Merged';
         const summaryModes = modeList.join(', ');
+        const ratingActive = modeHelper.RATING_MODES.find((mode) => result.modes.modes[mode]);
         return interaction.editReply({
-          content: `📂 ${verb} [${summaryModes}] for ${label}.\nCurrent: ${formatModes(result.modes.modes)}`,
+          content: [
+            `📂 ${verb} [${summaryModes}] for ${label}.`,
+            `Current: ${formatModes(result.modes.modes)}`,
+            ratingMode && !ratingActive
+              ? 'ℹ️ Ratings require Chat and Personality to remain enabled.'
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join('\n'),
         });
       }
 
