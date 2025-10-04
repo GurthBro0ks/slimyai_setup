@@ -58,9 +58,27 @@ module.exports = {
         .setDescription('Enable or disable a mode')
         .addStringOption((opt) =>
           opt
-            .setName('modes')
-            .setDescription('Comma or space separated list of modes to apply')
-            .setRequired(true),
+            .setName('mode')
+            .setDescription('Primary mode to affect')
+            .addChoices(...MODE_CHOICES),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('mode_2')
+            .setDescription('Optional additional mode')
+            .addChoices(...MODE_CHOICES),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('mode_3')
+            .setDescription('Optional additional mode')
+            .addChoices(...MODE_CHOICES),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('mode_4')
+            .setDescription('Optional additional mode')
+            .addChoices(...MODE_CHOICES),
         )
         .addStringOption((opt) =>
           opt
@@ -70,6 +88,7 @@ module.exports = {
               { name: 'merge (enable in addition to current)', value: 'merge' },
               { name: 'replace (overwrite with provided modes)', value: 'replace' },
               { name: 'remove (disable provided modes)', value: 'remove' },
+              { name: 'clear (remove all modes)', value: 'clear' },
             ),
         )
         .addChannelOption((opt) =>
@@ -154,38 +173,36 @@ module.exports = {
       if (sub === 'set') {
         requireAdmin(interaction);
         const { target, targetType } = resolveTarget(interaction);
-        const rawModes = interaction.options.getString('modes', true);
-        let operation = interaction.options.getString('operation') || 'merge';
-        let modeList = rawModes
-          .split(/[\s,]+/)
-          .map((m) => m.trim().toLowerCase())
-          .filter((m) => m);
+        const operation = interaction.options.getString('operation') || 'merge';
+        const rawModes = [
+          interaction.options.getString('mode'),
+          interaction.options.getString('mode_2'),
+          interaction.options.getString('mode_3'),
+          interaction.options.getString('mode_4'),
+        ].filter(Boolean);
 
-        const shortcut = ['none', 'clear', 'reset'].includes(rawModes.trim().toLowerCase());
-        if (!modeList.length && shortcut) {
-          operation = 'replace';
-        }
+        const seen = new Set();
+        const modeList = rawModes.filter((mode) => {
+          if (!mode || !MODE_SET.has(mode)) return false;
+          if (seen.has(mode)) return false;
+          seen.add(mode);
+          return true;
+        });
 
-        if (!modeList.length && !shortcut) {
+        if (operation === 'clear') {
+          const cleared = await mem.clearChannelModes({
+            guildId,
+            targetId: target.id,
+            targetType,
+          });
           return interaction.editReply({
-            content: '❌ Provide at least one mode (comma or space separated).',
+            content: `🧹 Cleared all modes for ${describeTarget(target, targetType)}.\nCurrent: ${formatModes(cleared)}`,
           });
         }
 
-        const invalid = modeList.filter((m) => !MODE_SET.has(m));
-        if (invalid.length) {
+        if (!modeList.length) {
           return interaction.editReply({
-            content: `❌ Invalid mode(s): ${invalid.join(', ')}. Valid: ${MODE_CHOICES.map((c) => c.value).join(', ')}`,
-          });
-        }
-
-        if (shortcut) {
-          modeList = [];
-        }
-
-        if (!modeList.length && operation === 'replace' && !shortcut) {
-          return interaction.editReply({
-            content: '❌ Provide at least one mode when using operation: replace.',
+            content: '❌ Select at least one mode to apply.',
           });
         }
 
@@ -197,7 +214,7 @@ module.exports = {
           operation,
         });
 
-        const summaryModes = modeList.length ? modeList.join(', ') : 'none';
+        const summaryModes = modeList.join(', ');
         const verb = operation === 'remove' ? 'Removed' : operation === 'replace' ? 'Replaced with' : 'Merged';
         return interaction.editReply({
           content: `📂 ${verb} [${summaryModes}] for ${describeTarget(target, targetType)}.\nCurrent: ${formatModes(applied)}`,
