@@ -342,6 +342,10 @@ export function summarizeModes(summary: ModeSummary): string {
   return `${summary.label} → ${status}`;
 }
 
+export function formatModeState(state: ModeState): string {
+  return MODE_KEYS.map((mode) => `${mode}: ${state[mode] ? '✅' : '❌'}`).join(' | ');
+}
+
 export function summarizeList(entries: ModeSummary[]): string[] {
   if (!entries.length) return ['📭 No explicit overrides set.'];
   return entries.map((entry) => `• ${summarizeModes(entry)}`);

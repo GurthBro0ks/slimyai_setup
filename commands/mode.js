@@ -1,10 +1,11 @@
 // commands/mode.js
+const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
 const {
-  SlashCommandBuilder,
-  ChannelType,
-  PermissionFlagsBits,
-} = require('discord.js');
-const modeHelper = require('../lib/modes');
+  setModes,
+  viewModes,
+  listModes,
+  formatModeState,
+} = require('../lib/modes.js');
 
 const THREAD_TYPES = new Set([
   ChannelType.PublicThread,
@@ -12,98 +13,95 @@ const THREAD_TYPES = new Set([
   ChannelType.AnnouncementThread,
 ]);
 
+const MODE_PROFILES = [
+  {
+    key: 'chat|personality|rating_pg13',
+    label: 'Chat · Personality · Rated PG-13',
+  },
+  {
+    key: 'chat|personality|rating_unrated',
+    label: 'Chat · Personality · Unrated',
+  },
+  {
+    key: 'chat|no_personality|rating_pg13',
+    label: 'Chat · No Personality · Rated PG-13',
+  },
+  {
+    key: 'chat|no_personality|rating_unrated',
+    label: 'Chat · No Personality · Unrated',
+  },
+  {
+    key: 'super_snail|personality|rating_pg13',
+    label: 'Super Snail · Personality · Rated PG-13',
+  },
+  {
+    key: 'super_snail|personality|rating_unrated',
+    label: 'Super Snail · Personality · Unrated',
+  },
+  {
+    key: 'super_snail|no_personality|rating_pg13',
+    label: 'Super Snail · No Personality · Rated PG-13',
+  },
+  {
+    key: 'super_snail|no_personality|rating_unrated',
+    label: 'Super Snail · No Personality · Unrated',
+  },
+];
+
+const PROFILE_CHOICE_MAP = new Map(
+  MODE_PROFILES.map((profile) => [profile.key, profile]),
+);
+PROFILE_CHOICE_MAP.set('clear', { key: 'clear', label: 'Clear all modes' });
+
 const PROFILE_CHOICES = [
-  { name: 'Chat · Personality · Rated', value: 'chat|personality|rated' },
-  { name: 'Chat · Personality · Unrated', value: 'chat|personality|unrated' },
-  { name: 'Chat · No Personality · Rated', value: 'chat|no_personality|rated' },
-  { name: 'Chat · No Personality · Unrated', value: 'chat|no_personality|unrated' },
-  { name: 'Super Snail · Personality · Rated', value: 'super_snail|personality|rated' },
-  { name: 'Super Snail · Personality · Unrated', value: 'super_snail|personality|unrated' },
-  { name: 'Super Snail · No Personality · Rated', value: 'super_snail|no_personality|rated' },
-  { name: 'Super Snail · No Personality · Unrated', value: 'super_snail|no_personality|unrated' },
+  ...MODE_PROFILES.map((profile) => ({ name: profile.label, value: profile.key })),
   { name: 'Clear (remove all modes)', value: 'clear' },
 ];
 
-const PROFILE_LABEL = PROFILE_CHOICES.reduce((map, choice) => {
-  map[choice.value] = choice.name;
-  return map;
-}, {});
-
-const FILTER_MODE_CHOICES = [
-  { name: 'Chat', value: 'chat' },
-  { name: 'Super Snail', value: 'super_snail' },
-  { name: 'Personality', value: 'personality' },
-  { name: 'No Personality', value: 'no_personality' },
+const LIST_FILTER_CHOICES = [
+  { name: 'All configurations', value: 'all' },
+  { name: 'Chat enabled', value: 'chat' },
+  { name: 'Super Snail enabled', value: 'super_snail' },
+  { name: 'Personality enabled', value: 'personality' },
+  { name: 'No Personality enabled', value: 'no_personality' },
   { name: 'Rated PG-13', value: 'rating_pg13' },
   { name: 'Unrated', value: 'rating_unrated' },
 ];
 
-function formatModes(state) {
-  return modeHelper.MODE_KEYS.map((mode) => `${mode}: ${state[mode] ? '✅' : '❌'}`).join(' | ');
-}
+function resolveTargetAndParents(interaction, channelOption, categoryOption) {
+  let target = channelOption || interaction.channel;
+  let targetType = 'channel';
+  const parents = [];
 
-function describeTarget(target, targetType) {
-  if (targetType === 'category') {
-    return target.name ? `category **${target.name}**` : `category ${target.id}`;
+  if (categoryOption) {
+    target = categoryOption;
+    targetType = 'category';
+  } else if (target?.isThread?.()) {
+    targetType = 'thread';
+    if (target.parentId) {
+      parents.push({ targetId: target.parentId, targetType: 'channel' });
+      const parentChannel = interaction.guild.channels.cache.get(target.parentId);
+      if (parentChannel?.parentId) {
+        parents.push({ targetId: parentChannel.parentId, targetType: 'category' });
+      }
+    }
+  } else if (target?.type === ChannelType.GuildText || target?.type === ChannelType.GuildVoice) {
+    if (target.parentId) {
+      parents.push({ targetId: target.parentId, targetType: 'category' });
+    }
   }
-  return `<#${target.id}>`;
-}
 
-function ensureGuild(interaction) {
-  if (!interaction.guildId) {
-    throw new Error('This command can only be used inside a server.');
-  }
-}
-
-function requireAdmin(interaction) {
-  const canManage = interaction.memberPermissions?.has?.(PermissionFlagsBits.ManageGuild);
-  if (!canManage) {
-    throw new Error('Manage Guild permission required.');
-  }
-}
-
-function resolveTarget(interaction) {
-  const option = interaction.options.getChannel('target');
-  const target = option || interaction.channel;
   if (!target) {
     throw new Error('Unable to resolve target channel.');
   }
-  let targetType;
-  if (target.type === ChannelType.GuildCategory) targetType = 'category';
-  else if (THREAD_TYPES.has(target.type)) targetType = 'thread';
-  else targetType = 'channel';
-  return { target, targetType };
+
+  return { target, targetType, parents };
 }
 
-function gatherParentRefs(interaction, target, targetType) {
-  const refs = [];
-  if (targetType === 'category') return refs;
-
-  if (targetType === 'channel') {
-    if (target.parentId) {
-      refs.push({ targetId: target.parentId, targetType: 'category' });
-    }
-    return refs;
-  }
-
-  if (targetType === 'thread') {
-    if (target.parentId) {
-      refs.push({ targetId: target.parentId, targetType: 'channel' });
-      const parentChannel = interaction.guild.channels.cache.get(target.parentId);
-      if (parentChannel?.parentId) {
-        refs.push({ targetId: parentChannel.parentId, targetType: 'category' });
-      }
-    }
-  }
-
-  return refs;
-}
-
-function friendlyLabelFromSummary(interaction, label) {
-  const [type, id] = label.split(':');
+function formatTargetLabel(interaction, type, id) {
   if (type === 'category') {
     const category = interaction.guild.channels.cache.get(id);
-    return category?.name ? `category **${category.name}**` : `category ${id}`;
+    return category ? `category **${category.name}**` : `category ${id}`;
   }
   if (type === 'channel' || type === 'thread') {
     return `<#${id}>`;
@@ -111,254 +109,234 @@ function friendlyLabelFromSummary(interaction, label) {
   return `${type} ${id}`;
 }
 
+async function handleSet(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+
+  const profileKey = interaction.options.getString('profile', true);
+  const channelOption = interaction.options.getChannel('channel');
+  const categoryOption = interaction.options.getChannel('category');
+
+  const { target, targetType, parents } = resolveTargetAndParents(
+    interaction,
+    channelOption,
+    categoryOption,
+  );
+
+  const profile = PROFILE_CHOICE_MAP.get(profileKey);
+  if (!profile) {
+    throw new Error('Unknown profile selected.');
+  }
+
+  if (profile.key === 'clear') {
+    setModes({
+      guildId: interaction.guildId,
+      targetId: target.id,
+      targetType,
+      modes: [],
+      operation: 'clear',
+      actorHasManageGuild: true,
+    });
+
+    return interaction.editReply({
+      content: `🧹 Cleared all modes for ${formatTargetLabel(interaction, targetType, target.id)}.`,
+    });
+  }
+
+  const [primary, personality, rating] = profile.key.split('|');
+  const modes = [primary, personality, rating];
+
+  setModes({
+    guildId: interaction.guildId,
+    targetId: target.id,
+    targetType,
+    modes,
+    operation: 'replace',
+    actorHasManageGuild: true,
+  });
+
+  const view = viewModes({
+    guildId: interaction.guildId,
+    targetId: target.id,
+    targetType,
+    parents,
+  });
+
+  const lines = [
+    `📂 Applied **${profile.label}** to ${formatTargetLabel(interaction, targetType, target.id)}.`,
+    '',
+    `**Direct:** ${formatModeState(view.direct.modes)}`,
+  ];
+
+  if (view.inherited.length) {
+    lines.push('');
+    lines.push('**Inherited:**');
+    for (const entry of view.inherited) {
+      const [type, id] = entry.label.split(':');
+      lines.push(`${formatTargetLabel(interaction, type, id)}: ${formatModeState(entry.modes)}`);
+    }
+  } else {
+    lines.push('');
+    lines.push('**Inherited:** none');
+  }
+
+  lines.push('');
+  lines.push(`**Effective:** ${formatModeState(view.effective.modes)}`);
+
+  return interaction.editReply({ content: lines.join('\n') });
+}
+
+async function handleView(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const channelOption = interaction.options.getChannel('channel');
+  const { target, targetType, parents } = resolveTargetAndParents(
+    interaction,
+    channelOption,
+    null,
+  );
+
+  const view = viewModes({
+    guildId: interaction.guildId,
+    targetId: target.id,
+    targetType,
+    parents,
+  });
+
+  const lines = [
+    `📋 Mode configuration for ${formatTargetLabel(interaction, targetType, target.id)}`,
+    '',
+    `**Direct:** ${formatModeState(view.direct.modes)}`,
+  ];
+
+  if (view.inherited.length) {
+    lines.push('');
+    lines.push('**Inherited:**');
+    for (const entry of view.inherited) {
+      const [type, id] = entry.label.split(':');
+      lines.push(`${formatTargetLabel(interaction, type, id)}: ${formatModeState(entry.modes)}`);
+    }
+  } else {
+    lines.push('');
+    lines.push('**Inherited:** none');
+  }
+
+  lines.push('');
+  lines.push(`**Effective:** ${formatModeState(view.effective.modes)}`);
+
+  return interaction.editReply({ content: lines.join('\n') });
+}
+
+async function handleList(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const filter = interaction.options.getString('filter') || 'all';
+
+  const presenceFilter = filter === 'all' ? null : 'has';
+  const presenceMode = filter === 'all' ? null : filter;
+
+  const entries = listModes({
+    guildId: interaction.guildId,
+    scope: 'guild',
+    presenceMode,
+    presenceFilter,
+  });
+
+  if (!entries.length) {
+    return interaction.editReply('📭 No mode configurations found.');
+  }
+
+  const lines = [`📋 Mode configurations (${filter})`, ''];
+  for (const entry of entries) {
+    const [type, id] = entry.label.split(':');
+    lines.push(`${formatTargetLabel(interaction, type, id)}`);
+    lines.push(`  ${formatModeState(entry.modes)}`);
+  }
+
+  return interaction.editReply({ content: lines.join('\n') });
+}
+
+async function handleClear(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const channelOption = interaction.options.getChannel('channel');
+  const { target, targetType } = resolveTargetAndParents(interaction, channelOption, null);
+
+  setModes({
+    guildId: interaction.guildId,
+    targetId: target.id,
+    targetType,
+    modes: [],
+    operation: 'clear',
+    actorHasManageGuild: true,
+  });
+
+  return interaction.editReply({
+    content: `✅ All modes cleared from ${formatTargetLabel(interaction, targetType, target.id)}`,
+  });
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('mode')
-    .setDescription('Manage slimy.ai modes for channels or categories')
+    .setDescription('[Admin] Manage slimy.ai modes')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((sub) =>
       sub
         .setName('set')
-        .setDescription('Enable or disable a mode')
+        .setDescription('Select a profile for this channel/category')
         .addStringOption((opt) =>
-          opt
-            .setName('profile')
-            .setDescription('Select mode profile')
-            .setRequired(true)
-            .addChoices(...PROFILE_CHOICES),
+          opt.setName('profile').setDescription('Mode profile').setRequired(true).addChoices(...PROFILE_CHOICES),
+        )
+        .addChannelOption((opt) =>
+          opt.setName('channel').setDescription('Channel to modify (defaults to current)'),
         )
         .addChannelOption((opt) =>
           opt
-            .setName('target')
-            .setDescription('Channel or category (defaults to current channel)')
-            .addChannelTypes(
-              ChannelType.GuildText,
-              ChannelType.GuildAnnouncement,
-              ChannelType.GuildVoice,
-              ChannelType.GuildStageVoice,
-              ChannelType.GuildForum,
-              ChannelType.GuildMedia,
-              ChannelType.PublicThread,
-              ChannelType.PrivateThread,
-              ChannelType.AnnouncementThread,
-              ChannelType.GuildCategory,
-            ),
+            .setName('category')
+            .setDescription('Category to modify (overrides channel)')
+            .addChannelTypes(ChannelType.GuildCategory),
         ),
     )
     .addSubcommand((sub) =>
       sub
         .setName('view')
-        .setDescription('View active modes for a channel or category')
+        .setDescription('View the active modes here')
         .addChannelOption((opt) =>
-          opt
-            .setName('target')
-            .setDescription('Channel or category (defaults to current channel)')
-            .addChannelTypes(
-              ChannelType.GuildText,
-              ChannelType.GuildAnnouncement,
-              ChannelType.GuildVoice,
-              ChannelType.GuildStageVoice,
-              ChannelType.GuildForum,
-              ChannelType.GuildMedia,
-              ChannelType.PublicThread,
-              ChannelType.PrivateThread,
-              ChannelType.AnnouncementThread,
-              ChannelType.GuildCategory,
-            ),
+          opt.setName('channel').setDescription('Channel to inspect (defaults to current)'),
         ),
     )
     .addSubcommand((sub) =>
       sub
         .setName('list')
-        .setDescription('List all explicit mode overrides in this server')
-        .addStringOption((opt) =>
-          opt
-            .setName('scope')
-            .setDescription('Limit output to specific targets')
-            .addChoices(
-              { name: 'Guild (all)', value: 'guild' },
-              { name: 'Categories only', value: 'category' },
-              { name: 'Channels only', value: 'channel' },
-            ),
-        )
+        .setDescription('List mode configurations in the guild')
         .addStringOption((opt) =>
           opt
             .setName('filter')
             .setDescription('Filter by mode presence')
-            .addChoices(
-              { name: 'Has mode', value: 'has' },
-              { name: 'Missing mode', value: 'missing' },
-            ),
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('mode')
-            .setDescription('Mode to use for filtering (optional)')
-            .addChoices(...FILTER_MODE_CHOICES),
+            .addChoices(...LIST_FILTER_CHOICES),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('clear')
+        .setDescription('Remove all modes from a channel/category')
+        .addChannelOption((opt) =>
+          opt.setName('channel').setDescription('Channel to clear (defaults to current)'),
         ),
     ),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
-
     try {
-      ensureGuild(interaction);
-      const guildId = interaction.guildId;
-      const sub = interaction.options.getSubcommand(true);
-
-      if (sub === 'set') {
-        requireAdmin(interaction);
-        const { target, targetType } = resolveTarget(interaction);
-        const profile = interaction.options.getString('profile', true);
-        const actorHasManageGuild =
-          interaction.memberPermissions?.has?.(PermissionFlagsBits.ManageGuild) ?? false;
-        const label = describeTarget(target, targetType);
-
-        if (profile === 'clear') {
-          modeHelper.setModes({
-            guildId,
-            targetId: target.id,
-            targetType,
-            modes: [],
-            operation: 'clear',
-            actorHasManageGuild,
-          });
-          return interaction.editReply({
-            content: `🧹 Cleared all modes for ${label}.`,
-          });
-        }
-
-        const definition = PROFILE_LABEL[profile] ? profile.split('|') : null;
-        if (!definition || definition.length !== 3) {
-          return interaction.editReply({ content: '❌ Unknown profile selected.' });
-        }
-
-        const [primaryKey, personalityKey, ratingKey] = definition;
-        const personaMode = personalityKey === 'personality' ? 'personality' : 'no_personality';
-        const ratingMode = ratingKey === 'rated' ? 'rating_pg13' : 'rating_unrated';
-
-        modeHelper.setModes({
-          guildId,
-          targetId: target.id,
-          targetType,
-          modes: [primaryKey, personaMode, ratingMode],
-          operation: 'merge',
-          actorHasManageGuild,
-        });
-
-        const personaToRemove = personaMode === 'personality' ? 'no_personality' : 'personality';
-        modeHelper.setModes({
-          guildId,
-          targetId: target.id,
-          targetType,
-          modes: [personaToRemove],
-          operation: 'remove',
-          actorHasManageGuild,
-        });
-
-        const ratingToRemove = ratingMode === 'rating_pg13' ? 'rating_unrated' : 'rating_pg13';
-        modeHelper.setModes({
-          guildId,
-          targetId: target.id,
-          targetType,
-          modes: [ratingToRemove],
-          operation: 'remove',
-          actorHasManageGuild,
-        });
-
-        const otherPrimary = primaryKey === 'chat' ? 'super_snail' : 'chat';
-        modeHelper.setModes({
-          guildId,
-          targetId: target.id,
-          targetType,
-          modes: [otherPrimary],
-          operation: 'remove',
-          actorHasManageGuild,
-        });
-
-        const parents = gatherParentRefs(interaction, target, targetType);
-        const summary = modeHelper.viewModes({
-          guildId,
-          targetId: target.id,
-          targetType,
-          parents,
-        });
-
-        const profileLabel = PROFILE_LABEL[profile] || 'Selected profile';
-        const lines = [
-          `📂 Applied **${profileLabel}** to ${label}.`,
-          `Direct: ${formatModes(summary.direct.modes)}`,
-        ];
-        if (summary.inherited.length) {
-          lines.push('Inherited:');
-          for (const entry of summary.inherited) {
-            const friendly = friendlyLabelFromSummary(interaction, entry.label);
-            lines.push(`• ${friendly}: ${formatModes(entry.modes)}`);
-          }
-        } else {
-          lines.push('Inherited: none.');
-        }
-        lines.push(`Effective: ${formatModes(summary.effective.modes)}.`);
-
-        return interaction.editReply({ content: lines.join('\n') });
+      const sub = interaction.options.getSubcommand();
+      if (sub === 'set') return handleSet(interaction);
+      if (sub === 'view') return handleView(interaction);
+      if (sub === 'list') return handleList(interaction);
+      if (sub === 'clear') return handleClear(interaction);
+      throw new Error('Unknown subcommand.');
+    } catch (error) {
+      console.error('Mode command error:', error);
+      const message = error?.message || 'Unexpected error.';
+      if (interaction.deferred || interaction.replied) {
+        return interaction.editReply({ content: `❌ ${message}` });
       }
-
-      if (sub === 'view') {
-        const { target, targetType } = resolveTarget(interaction);
-        const parents = gatherParentRefs(interaction, target, targetType);
-        const summary = modeHelper.viewModes({
-          guildId,
-          targetId: target.id,
-          targetType,
-          parents,
-        });
-
-        const label = describeTarget(target, targetType);
-        const lines = [`🔎 Direct modes for ${label}: ${formatModes(summary.direct.modes)}.`];
-        if (summary.inherited.length) {
-          lines.push('Inherited:');
-          for (const entry of summary.inherited) {
-            const friendly = friendlyLabelFromSummary(interaction, entry.label);
-            lines.push(`• ${friendly}: ${formatModes(entry.modes)}`);
-          }
-        } else {
-          lines.push('Inherited: none.');
-        }
-        lines.push(`Effective: ${formatModes(summary.effective.modes)}.`);
-
-        return interaction.editReply({ content: lines.join('\n') });
-      }
-
-      if (sub === 'list') {
-        requireAdmin(interaction);
-        const scope = interaction.options.getString('scope') || undefined;
-        const filter = interaction.options.getString('filter') || undefined;
-        const filterMode = interaction.options.getString('mode') || undefined;
-        const rows = modeHelper.listModes({
-          guildId,
-          scope,
-          presenceFilter: filter,
-          presenceMode: filterMode,
-        });
-        if (!rows.length) {
-          return interaction.editReply({
-            content: '📭 No explicit channel or category overrides set.',
-          });
-        }
-
-        const lines = rows.map((entry) => {
-          const friendly = friendlyLabelFromSummary(interaction, entry.label);
-          return `• ${friendly}: ${formatModes(entry.modes)}`;
-        });
-
-        return interaction.editReply({
-          content: ['🗂 Mode overrides:', ...lines].join('\n'),
-        });
-      }
-
-      return interaction.editReply({ content: '❌ Unknown subcommand.' });
-    } catch (err) {
-      const message = err?.message || 'Unexpected error';
-      return interaction.editReply({ content: `❌ ${message}` });
+      return interaction.reply({ content: `❌ ${message}`, ephemeral: true });
     }
   },
 };
