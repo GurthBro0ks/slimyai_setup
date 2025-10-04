@@ -61,13 +61,7 @@ function attachMentionHandler(client) {
         userMsg: clean,
       });
 
-      const userLabel = message.member?.displayName || message.author.username;
-      const content = chat.formatChatDisplay({
-        userLabel,
-        userMsg: clean,
-        persona: result.persona,
-        response: result.response,
-      });
+      const content = chat.trimForDiscord(result.response, 2000);
 
       return message.reply({
         content,
