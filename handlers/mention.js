@@ -55,12 +55,10 @@ function attachMentionHandler(client) {
 
       const parentId = message.channel?.parentId || message.channel?.parent?.id;
       const effectiveModes = chat.getEffectiveModesForChannel(message.guild, message.channel);
-      
-      // FIX: Use the new mode keys
-      const rating = effectiveModes.unrated
+      const rating = effectiveModes.rating_unrated
         ? 'unrated'
-        : effectiveModes.rated
-        ? 'rated'
+        : effectiveModes.rating_pg13
+        ? 'pg13'
         : 'default';
 
       const handledImage = await maybeReplyWithImage({ message, prompt: clean, rating });

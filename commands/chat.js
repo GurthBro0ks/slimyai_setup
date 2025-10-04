@@ -156,10 +156,10 @@ module.exports = {
       const effectiveModes = getEffectiveModesForChannel(interaction.guild, interaction.channel);
       
       // FIX: Use the new mode keys
-      const rating = effectiveModes.unrated
+      const rating = effectiveModes.rating_unrated
         ? 'unrated'
-        : effectiveModes.rated
-        ? 'rated'
+        : effectiveModes.rating_pg13
+        ? 'pg13'
         : 'default';
 
       const handledImage = await maybeReplyWithImage({

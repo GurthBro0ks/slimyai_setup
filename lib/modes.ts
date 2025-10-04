@@ -176,9 +176,9 @@ function sanitizeRatings(
   options: { ratingSelected?: ModeKey; operation: ModeOperation },
 ): ModeState {
   const next = { ...state };
-  const chatActive = !!next.chat;
   const personalityActive = !!next.personality;
-  if (!chatActive || !personalityActive) {
+  const primaryActive = !!next.chat || !!next.super_snail;
+  if (!primaryActive || !personalityActive) {
     for (const mode of RATING_MODES) next[mode] = false;
     return next;
   }
@@ -213,7 +213,7 @@ export function setModes(options: SetModeOptions): SetModeResult {
 
   const ratingSelected = modeList.find((mode) => RATING_MODES.includes(mode));
   if (ratingSelected && options.operation !== 'remove') {
-    modeList = uniqueModes([...modeList, 'chat', 'personality']);
+    if (!modeList.includes('personality')) modeList.push('personality');
   }
 
   const store = loadStore();

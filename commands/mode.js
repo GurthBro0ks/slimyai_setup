@@ -12,29 +12,31 @@ const THREAD_TYPES = new Set([
   ChannelType.AnnouncementThread,
 ]);
 
-function humanizeMode(key) {
-  return key
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
+const PROFILE_CHOICES = [
+  { name: 'Chat · Personality · Rated', value: 'chat|personality|rated' },
+  { name: 'Chat · Personality · Unrated', value: 'chat|personality|unrated' },
+  { name: 'Chat · No Personality · Rated', value: 'chat|no_personality|rated' },
+  { name: 'Chat · No Personality · Unrated', value: 'chat|no_personality|unrated' },
+  { name: 'Super Snail · Personality · Rated', value: 'super_snail|personality|rated' },
+  { name: 'Super Snail · Personality · Unrated', value: 'super_snail|personality|unrated' },
+  { name: 'Super Snail · No Personality · Rated', value: 'super_snail|no_personality|rated' },
+  { name: 'Super Snail · No Personality · Unrated', value: 'super_snail|no_personality|unrated' },
+  { name: 'Clear (remove all modes)', value: 'clear' },
+];
 
-const PRIMARY_MODE_CHOICES = modeHelper.PRIMARY_MODES.map((mode) => ({
-  name: humanizeMode(mode),
-  value: mode,
-}));
+const PROFILE_LABEL = PROFILE_CHOICES.reduce((map, choice) => {
+  map[choice.value] = choice.name;
+  return map;
+}, {});
 
-const OPTIONAL_MODE_CHOICES = modeHelper.OPTIONAL_MODES.map((mode) => ({
-  name: humanizeMode(mode),
-  value: mode,
-}));
-
-const RATING_MODE_CHOICES = modeHelper.RATING_MODES.map((mode) => ({
-  name: mode === 'rating_unrated' ? 'Unrated' : 'Rated PG-13',
-  value: mode,
-}));
-
-const ALL_MODE_CHOICES = [...PRIMARY_MODE_CHOICES, ...OPTIONAL_MODE_CHOICES, ...RATING_MODE_CHOICES];
+const FILTER_MODE_CHOICES = [
+  { name: 'Chat', value: 'chat' },
+  { name: 'Super Snail', value: 'super_snail' },
+  { name: 'Personality', value: 'personality' },
+  { name: 'No Personality', value: 'no_personality' },
+  { name: 'Rated PG-13', value: 'rating_pg13' },
+  { name: 'Unrated', value: 'rating_unrated' },
+];
 
 function formatModes(state) {
   return modeHelper.MODE_KEYS.map((mode) => `${mode}: ${state[mode] ? '✅' : '❌'}`).join(' | ');
@@ -119,32 +121,10 @@ module.exports = {
         .setDescription('Enable or disable a mode')
         .addStringOption((opt) =>
           opt
-            .setName('primary_mode')
-            .setDescription('Primary Mode')
-            .addChoices(...PRIMARY_MODE_CHOICES),
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('optional_mode')
-            .setDescription('Optional Mode')
-            .addChoices(...OPTIONAL_MODE_CHOICES),
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('rating_mode')
-            .setDescription('Safety profile (requires Chat + Personality)')
-            .addChoices(...RATING_MODE_CHOICES),
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('operation')
-            .setDescription('How to apply the provided modes')
-            .addChoices(
-              { name: 'merge (enable in addition to current)', value: 'merge' },
-              { name: 'replace (overwrite with provided modes)', value: 'replace' },
-              { name: 'remove (disable provided modes)', value: 'remove' },
-              { name: 'clear (remove all modes)', value: 'clear' },
-            ),
+            .setName('profile')
+            .setDescription('Select mode profile')
+            .setRequired(true)
+            .addChoices(...PROFILE_CHOICES),
         )
         .addChannelOption((opt) =>
           opt
@@ -213,7 +193,7 @@ module.exports = {
           opt
             .setName('mode')
             .setDescription('Mode to use for filtering (optional)')
-            .addChoices(...ALL_MODE_CHOICES),
+            .addChoices(...FILTER_MODE_CHOICES),
         ),
     ),
 
@@ -228,49 +208,98 @@ module.exports = {
       if (sub === 'set') {
         requireAdmin(interaction);
         const { target, targetType } = resolveTarget(interaction);
-        const operation = interaction.options.getString('operation') || 'merge';
-        const primaryMode = interaction.options.getString('primary_mode');
-        const optionalMode = interaction.options.getString('optional_mode');
-        const ratingMode = interaction.options.getString('rating_mode');
-        const modeList = [primaryMode, optionalMode, ratingMode].filter(Boolean);
+        const profile = interaction.options.getString('profile', true);
         const actorHasManageGuild =
           interaction.memberPermissions?.has?.(PermissionFlagsBits.ManageGuild) ?? false;
-
-        if (operation !== 'clear' && !modeList.length) {
-          return interaction.editReply({ content: '❌ Select at least one mode to apply.' });
-        }
-
-        const result = modeHelper.setModes({
-          guildId,
-          targetId: target.id,
-          targetType,
-          modes: modeList,
-          operation,
-          actorHasManageGuild,
-        });
-
         const label = describeTarget(target, targetType);
-        if (operation === 'clear') {
+
+        if (profile === 'clear') {
+          modeHelper.setModes({
+            guildId,
+            targetId: target.id,
+            targetType,
+            modes: [],
+            operation: 'clear',
+            actorHasManageGuild,
+          });
           return interaction.editReply({
-            content: `🧹 Cleared all modes for ${label}.\nCurrent: ${formatModes(result.modes.modes)}`,
+            content: `🧹 Cleared all modes for ${label}.`,
           });
         }
 
-        const verb =
-          operation === 'remove' ? 'Removed' : operation === 'replace' ? 'Replaced with' : 'Merged';
-        const summaryModes = modeList.join(', ');
-        const ratingActive = modeHelper.RATING_MODES.find((mode) => result.modes.modes[mode]);
-        return interaction.editReply({
-          content: [
-            `📂 ${verb} [${summaryModes}] for ${label}.`,
-            `Current: ${formatModes(result.modes.modes)}`,
-            ratingMode && !ratingActive
-              ? 'ℹ️ Ratings require Chat and Personality to remain enabled.'
-              : undefined,
-          ]
-            .filter(Boolean)
-            .join('\n'),
+        const definition = PROFILE_LABEL[profile] ? profile.split('|') : null;
+        if (!definition || definition.length !== 3) {
+          return interaction.editReply({ content: '❌ Unknown profile selected.' });
+        }
+
+        const [primaryKey, personalityKey, ratingKey] = definition;
+        const personaMode = personalityKey === 'personality' ? 'personality' : 'no_personality';
+        const ratingMode = ratingKey === 'rated' ? 'rating_pg13' : 'rating_unrated';
+
+        modeHelper.setModes({
+          guildId,
+          targetId: target.id,
+          targetType,
+          modes: [primaryKey, personaMode, ratingMode],
+          operation: 'merge',
+          actorHasManageGuild,
         });
+
+        const personaToRemove = personaMode === 'personality' ? 'no_personality' : 'personality';
+        modeHelper.setModes({
+          guildId,
+          targetId: target.id,
+          targetType,
+          modes: [personaToRemove],
+          operation: 'remove',
+          actorHasManageGuild,
+        });
+
+        const ratingToRemove = ratingMode === 'rating_pg13' ? 'rating_unrated' : 'rating_pg13';
+        modeHelper.setModes({
+          guildId,
+          targetId: target.id,
+          targetType,
+          modes: [ratingToRemove],
+          operation: 'remove',
+          actorHasManageGuild,
+        });
+
+        const otherPrimary = primaryKey === 'chat' ? 'super_snail' : 'chat';
+        modeHelper.setModes({
+          guildId,
+          targetId: target.id,
+          targetType,
+          modes: [otherPrimary],
+          operation: 'remove',
+          actorHasManageGuild,
+        });
+
+        const parents = gatherParentRefs(interaction, target, targetType);
+        const summary = modeHelper.viewModes({
+          guildId,
+          targetId: target.id,
+          targetType,
+          parents,
+        });
+
+        const profileLabel = PROFILE_LABEL[profile] || 'Selected profile';
+        const lines = [
+          `📂 Applied **${profileLabel}** to ${label}.`,
+          `Direct: ${formatModes(summary.direct.modes)}`,
+        ];
+        if (summary.inherited.length) {
+          lines.push('Inherited:');
+          for (const entry of summary.inherited) {
+            const friendly = friendlyLabelFromSummary(interaction, entry.label);
+            lines.push(`• ${friendly}: ${formatModes(entry.modes)}`);
+          }
+        } else {
+          lines.push('Inherited: none.');
+        }
+        lines.push(`Effective: ${formatModes(summary.effective.modes)}.`);
+
+        return interaction.editReply({ content: lines.join('\n') });
       }
 
       if (sub === 'view') {
