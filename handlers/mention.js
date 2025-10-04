@@ -59,6 +59,7 @@ function attachMentionHandler(client) {
         guildId: message.guildId || undefined,
         parentId,
         userMsg: clean,
+        context: 'mention',
       });
 
       return message.reply({

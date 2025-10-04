@@ -72,7 +72,7 @@ function pickCatchphrase(persona, playful) {
   return `Optional catchphrases when it fits: ${phrases.join(' / ')}.`;
 }
 
-function buildSystemPrompt({ persona, focus, activeModes, effective }) {
+function buildSystemPrompt({ persona, focus, activeModes, effective, context }) {
   const lines = [];
   if (persona?.tagline) lines.push(persona.tagline);
   if (persona?.about) lines.push(persona.about);
@@ -134,6 +134,9 @@ function buildSystemPrompt({ persona, focus, activeModes, effective }) {
 
   lines.push('Keep replies Discord-sized, ADHD-aware, with quick wins and branching next steps.');
   lines.push('Close with the clearest next actions—no specific catchphrase required.');
+  if (context === 'mention') {
+    lines.push('Do not reference slash commands or suggest running /chat; answer inline.');
+  }
 
   return lines.join(' ');
 }
@@ -142,7 +145,15 @@ function historyKey({ guildId, channelId, userId }) {
   return `${guildId || 'dm'}:${channelId}:${userId}`;
 }
 
-async function runConversation({ userId, channelId, guildId, parentId, userMsg, reset = false }) {
+async function runConversation({
+  userId,
+  channelId,
+  guildId,
+  parentId,
+  userMsg,
+  reset = false,
+  context = 'slash',
+}) {
   const key = historyKey({ guildId, channelId, userId });
   if (reset) histories.delete(key);
   const history = histories.get(key) || [];
@@ -161,7 +172,7 @@ async function runConversation({ userId, channelId, guildId, parentId, userMsg, 
     .map(([key]) => key);
 
   const focus = autoDetect(userMsg);
-  const system = buildSystemPrompt({ persona, focus, activeModes, effective });
+  const system = buildSystemPrompt({ persona, focus, activeModes, effective, context });
 
   const ai = getOpenAI();
   const response = await ai.chat.completions.create({
@@ -218,6 +229,7 @@ module.exports = {
         parentId,
         userMsg,
         reset,
+        context: 'slash',
       });
 
       const userLabel = interaction.member?.displayName || interaction.user.username;
