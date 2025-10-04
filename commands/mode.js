@@ -4,24 +4,35 @@ const {
   ChannelType,
   PermissionFlagsBits,
 } = require('discord.js');
-const mem = require('../lib/memory');
+const modeHelper = require('../lib/modes');
 
-const PRIMARY_MODE_CHOICES = [
-  { name: 'Admin', value: 'admin' },
-  { name: 'Chat', value: 'chat' },
-  { name: 'Supersnail', value: 'super_snail' },
-];
+const THREAD_TYPES = new Set([
+  ChannelType.PublicThread,
+  ChannelType.PrivateThread,
+  ChannelType.AnnouncementThread,
+]);
 
-const OPTIONAL_MODE_CHOICES = [
-  { name: 'Personality', value: 'personality' },
-  { name: 'No Personality', value: 'no_personality' },
-];
+function humanizeMode(key) {
+  return key
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+const PRIMARY_MODE_CHOICES = modeHelper.PRIMARY_MODES.map((mode) => ({
+  name: humanizeMode(mode),
+  value: mode,
+}));
+
+const OPTIONAL_MODE_CHOICES = modeHelper.OPTIONAL_MODES.map((mode) => ({
+  name: humanizeMode(mode),
+  value: mode,
+}));
 
 const ALL_MODE_CHOICES = [...PRIMARY_MODE_CHOICES, ...OPTIONAL_MODE_CHOICES];
-const MODE_SET = new Set(ALL_MODE_CHOICES.map((m) => m.value));
 
-function formatModes(modes) {
-  return ALL_MODE_CHOICES.map(({ value }) => `${value}: ${modes[value] ? '✅' : '❌'}`).join(' | ');
+function formatModes(state) {
+  return modeHelper.MODE_KEYS.map((mode) => `${mode}: ${state[mode] ? '✅' : '❌'}`).join(' | ');
 }
 
 function describeTarget(target, targetType) {
@@ -50,8 +61,47 @@ function resolveTarget(interaction) {
   if (!target) {
     throw new Error('Unable to resolve target channel.');
   }
-  const targetType = target.type === ChannelType.GuildCategory ? 'category' : 'channel';
+  let targetType;
+  if (target.type === ChannelType.GuildCategory) targetType = 'category';
+  else if (THREAD_TYPES.has(target.type)) targetType = 'thread';
+  else targetType = 'channel';
   return { target, targetType };
+}
+
+function gatherParentRefs(interaction, target, targetType) {
+  const refs = [];
+  if (targetType === 'category') return refs;
+
+  if (targetType === 'channel') {
+    if (target.parentId) {
+      refs.push({ targetId: target.parentId, targetType: 'category' });
+    }
+    return refs;
+  }
+
+  if (targetType === 'thread') {
+    if (target.parentId) {
+      refs.push({ targetId: target.parentId, targetType: 'channel' });
+      const parentChannel = interaction.guild.channels.cache.get(target.parentId);
+      if (parentChannel?.parentId) {
+        refs.push({ targetId: parentChannel.parentId, targetType: 'category' });
+      }
+    }
+  }
+
+  return refs;
+}
+
+function friendlyLabelFromSummary(interaction, label) {
+  const [type, id] = label.split(':');
+  if (type === 'category') {
+    const category = interaction.guild.channels.cache.get(id);
+    return category?.name ? `category **${category.name}**` : `category ${id}`;
+  }
+  if (type === 'channel' || type === 'thread') {
+    return `<#${id}>`;
+  }
+  return `${type} ${id}`;
 }
 
 module.exports = {
@@ -170,120 +220,85 @@ module.exports = {
         const operation = interaction.options.getString('operation') || 'merge';
         const primaryMode = interaction.options.getString('primary_mode');
         const optionalMode = interaction.options.getString('optional_mode');
+        const modeList = [primaryMode, optionalMode].filter(Boolean);
+        const actorHasManageGuild =
+          interaction.memberPermissions?.has?.(PermissionFlagsBits.ManageGuild) ?? false;
 
-        const rawModes = [primaryMode, optionalMode].filter(Boolean);
-
-        const seen = new Set();
-        const modeList = rawModes.filter((mode) => {
-          if (!mode || !MODE_SET.has(mode)) return false;
-          if (seen.has(mode)) return false;
-          seen.add(mode);
-          return true;
-        });
-
-        if (operation === 'clear') {
-          const cleared = await mem.clearChannelModes({
-            guildId,
-            targetId: target.id,
-            targetType,
-          });
-          return interaction.editReply({
-            content: `🧹 Cleared all modes for ${describeTarget(target, targetType)}.\nCurrent: ${formatModes(cleared)}`,
-          });
+        if (operation !== 'clear' && !modeList.length) {
+          return interaction.editReply({ content: '❌ Select at least one mode to apply.' });
         }
 
-        if (!modeList.length) {
-          return interaction.editReply({
-            content: '❌ Select at least one mode to apply.',
-          });
-        }
-
-        const applied = await mem.patchChannelModes({
+        const result = modeHelper.setModes({
           guildId,
           targetId: target.id,
           targetType,
           modes: modeList,
           operation,
+          actorHasManageGuild,
         });
 
+        const label = describeTarget(target, targetType);
+        if (operation === 'clear') {
+          return interaction.editReply({
+            content: `🧹 Cleared all modes for ${label}.\nCurrent: ${formatModes(result.modes.modes)}`,
+          });
+        }
+
+        const verb =
+          operation === 'remove' ? 'Removed' : operation === 'replace' ? 'Replaced with' : 'Merged';
         const summaryModes = modeList.join(', ');
-        const verb = operation === 'remove' ? 'Removed' : operation === 'replace' ? 'Replaced with' : 'Merged';
         return interaction.editReply({
-          content: `📂 ${verb} [${summaryModes}] for ${describeTarget(target, targetType)}.\nCurrent: ${formatModes(applied)}`,
+          content: `📂 ${verb} [${summaryModes}] for ${label}.\nCurrent: ${formatModes(result.modes.modes)}`,
         });
       }
 
       if (sub === 'view') {
         const { target, targetType } = resolveTarget(interaction);
-        const direct = await mem.getChannelModes({
+        const parents = gatherParentRefs(interaction, target, targetType);
+        const summary = modeHelper.viewModes({
           guildId,
           targetId: target.id,
           targetType,
+          parents,
         });
 
-        const effective = await mem.getEffectiveModes({
-          guildId,
-          channelId: targetType === 'channel' ? target.id : undefined,
-          parentId: targetType === 'channel' ? target.parentId : target.id,
-        });
-
-        let parentLine = '';
-        if (targetType === 'channel' && target.parentId) {
-          const parentChannel = interaction.guild.channels.cache.get(target.parentId);
-          const parentModes = await mem.getChannelModes({
-            guildId,
-            targetId: target.parentId,
-            targetType: 'category',
-          });
-          const parentLabel = parentChannel
-            ? describeTarget(parentChannel, 'category')
-            : `category ${target.parentId}`;
-          parentLine = `\nParent ${parentLabel} modes: ${formatModes(parentModes)}.`;
+        const label = describeTarget(target, targetType);
+        const lines = [`🔎 Direct modes for ${label}: ${formatModes(summary.direct.modes)}.`];
+        if (summary.inherited.length) {
+          lines.push('Inherited:');
+          for (const entry of summary.inherited) {
+            const friendly = friendlyLabelFromSummary(interaction, entry.label);
+            lines.push(`• ${friendly}: ${formatModes(entry.modes)}`);
+          }
+        } else {
+          lines.push('Inherited: none.');
         }
+        lines.push(`Effective: ${formatModes(summary.effective.modes)}.`);
 
-        return interaction.editReply({
-          content: `🔎 Direct modes for ${describeTarget(target, targetType)}: ${formatModes(direct)}.\nEffective (with inheritance): ${formatModes(effective)}.${parentLine}`,
-        });
+        return interaction.editReply({ content: lines.join('\n') });
       }
 
       if (sub === 'list') {
         requireAdmin(interaction);
-        const scope = interaction.options.getString('scope') || 'guild';
-        const filter = interaction.options.getString('filter');
-        const filterMode = interaction.options.getString('mode');
-        const rows = await mem.listChannelModes({ guildId });
+        const scope = interaction.options.getString('scope') || undefined;
+        const filter = interaction.options.getString('filter') || undefined;
+        const filterMode = interaction.options.getString('mode') || undefined;
+        const rows = modeHelper.listModes({
+          guildId,
+          scope,
+          presenceFilter: filter,
+          presenceMode: filterMode,
+        });
         if (!rows.length) {
           return interaction.editReply({
             content: '📭 No explicit channel or category overrides set.',
           });
         }
 
-        const filtered = rows.filter((row) => {
-          if (scope === 'category' && row.targetType !== 'category') return false;
-          if (scope === 'channel' && row.targetType !== 'channel') return false;
-          if (!filter || !filterMode) return true;
-          const isActive = !!row.modes[filterMode];
-          return filter === 'has' ? isActive : !isActive;
+        const lines = rows.map((entry) => {
+          const friendly = friendlyLabelFromSummary(interaction, entry.label);
+          return `• ${friendly}: ${formatModes(entry.modes)}`;
         });
-
-        if (!filtered.length) {
-          return interaction.editReply({
-            content: '📭 No entries match that filter.',
-          });
-        }
-
-        const lines = filtered
-          .sort((a, b) => a.targetId.localeCompare(b.targetId))
-          .map((row) => {
-            const cached = interaction.guild?.channels?.cache?.get(row.targetId);
-            const label =
-              row.targetType === 'category'
-                ? cached?.name
-                  ? `category **${cached.name}**`
-                  : `category ${row.targetId}`
-                : `<#${row.targetId}>`;
-            return `• ${label}: ${formatModes(row.modes)}`;
-          });
 
         return interaction.editReply({
           content: ['🗂 Mode overrides:', ...lines].join('\n'),

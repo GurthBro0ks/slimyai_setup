@@ -41,10 +41,15 @@ export interface SetModeOptions extends BaseOptions {
   actorHasManageGuild: boolean;
 }
 
+export interface ParentRef {
+  targetId: string;
+  targetType: TargetType;
+}
+
 export interface ViewModeOptions extends BaseOptions {
   targetId: string;
   targetType: TargetType;
-  parentIds?: string[];
+  parents?: ParentRef[];
 }
 
 export interface ListModeOptions extends BaseOptions {
@@ -199,10 +204,10 @@ export function setModes(options: SetModeOptions): SetModeResult {
   };
 }
 
-function resolveInherited(store: ModeStore, options: ViewModeOptions): ChannelModeRecord[] {
+function resolveInherited(store: ModeStore, guildId: string, parents: ParentRef[] = []): ChannelModeRecord[] {
   const results: ChannelModeRecord[] = [];
-  for (const parentId of options.parentIds ?? []) {
-    const { record } = findRecord(store, options.guildId, parentId, 'category');
+  for (const parent of parents) {
+    const { record } = findRecord(store, guildId, parent.targetId, parent.targetType);
     const normalized = normalize(record);
     if (normalized) results.push(normalized);
   }
@@ -221,7 +226,7 @@ export function combineModes(...states: ModeState[]): ModeState {
 
 export function viewModes(options: ViewModeOptions): ViewModeResult {
   const store = loadStore();
-  const inheritedRecords = resolveInherited(store, options);
+  const inheritedRecords = resolveInherited(store, options.guildId, options.parents);
   const inheritedSummaries: ModeSummary[] = inheritedRecords.map((record) => ({
     label: `${record.targetType}:${record.targetId}`,
     modes: record.modes,
