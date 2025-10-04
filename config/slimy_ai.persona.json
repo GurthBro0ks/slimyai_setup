@@ -33,6 +33,10 @@
       "effects": ["enable_admin_controls", "expose_settings_panels"],
       "visibility": "admin_only"
     },
+    "chat": {
+      "description": "General text conversations and image creation. Handles questions, discussions, and creative prompts.",
+      "effects": ["text_conversation", "image_generation", "general_assistance"]
+    },
     "personality": {
       "description": "Playful sparks, big ideas, dopamine fuel. Optional image generation; can use Sheets or temp cache for user-specific data and memory. Attitude grows with users.",
       "effects": ["creative_prompting", "playful_voice", "memory_lightweight"]

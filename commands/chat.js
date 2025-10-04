@@ -133,9 +133,10 @@ function buildSystemPrompt({ persona, focus, activeModes, effective, context }) 
   }
 
   lines.push('Keep replies Discord-sized, ADHD-aware, with quick wins and branching next steps.');
-  lines.push('Close with the clearest next actions—no specific catchphrase required.');
   if (context === 'mention') {
-    lines.push('Do not reference slash commands or suggest running /chat; answer inline.');
+    lines.push('Answer inline directly. Never mention, suggest, or reference any slash commands like /chat, /mode, or any other commands. Provide complete answers without referring to other bot features.');
+  } else {
+    lines.push('Close with the clearest next actions—no specific catchphrase required.');
   }
 
   return lines.join(' ');

@@ -6,16 +6,22 @@ const {
 } = require('discord.js');
 const mem = require('../lib/memory');
 
-const MODE_CHOICES = [
-  { name: 'admin', value: 'admin' },
-  { name: 'personality', value: 'personality' },
-  { name: 'no_personality', value: 'no_personality' },
-  { name: 'super_snail', value: 'super_snail' },
+const PRIMARY_MODE_CHOICES = [
+  { name: 'Admin', value: 'admin' },
+  { name: 'Chat', value: 'chat' },
+  { name: 'Supersnail', value: 'super_snail' },
 ];
-const MODE_SET = new Set(MODE_CHOICES.map((m) => m.value));
+
+const OPTIONAL_MODE_CHOICES = [
+  { name: 'Personality', value: 'personality' },
+  { name: 'No Personality', value: 'no_personality' },
+];
+
+const ALL_MODE_CHOICES = [...PRIMARY_MODE_CHOICES, ...OPTIONAL_MODE_CHOICES];
+const MODE_SET = new Set(ALL_MODE_CHOICES.map((m) => m.value));
 
 function formatModes(modes) {
-  return MODE_CHOICES.map(({ value }) => `${value}: ${modes[value] ? '✅' : '❌'}`).join(' | ');
+  return ALL_MODE_CHOICES.map(({ value }) => `${value}: ${modes[value] ? '✅' : '❌'}`).join(' | ');
 }
 
 function describeTarget(target, targetType) {
@@ -58,27 +64,15 @@ module.exports = {
         .setDescription('Enable or disable a mode')
         .addStringOption((opt) =>
           opt
-            .setName('mode')
-            .setDescription('Primary mode to affect')
-            .addChoices(...MODE_CHOICES),
+            .setName('primary_mode')
+            .setDescription('Primary Mode')
+            .addChoices(...PRIMARY_MODE_CHOICES),
         )
         .addStringOption((opt) =>
           opt
-            .setName('mode_2')
-            .setDescription('Optional additional mode')
-            .addChoices(...MODE_CHOICES),
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('mode_3')
-            .setDescription('Optional additional mode')
-            .addChoices(...MODE_CHOICES),
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('mode_4')
-            .setDescription('Optional additional mode')
-            .addChoices(...MODE_CHOICES),
+            .setName('optional_mode')
+            .setDescription('Optional Mode')
+            .addChoices(...OPTIONAL_MODE_CHOICES),
         )
         .addStringOption((opt) =>
           opt
@@ -158,7 +152,7 @@ module.exports = {
           opt
             .setName('mode')
             .setDescription('Mode to use for filtering (optional)')
-            .addChoices(...MODE_CHOICES),
+            .addChoices(...ALL_MODE_CHOICES),
         ),
     ),
 
@@ -174,12 +168,10 @@ module.exports = {
         requireAdmin(interaction);
         const { target, targetType } = resolveTarget(interaction);
         const operation = interaction.options.getString('operation') || 'merge';
-        const rawModes = [
-          interaction.options.getString('mode'),
-          interaction.options.getString('mode_2'),
-          interaction.options.getString('mode_3'),
-          interaction.options.getString('mode_4'),
-        ].filter(Boolean);
+        const primaryMode = interaction.options.getString('primary_mode');
+        const optionalMode = interaction.options.getString('optional_mode');
+
+        const rawModes = [primaryMode, optionalMode].filter(Boolean);
 
         const seen = new Set();
         const modeList = rawModes.filter((mode) => {
