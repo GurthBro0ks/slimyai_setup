@@ -1,4 +1,4 @@
-// index.js
+// index.js - MULTI-SERVER READY
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
@@ -9,31 +9,35 @@ const {
   Collection,
   Events
 } = require('discord.js');
-const { attachMentionHandler } = require('./handlers/mention');
 
 // ---- Client ----
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,   // REQUIRED for @mentions
-    GatewayIntentBits.MessageContent,  // MUST be enabled in Dev Portal too
-    GatewayIntentBits.DirectMessages   // optional
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages
   ],
-  partials: [Partials.Channel],        // allow DMs
+  partials: [Partials.Channel],
 });
 
-// ---- Command loader (from ./commands/*.js) ----
+// ---- Command loader ----
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
   const files = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
   for (const file of files) {
     const fp = path.join(commandsPath, file);
-    const cmd = require(fp);
-    if (cmd?.data && cmd?.execute) {
-      client.commands.set(cmd.data.name, cmd);
-    } else {
-      console.warn(`[WARN] Skipping ${file}: missing data/execute`);
+    try {
+      const cmd = require(fp);
+      if (cmd?.data && cmd?.execute) {
+        client.commands.set(cmd.data.name, cmd);
+        console.log(`✅ Loaded command: ${cmd.data.name}`);
+      } else {
+        console.warn(`[WARN] Skipping ${file}: missing data/execute`);
+      }
+    } catch (err) {
+      console.error(`[ERROR] Failed to load ${file}:`, err.message);
     }
   }
 } else {
@@ -43,6 +47,7 @@ if (fs.existsSync(commandsPath)) {
 // ---- Ready ----
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Logged in as ${c.user.tag}`);
+  console.log(`📡 Connected to ${c.guilds.cache.size} server(s)`);
 });
 
 // ---- Slash command dispatcher ----
@@ -64,8 +69,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// ---- Mention handler ----
-attachMentionHandler(client);
+// ---- Mention handler (optional) ----
+try {
+  const mentionHandlerPath = path.join(__dirname, 'handlers', 'mention.js');
+  if (fs.existsSync(mentionHandlerPath)) {
+    const { attachMentionHandler } = require('./handlers/mention');
+    if (typeof attachMentionHandler === 'function') {
+      attachMentionHandler(client);
+      console.log('✅ Mention handler attached');
+    }
+  }
+} catch (err) {
+  console.warn('[WARN] Mention handler not loaded:', err.message);
+}
 
 // ---- Login ----
 if (!process.env.DISCORD_TOKEN) {
@@ -73,4 +89,3 @@ if (!process.env.DISCORD_TOKEN) {
   process.exit(1);
 }
 client.login(process.env.DISCORD_TOKEN);
-

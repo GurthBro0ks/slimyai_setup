@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_slimy.sh — source-free, robust deploy + PM2 start with logging & pause
+# run_slimy.sh - MULTI-SERVER VERSION
 
 set -Eeuo pipefail
 
@@ -18,7 +18,7 @@ trap 'echo "❌ Failed at line $LINENO (exit $?)"; pause' ERR
 echo "==== $(date) :: Slimy launcher starting ===="
 echo "📜 Log: $LOG_FILE"
 
-# --- Inject latest NVM Node bin into PATH without sourcing anything ---
+# --- Inject latest NVM Node bin ---
 LATEST_NODE_BIN="$(ls -d "$HOME"/.nvm/versions/node/v*/bin 2>/dev/null | sort -V | tail -n1 || true)"
 if [ -n "${LATEST_NODE_BIN:-}" ] && [ -d "$LATEST_NODE_BIN" ]; then
   export PATH="$LATEST_NODE_BIN:$PATH"
@@ -33,12 +33,9 @@ for bin in node npm pm2; do
 done
 echo "node: $(node -v), npm: $(npm -v), pm2: $(pm2 -v)"
 
-# --- Project files & “no heredoc junk” guard ---
-for f in index.js ecosystem.config.js deploy-commands.js supersnail-sheets.js commands/snail.js; do
+# --- Project files ---
+for f in index.js ecosystem.config.js deploy-commands.js; do
   [ -f "$f" ] || fail "Missing file: $f"
-  if head -n1 "$f" | grep -q "^cat >"; then
-    fail "File '$f' begins with a heredoc wrapper (cat > …). Replace with pure JS."
-  fi
 done
 echo "Files OK."
 
@@ -47,10 +44,13 @@ echo "Files OK."
 set -a; . ./.env; set +a
 : "${DISCORD_TOKEN:?Missing DISCORD_TOKEN in .env}"
 : "${DISCORD_CLIENT_ID:?Missing DISCORD_CLIENT_ID in .env}"
-: "${DISCORD_GUILD_ID:?Missing DISCORD_GUILD_ID in .env}"
-: "${SNAIL_SHEET_ID:?Missing SNAIL_SHEET_ID in .env}"
-: "${SNAIL_GID:?Missing SNAIL_GID in .env}"
-echo "ENV OK (CLIENT=$DISCORD_CLIENT_ID GUILD=$DISCORD_GUILD_ID)."
+
+# DISCORD_GUILD_ID is now OPTIONAL (only needed for guild-specific deployments)
+if [ -n "${DISCORD_GUILD_ID:-}" ]; then
+  echo "ENV OK (CLIENT=$DISCORD_CLIENT_ID, GUILD=$DISCORD_GUILD_ID - guild deployment mode)"
+else
+  echo "ENV OK (CLIENT=$DISCORD_CLIENT_ID - global deployment mode)"
+fi
 
 # --- Dependencies ---
 if [ ! -d node_modules ]; then
@@ -60,10 +60,10 @@ else
   echo "node_modules present; skipping install."
 fi
 
-# --- Deploy slash commands (guild) ---
-echo "Registering /snail to guild $DISCORD_GUILD_ID…"
+# --- Deploy slash commands ---
+echo "Deploying commands..."
 node deploy-commands.js
-echo "✅ Slash commands deployed."
+echo "✅ Commands deployed."
 
 # --- PM2 start/restart ---
 if pm2 describe slimy-bot >/dev/null 2>&1; then
@@ -80,4 +80,3 @@ echo
 echo "Tailing PM2 logs (Ctrl+C to stop)…"
 pm2 logs slimy-bot --lines 80 || true
 pause
-
