@@ -85,6 +85,8 @@ function buildSystemPrompt({ persona, focus, activeModes, effective, context }) 
   lines.push(focusLine);
 
   const playful = effective.personality && !effective.no_personality;
+  const ratingUnrated = !!effective.rating_unrated;
+  const ratingPG13 = !!effective.rating_pg13;
   if (effective.no_personality) {
     lines.push(
       `Tone → ${
@@ -105,6 +107,18 @@ function buildSystemPrompt({ persona, focus, activeModes, effective, context }) 
         persona?.tone_and_voice?.technical || 'Direct, concise, lightly sassy when helpful.'
       }`,
     );
+  }
+
+  if (ratingUnrated) {
+    lines.push(
+      'Content rating: Unrated — respond with maximum creative freedom allowed by platform policies. Swear lightly if it matches the user’s energy, and keep imagery vivid unless explicitly unsafe.',
+    );
+  } else if (ratingPG13) {
+    lines.push(
+      'Content rating: Rated PG-13 — keep language, humor, and imagery within PG-13 guidelines; no explicit adult content.',
+    );
+  } else {
+    lines.push('Content rating: default — keep replies suitable for a general audience.');
   }
 
   if (effective.admin) {
