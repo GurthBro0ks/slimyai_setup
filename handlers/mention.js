@@ -2,6 +2,7 @@
 const { Events } = require('discord.js');
 const chat = require('../commands/chat');
 const { maybeReplyWithImage } = require('../lib/auto-image');
+const { detectImageIntent } = require('../lib/image-intent');
 
 const COOLDOWN_MS = 5000;
 const mentionCooldown = new Map(); // key = `${guildId}:${userId}` -> ts
@@ -28,13 +29,6 @@ function attachMentionHandler(client) {
       // was the bot mentioned?
       if (!message.mentions.users.has(client.user.id)) return;
 
-      // cooldown per user per guild/dm
-      const key = `${message.guildId || 'dm'}:${message.author.id}`;
-      const now = Date.now();
-      const last = mentionCooldown.get(key) || 0;
-      if (now - last < COOLDOWN_MS) return;
-      mentionCooldown.set(key, now);
-
       // strip the mention(s)
       const mentionRegex = new RegExp(`<@!?${client.user.id}>`, 'g');
       const clean = (message.content || '').replace(mentionRegex, '').trim();
@@ -45,6 +39,14 @@ function attachMentionHandler(client) {
           allowedMentions: { repliedUser: false },
         });
       }
+
+      const key = `${message.guildId || 'dm'}:${message.author.id}`;
+      const now = Date.now();
+      const last = mentionCooldown.get(key) || 0;
+      const imageIntent = detectImageIntent(clean);
+
+      if (!imageIntent && now - last < COOLDOWN_MS) return;
+      mentionCooldown.set(key, now);
 
       if (!process.env.OPENAI_API_KEY) {
         return message.reply({

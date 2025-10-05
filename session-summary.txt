@@ -1,26 +1,30 @@
-Session Summary (auto-generated)
-===============================
+Session Worklog Summary
+=======================
 
-1. Consent Command Improvements
-   - Deferred interactions and standardized crash handling to avoid ephemeral-only failures.
+Consent & Chat Foundations
+- Hardened `/consent` reply flow (defers, unified error handling) so consent toggles no longer crash or stay ephemeral-only.
+- Unified `/chat` and mention handling around a shared conversation engine, persona-aware prompts, trimmed formatting, and public replies instead of ephemeral responses.
+- Added content-aware tone controls: persona modes (personality / no_personality) and new rating flags (default, PG-13, Unrated) influence language guidance.
 
-2. Mode System Overhaul
-   - Replaced legacy per-user mode helpers with robust channel/category/thread storage (JSON-backed).
-   - Rebuilt `/mode` with subcommands (set/view/list), admin gating, inheritance awareness, and cleaner summaries.
-   - Added typed helper (`lib/modes.ts` + `lib/modes.js`) for future TS integration and wired the command to it.
-   - Introduced content rating modes (`rating_unrated`, `rating_pg13`) with automatic validation and summaries.
+Mode System Overhaul
+- Introduced JSON-backed channel/category/thread mode storage helpers (`lib/modes.ts` + generated `lib/modes.js`) with strong typing, inheritance resolution, sanitisation, and summaries.
+- Replaced `/mode` with helper-driven logic (set/view/list/clear), admin gating, and direct/inherited/effective reporting.
+- Simplified `/mode set` to curated profiles:
+  • Chat × (Personality | No Personality) × (Rated | Unrated)
+  • Super Snail × (Personality | No Personality) × (Rated | Unrated)
+  • Plus "Clear" to remove all modes.
+- Added `/mode list` filters and ensured ratings only stick when the matching persona/primary modes are active.
 
-3. Persona & Mentions
-   - Moved persona spec to `config/` and generated runtime loader.
-   - Unified `/chat` and mention replies around persona-aware prompts, shared history, and consistent formatting.
-   - Mentions now mirror `/chat`, obeying cooldowns and suppressing slash-command hints.
+Persona & Rating Integration
+- Relocated persona JSON to `config/`, built runtime loader, and injected persona/rating details into chat system prompts.
+- Mentions mirror `/chat` exactly (cooldowns, no slash hints, same persona/rating/rules).
 
-4. Auto Image Generation
-   - Added intent detection and OpenAI image helper; `/chat` and mentions auto-reply with images when prompted.
-   - Image prompts respect content ratings (default, PG-13, Unrated) alongside text tone adjustments.
+Auto Image Generation
+- Added intent detection (`lib/image-intent.js`) and automatic OpenAI image replies for `/chat` and mentions.
+- Auto images honour rating flags (PG-13 restrictions vs. Unrated creative freedom) and fall back to suggested compliant prompts when the safety filter rejects a request.
 
-5. Additional Enhancements
-   - Slash commands redeployed after key changes to keep Discord schema up to date.
-   - Configured rating logic to auto-enable Chat + Personality and enforce mutual exclusivity.
-   - Adjusted chat responses to remove redundant “Where we left off” tag line and tailor tone to modes.
+Quality & Housekeeping
+- Broadened image prompt detection phrases and trimmed redundant catchphrases.
+- Added `session-summary.txt` (this file) capturing the full session scope.
+- Redeployed slash commands after each structural change and pushed commits to `main` throughout.
 
