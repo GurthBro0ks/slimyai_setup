@@ -1,4 +1,4 @@
-// index.js - FIXED ERROR HANDLING
+// index.js - PRODUCTION READY
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
@@ -7,7 +7,8 @@ const {
   GatewayIntentBits,
   Partials,
   Collection,
-  Events
+  Events,
+  MessageFlags
 } = require('discord.js');
 
 // ---- Client ----
@@ -24,6 +25,7 @@ const client = new Client({
 // ---- Command loader ----
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
+
 if (fs.existsSync(commandsPath)) {
   const files = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
   for (const file of files) {
@@ -44,13 +46,13 @@ if (fs.existsSync(commandsPath)) {
   console.warn('[WARN] ./commands directory not found');
 }
 
-// ---- Ready ----
+// ---- Ready (only fires ONCE) ----
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Logged in as ${c.user.tag}`);
   console.log(`📡 Connected to ${c.guilds.cache.size} server(s)`);
 });
 
-// ---- Slash command dispatcher with SAFE error handling ----
+// ---- Slash command dispatcher ----
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (!interaction.isChatInputCommand()) return;
@@ -59,7 +61,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (!command) {
       return interaction.reply({ 
         content: '❌ Unknown command.', 
-        ephemeral: true 
+        flags: MessageFlags.Ephemeral 
       }).catch(() => {});
     }
     
@@ -67,32 +69,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (err) {
     console.error('Command error:', err);
     
-    // SAFE ERROR RESPONSE - try multiple fallbacks
+    // Safe error handling
     try {
       if (interaction.deferred) {
-        // If deferred, edit the reply
         await interaction.editReply('❌ Command failed.');
       } else if (interaction.replied) {
-        // If already replied, follow up
         await interaction.followUp({ 
           content: '❌ Command failed.', 
-          ephemeral: true 
+          flags: MessageFlags.Ephemeral 
         });
       } else {
-        // If not yet responded, reply now
         await interaction.reply({ 
           content: '❌ Command failed.', 
-          ephemeral: true 
+          flags: MessageFlags.Ephemeral 
         });
       }
     } catch (innerErr) {
-      // If all else fails, just log it
-      console.error('Could not send error message to user:', innerErr.message);
+      console.error('Could not send error message:', innerErr.message);
     }
   }
 });
 
-// ---- Mention handler (optional) ----
+// ---- Mention handler (graceful loading) ----
 try {
   const mentionHandlerPath = path.join(__dirname, 'handlers', 'mention.js');
   if (fs.existsSync(mentionHandlerPath)) {
@@ -106,9 +104,10 @@ try {
   console.warn('[WARN] Mention handler not loaded:', err.message);
 }
 
-// ---- Login ----
+// ---- Login (ONLY ONCE) ----
 if (!process.env.DISCORD_TOKEN) {
   console.error('❌ DISCORD_TOKEN not set in environment.');
   process.exit(1);
 }
+
 client.login(process.env.DISCORD_TOKEN);
