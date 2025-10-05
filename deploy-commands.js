@@ -8,14 +8,25 @@ const commands = [];
 const cmdsPath = path.join(__dirname, "commands");
 const files = fs.readdirSync(cmdsPath).filter(f => f.endsWith(".js"));
 
+// Temporarily suppress ALL console output during command loading to avoid duplicate logs
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+console.log = () => {};
+console.warn = () => {};
+console.error = () => {};
+
 for (const file of files) {
   const cmd = require(path.join(cmdsPath, file));
   if (cmd?.data && cmd?.execute) {
     commands.push(cmd.data.toJSON());
-  } else {
-    console.warn(`[WARN] ${file} is missing "data" or "execute"`);
   }
 }
+
+// Restore console methods
+console.log = originalLog;
+console.warn = originalWarn;
+console.error = originalError;
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 

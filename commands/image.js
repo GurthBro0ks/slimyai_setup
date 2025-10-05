@@ -13,10 +13,11 @@ module.exports = {
     )
     .addStringOption(o =>
       o.setName('size')
-       .setDescription('Image size')
+       .setDescription('Image size (DALL-E 3 supports 1024x1024, 1024x1792, 1792x1024)')
        .addChoices(
-         { name: '512x512', value: '512x512' },
-         { name: '1024x1024', value: '1024x1024' }
+         { name: '1024x1024 (square)', value: '1024x1024' },
+         { name: '1024x1792 (portrait)', value: '1024x1792' },
+         { name: '1792x1024 (landscape)', value: '1792x1024' }
        )
     ),
   async execute(interaction) {
@@ -45,10 +46,10 @@ module.exports = {
     }
 
     const result = await openai.images.generate({
-      model: process.env.IMAGE_MODEL || 'gpt-image-1',
+      model: process.env.IMAGE_MODEL || 'dall-e-3',
       prompt,
-      size,            // '512x512' | '1024x1024'
-      // You can also pass: background: 'transparent', or 'png' via response_format
+      size,
+      response_format: 'b64_json',
     });
 
     const b64 = result.data?.[0]?.b64_json;
