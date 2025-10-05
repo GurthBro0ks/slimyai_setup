@@ -1,4 +1,4 @@
-// index.js - MULTI-SERVER READY
+// index.js - FIXED ERROR HANDLING
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
@@ -50,21 +50,44 @@ client.once(Events.ClientReady, (c) => {
   console.log(`📡 Connected to ${c.guilds.cache.size} server(s)`);
 });
 
-// ---- Slash command dispatcher ----
+// ---- Slash command dispatcher with SAFE error handling ----
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (!interaction.isChatInputCommand()) return;
+    
     const command = client.commands.get(interaction.commandName);
     if (!command) {
-      return interaction.reply({ content: '❌ Unknown command.', ephemeral: true });
+      return interaction.reply({ 
+        content: '❌ Unknown command.', 
+        ephemeral: true 
+      }).catch(() => {});
     }
+    
     await command.execute(interaction);
   } catch (err) {
     console.error('Command error:', err);
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply('❌ Command failed.');
-    } else {
-      await interaction.reply({ content: '❌ Command failed.', ephemeral: true });
+    
+    // SAFE ERROR RESPONSE - try multiple fallbacks
+    try {
+      if (interaction.deferred) {
+        // If deferred, edit the reply
+        await interaction.editReply('❌ Command failed.');
+      } else if (interaction.replied) {
+        // If already replied, follow up
+        await interaction.followUp({ 
+          content: '❌ Command failed.', 
+          ephemeral: true 
+        });
+      } else {
+        // If not yet responded, reply now
+        await interaction.reply({ 
+          content: '❌ Command failed.', 
+          ephemeral: true 
+        });
+      }
+    } catch (innerErr) {
+      // If all else fails, just log it
+      console.error('Could not send error message to user:', innerErr.message);
     }
   }
 });
