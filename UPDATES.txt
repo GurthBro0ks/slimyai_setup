@@ -1,0 +1,132 @@
+===========================================
+SLIMY.AI BOT - UPDATE LOG
+===========================================
+
+Date: 2025-10-05
+Session: Bug fixes and feature improvements
+
+-------------------------------------------
+1. FIXED: Duplicate Command Loading
+-------------------------------------------
+
+PROBLEM:
+- Commands were loading twice (once during deploy-commands.js, once during bot startup)
+- Memory module and other lib files printed initialization messages twice
+- Caused by index.js accidentally being in /commands folder on Pterodactyl
+
+SOLUTION:
+- Added console output suppression in deploy-commands.js during command loading
+- Prevents duplicate [memory] json-store ready and [dotenv] messages
+- Removed index.js from commands directory (should only contain command files)
+
+FILES CHANGED:
+- deploy-commands.js (lines 11-29)
+
+-------------------------------------------
+2. FIXED: Image Generation in Mentions
+-------------------------------------------
+
+PROBLEM:
+- Bot would say "I can't display images directly" when mentioned with image requests
+- Invalid model name 'gpt-image-1' causing API errors
+- System prompt didn't tell the AI it could generate images
+- Missing explicit response_format parameter
+
+SOLUTION:
+- Changed model from 'gpt-image-1' → 'dall-e-3'
+- Added response_format: 'b64_json' to API calls
+- Updated system prompt in persona.json to inform AI of image generation capability
+- Added DALL-E 3 size support (1024x1024, 1024x1792, 1792x1024)
+- Added logging to track image generation attempts
+
+FILES CHANGED:
+- lib/images.js (lines 5, 8)
+- commands/image.js (lines 15-21, 48-51)
+- config/slimy_ai.persona.json (added "prompt" field)
+- lib/persona.js (getPersona now accepts mode parameter, lines 23-44)
+- lib/auto-image.js (added logging lines 8-10, 30-34)
+
+TESTING:
+✅ Image intent detection works with API key
+✅ Mention handler calls image generation
+✅ DALL-E 3 size options validated
+
+-------------------------------------------
+3. FIXED: Memory.js listMemos Filter Bug
+-------------------------------------------
+
+PROBLEM:
+- /export in guilds was returning both guild notes AND DM notes
+- Filter condition incorrectly used (!m.guildId || m.guildId === ...)
+- DM notes (guildId: null) leaked into guild exports
+
+SOLUTION:
+- Changed filter from:
+  m.userId === userId && (!m.guildId || m.guildId === (guildId || null))
+
+  To strict equality:
+  m.userId === userId && m.guildId === (guildId || null)
+
+FILES CHANGED:
+- lib/memory.js (line 257)
+
+VALIDATION:
+✅ Guild context: Returns only guild notes
+✅ DM context: Returns only DM notes
+✅ Delete operation: Works in correct scope
+✅ Consent management: Unaffected
+✅ All command flows tested end-to-end
+
+-------------------------------------------
+GIT COMMITS
+-------------------------------------------
+
+1. 8b04aa6 - Fix: duplicate command loading and enable image generation in mentions
+2. 6c0601a - Fix: memory.js listMemos filter incorrectly including DM notes in guild queries
+
+-------------------------------------------
+DEPLOYMENT NOTES
+-------------------------------------------
+
+To deploy these fixes:
+
+1. Pull latest changes on Pterodactyl server:
+   cd /home/container
+   git pull
+
+2. Verify index.js is NOT in commands directory:
+   ls -la commands/
+   # Should only show: chat.js, consent.js, diag.js, export.js, forget.js,
+   #                   image.js, mode.js, remember.js, snail.js
+
+3. Restart the bot:
+   pm2 restart slimy-bot
+   # OR on Pterodactyl: use the restart button in panel
+
+4. Test image generation:
+   @slimy.ai draw me a cat riding a skateboard
+
+5. Test memory commands:
+   /consent allow:true
+   /remember note:"Test guild note"
+   /export
+   # Should only show guild notes, not DM notes
+
+-------------------------------------------
+KNOWN ISSUES
+-------------------------------------------
+
+None currently identified.
+
+-------------------------------------------
+FUTURE IMPROVEMENTS
+-------------------------------------------
+
+- Consider adding rate limiting for image generation
+- Add cost tracking for OpenAI API usage
+- Implement memory export as downloadable JSON file
+- Add pagination for /export with >25 notes
+
+===========================================
+Generated with Claude Code
+===========================================
