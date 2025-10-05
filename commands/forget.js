@@ -1,4 +1,4 @@
-// commands/forget.js
+// commands/forget.js - FIXED VERSION
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const mem = require('../lib/memory');
 
@@ -13,13 +13,20 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    const id = interaction.options.getString('id', true);
-    await mem.deleteMemo({ id, userId: interaction.user.id });
+    try {
+      const id = interaction.options.getString('id', true);
+      await mem.deleteMemo({ id, userId: interaction.user.id });
 
-    return interaction.reply({
-      content: `🧽 Deleted note #${id}.`,
-      flags: MessageFlags.Ephemeral,
-    });
+      return interaction.reply({
+        content: `🧽 Deleted note #${id}.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (err) {
+      console.error("forget error:", err);
+      return interaction.reply({
+        content: "❌ forget crashed. Check logs.",
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
+    }
   }
 };
-
