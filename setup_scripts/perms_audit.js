@@ -59,4 +59,6 @@ client.once('ready', async () => {
 
   process.exit(0);
 });
-client.login(process.env.DISCORD_TOKEN);
+if (require.main === module) {
+  client.login(process.env.DISCORD_TOKEN);
+}
