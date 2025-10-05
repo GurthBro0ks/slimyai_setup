@@ -11,6 +11,81 @@ const {
   MessageFlags
 } = require('discord.js');
 
+// ---- Singleton guard ----
+const LOCK_FILE = path.join(__dirname, '.slimy-singleton.lock');
+
+function ensureSingleInstance() {
+  const cleanup = () => {
+    try {
+      fs.unlinkSync(LOCK_FILE);
+    } catch (err) {
+      if (err?.code !== 'ENOENT') {
+        console.warn('[WARN] Failed to remove singleton lock:', err.message);
+      }
+    }
+  };
+
+  const writeLock = () => {
+    const fd = fs.openSync(LOCK_FILE, 'wx');
+    fs.writeSync(fd, String(process.pid));
+    fs.closeSync(fd);
+  };
+
+  try {
+    writeLock();
+  } catch (err) {
+    if (err?.code === 'EEXIST') {
+      try {
+        const existingPid = parseInt(fs.readFileSync(LOCK_FILE, 'utf8'), 10);
+        if (existingPid && existingPid !== process.pid) {
+          try {
+            process.kill(existingPid, 0);
+            console.error(`❌ Another slimy-bot instance is already running (pid ${existingPid}). Exiting.`);
+            process.exit(1);
+          } catch (killErr) {
+            if (killErr?.code === 'ESRCH') {
+              fs.unlinkSync(LOCK_FILE);
+              return ensureSingleInstance();
+            }
+            console.error('[ERROR] Could not verify existing PID:', killErr.message);
+            process.exit(1);
+          }
+        } else {
+          fs.unlinkSync(LOCK_FILE);
+          return ensureSingleInstance();
+        }
+      } catch (readErr) {
+        console.warn('[WARN] Corrupt singleton lock detected, resetting:', readErr.message);
+        try {
+          fs.unlinkSync(LOCK_FILE);
+        } catch (unlinkErr) {
+          console.error('[ERROR] Failed to reset singleton lock:', unlinkErr.message);
+          process.exit(1);
+        }
+        return ensureSingleInstance();
+      }
+    } else {
+      console.error('[ERROR] Unable to create singleton lock:', err.message);
+      process.exit(1);
+    }
+  }
+
+  process.once('exit', cleanup);
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.once(signal, () => {
+      cleanup();
+      process.exit(0);
+    });
+  }
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception:', err);
+    cleanup();
+    process.exit(1);
+  });
+}
+
+ensureSingleInstance();
+
 // ---- Client ----
 const client = new Client({
   intents: [
@@ -21,6 +96,8 @@ const client = new Client({
   ],
   partials: [Partials.Channel],
 });
+
+global.client = client;
 
 // ---- Command loader ----
 client.commands = new Collection();
