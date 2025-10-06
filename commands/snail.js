@@ -2,6 +2,7 @@
 // CommonJS – discord.js v14
 const { SlashCommandBuilder } = require('discord.js');
 const costs = require('../supersnail-costs.js');
+const { analyzeSnailScreenshot, formatSnailAnalysis } = require('../lib/snail-vision');
 
 // Small helper to pick the right tier function
 function pickCalc(tier) {
@@ -60,6 +61,14 @@ module.exports = {
           o.setName('dragon')
             .setDescription('If true, show per-species cells + BTADs + hours')
             .setRequired(false))
+    )
+    .addSubcommand(sc =>
+      sc.setName('analyze')
+        .setDescription('Analyze a Super Snail screenshot using GPT-4 Vision')
+        .addAttachmentOption(o =>
+          o.setName('screenshot')
+            .setDescription('Upload a Super Snail stats screenshot')
+            .setRequired(true))
     ),
 
   async execute(interaction) {
@@ -79,6 +88,33 @@ module.exports = {
             `**Hours:** ${hours.toLocaleString()}`,
           ephemeral: true,
         });
+      }
+
+      if (interaction.options.getSubcommand() === 'analyze') {
+        const attachment = interaction.options.getAttachment('screenshot', true);
+
+        await interaction.deferReply();
+
+        try {
+          if (!attachment.contentType?.startsWith('image/')) {
+            return interaction.editReply({
+              content: '❌ Please upload an image file (PNG, JPG, WEBP)'
+            });
+          }
+
+          const analysis = await analyzeSnailScreenshot(attachment.url);
+          const response = formatSnailAnalysis(analysis);
+
+          await interaction.editReply({ content: response });
+
+        } catch (err) {
+          console.error('Snail vision error:', err);
+          await interaction.editReply({
+            content: `❌ Failed to analyze screenshot: ${err.message}\n\nTry uploading a clearer image.`
+          });
+        }
+
+        return;
       }
 
       // calc subcommand

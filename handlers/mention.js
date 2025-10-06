@@ -8,7 +8,11 @@ const COOLDOWN_MS = 5000;
 const mentionCooldown = new Map(); // key = `${guildId}:${userId}` -> ts
 
 function attachMentionHandler(client) {
-  if (client._mentionHandlerAttached) return;
+  if (client._mentionHandlerAttached) {
+    console.log('[mention-handler] ALREADY ATTACHED - SKIPPING');
+    return;
+  }
+  console.log('[mention-handler] ATTACHING NOW');
   client._mentionHandlerAttached = true;
 
   const markReady = () => {
@@ -28,6 +32,8 @@ function attachMentionHandler(client) {
 
       // was the bot mentioned?
       if (!message.mentions.users.has(client.user.id)) return;
+
+      console.log(`[mention-handler] Processing mention from ${message.author.tag} - ListenerCount:`, client.listenerCount(Events.MessageCreate));
 
       // strip the mention(s)
       const mentionRegex = new RegExp(`<@!?${client.user.id}>`, 'g');
@@ -76,6 +82,7 @@ function attachMentionHandler(client) {
         effectiveOverride: effectiveModes,
       });
 
+      console.log(`[mention-handler] Sending response to ${message.author.tag}`);
       return message.reply({
         content: result.response,
         allowedMentions: { repliedUser: false },

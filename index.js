@@ -203,6 +203,20 @@ try {
   console.warn('[WARN] Mention handler not loaded:', err.message);
 }
 
+// ---- Snail auto-detect handler (graceful loading) ----
+try {
+  const snailHandlerPath = path.join(__dirname, 'handlers', 'snail-auto-detect.js');
+  if (fs.existsSync(snailHandlerPath)) {
+    const { attachSnailAutoDetect } = require('./handlers/snail-auto-detect');
+    if (typeof attachSnailAutoDetect === 'function') {
+      attachSnailAutoDetect(client);
+      console.log('✅ Snail auto-detect handler attached');
+    }
+  }
+} catch (err) {
+  console.warn('[WARN] Snail auto-detect handler not loaded:', err.message);
+}
+
 // ---- Login (ONLY ONCE) ----
 if (!process.env.DISCORD_TOKEN) {
   console.error('❌ DISCORD_TOKEN not set in environment.');
