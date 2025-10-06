@@ -8,3 +8,9 @@ logs/
 node_modules/
 data_*.db
 slimy-ai-*.json
+
+# runtime files
+.slimy-singleton.lock
+data_store.json.tmp
+tokens.txt
+*.zip

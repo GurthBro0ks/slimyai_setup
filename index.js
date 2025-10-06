@@ -79,6 +79,7 @@ function ensureSingleInstance() {
   }
   process.on('uncaughtException', (err) => {
     console.error('Uncaught exception:', err);
+    if (global.botStats) recordError(err);
     cleanup();
     process.exit(1);
   });
@@ -98,6 +99,25 @@ const client = new Client({
 });
 
 global.client = client;
+
+// ---- Bot statistics (for /diag v2) ----
+global.botStats = {
+  startTime: Date.now(),
+  errors: {
+    count: 0,
+    lastError: null,
+    lastErrorTime: null,
+  },
+};
+
+/**
+ * Record an error in bot stats
+ */
+function recordError(err) {
+  global.botStats.errors.count++;
+  global.botStats.errors.lastError = err.message || String(err);
+  global.botStats.errors.lastErrorTime = Date.now();
+}
 
 // ---- Command loader ----
 client.commands = new Collection();
@@ -145,24 +165,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await command.execute(interaction);
   } catch (err) {
     console.error('Command error:', err);
-    
+    recordError(err); // Track error in stats
+
     // Safe error handling
     try {
       if (interaction.deferred) {
         await interaction.editReply('❌ Command failed.');
       } else if (interaction.replied) {
-        await interaction.followUp({ 
-          content: '❌ Command failed.', 
-          flags: MessageFlags.Ephemeral 
+        await interaction.followUp({
+          content: '❌ Command failed.',
+          flags: MessageFlags.Ephemeral
         });
       } else {
-        await interaction.reply({ 
-          content: '❌ Command failed.', 
-          flags: MessageFlags.Ephemeral 
+        await interaction.reply({
+          content: '❌ Command failed.',
+          flags: MessageFlags.Ephemeral
         });
       }
     } catch (innerErr) {
       console.error('Could not send error message:', innerErr.message);
+      recordError(innerErr);
     }
   }
 });
