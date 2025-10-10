@@ -90,7 +90,7 @@ const CONTENT = {
     '**status:** design in progress',
     '',
     '## phase 3 — image generation',
-    '- `/imagine` + style presets, neon-blue watermark (bottom-left)',
+    '- `/dream` + style presets, neon-blue watermark (bottom-left)',
     '- Safety filters, rate limits',
     '',
     '**status:** prototyping',

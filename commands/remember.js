@@ -1,51 +1,91 @@
-// commands/remember.js - FIXED VERSION
-const { SlashCommandBuilder, MessageFlags } = require("discord.js");
-const mem = require("../lib/memory");
+// commands/remember.js - Database version (v2.0)
+const { SlashCommandBuilder, MessageFlags, EmbedBuilder } = require('discord.js');
+const db = require('../lib/database');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("remember")
-    .setDescription("Store a short note (requires /consent allow:true)")
-    .addStringOption((o) =>
-      o
-        .setName("note")
-        .setDescription("What should I remember?")
-        .setRequired(true),
+    .setName('remember')
+    .setDescription('Save a note (server-wide memory with /consent)')
+    .addStringOption(o =>
+      o.setName('note')
+        .setDescription('What should I remember?')
+        .setRequired(true)
+    )
+    .addStringOption(o =>
+      o.setName('tags')
+        .setDescription('Optional tags (comma-separated)')
+        .setRequired(false)
     ),
+
   async execute(interaction) {
-    try {
-      const note = interaction.options.getString("note", true);
-      
-      const ok = await mem.getConsent({
-        userId: interaction.user.id,
-        guildId: interaction.guildId || null,
+    if (!db.isConfigured()) {
+      return interaction.reply({
+        content: '❌ Database not configured. Contact bot administrator.',
+        flags: MessageFlags.Ephemeral
       });
-      
-      if (!ok) {
+    }
+
+    try {
+      const note = interaction.options.getString('note', true);
+      const tagsInput = interaction.options.getString('tags');
+      const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()) : [];
+
+      // Check consent (server-wide)
+      const hasConsent = await db.getUserConsent(interaction.user.id);
+
+      if (!hasConsent) {
         return interaction.reply({
-          content: "❌ No consent. Run `/consent allow:true` first.",
-          flags: MessageFlags.Ephemeral,
+          content: '❌ Memory consent required.\n\nEnable it with: `/consent memory enable:true`',
+          flags: MessageFlags.Ephemeral
         });
       }
-      
-      await mem.addMemo({
-        userId: interaction.user.id,
-        guildId: interaction.guildId || null,
-        content: note,
-      });
-      
-      return interaction.reply({
-        content: "📝 Noted.",
-        flags: MessageFlags.Ephemeral,
-      });
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      // Save memory with context
+      const memory = await db.saveMemory(
+        interaction.user.id,
+        interaction.guildId,
+        note,
+        tags,
+        {
+          channelId: interaction.channelId,
+          channelName: interaction.channel?.name || 'unknown',
+          timestamp: Date.now()
+        }
+      );
+
+      const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('📝 Memory Saved')
+        .setDescription(`**Note:** ${note}`)
+        .addFields(
+          { name: 'Memory ID', value: `\`${memory.id}\``, inline: true },
+          { name: 'Server', value: interaction.guild?.name || 'Unknown', inline: true }
+        )
+        .setTimestamp();
+
+      if (tags.length > 0) {
+        embed.addFields({ name: 'Tags', value: tags.map(t => `\`${t}\``).join(' '), inline: false });
+      }
+
+      embed.setFooter({ text: 'Use /export to view all memories or /forget to delete' });
+
+      return interaction.editReply({ embeds: [embed] });
+
     } catch (err) {
-      console.error("remember error:", err);
-      return interaction
-        .reply({
-          content: "❌ remember crashed. Check logs.",
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      console.error('[remember] Error:', err);
+
+      const errorMsg = '❌ Failed to save memory. Please try again.';
+
+      if (interaction.deferred) {
+        return interaction.editReply({ content: errorMsg });
+      } else {
+        return interaction.reply({
+          content: errorMsg,
+          flags: MessageFlags.Ephemeral
+        });
+      }
     }
-  },
+  }
 };

@@ -1,6 +1,7 @@
 // handlers/mention.js
 const { Events } = require('discord.js');
 const chat = require('../commands/chat');
+const modeHelper = require('../lib/modes');
 const { maybeReplyWithImage } = require('../lib/auto-image');
 const { detectImageIntent } = require('../lib/image-intent');
 
@@ -62,7 +63,7 @@ function attachMentionHandler(client) {
       }
 
       const parentId = message.channel?.parentId || message.channel?.parent?.id;
-      const effectiveModes = chat.getEffectiveModesForChannel(message.guild, message.channel);
+      const effectiveModes = modeHelper.getEffectiveModesForChannel(message.guild, message.channel);
       const rating = effectiveModes.rating_unrated
         ? 'unrated'
         : effectiveModes.rating_pg13

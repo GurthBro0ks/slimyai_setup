@@ -1,0 +1,322 @@
+```bash
+# === CODEX AUTO-PROMPT: Productionize slimyai locally (one-shot) =================
+# Goal: lock in fixes, wire Google Drive/Sheets (folder ID below), add views/indexes,
+# backups, PM2 logrotate, seed per-user sheets, verify append, and create a
+# green/red checklist script. Paste this whole block into ChatGPT Codex, or run in your shell.
+
+# --- CONFIG YOU ALREADY SET ---
+# Service account key is at ./google-service-account.json
+# The Drive folder is shared with that service account:
+#   slimy-ai@slimy-ai.iam.gserviceaccount.com
+# Parent folder ID:
+SHEETS_PARENT_FOLDER_ID="1ivR2dyxdQ1W3cNPOSKGYLdIceanJ5Epc"
+# ================================================================================
+
+set -euo pipefail
+cd ~/Desktop/slimyai_setup
+
+echo "▶ Ensuring env keys are present..."
+touch .env
+insert_or_replace() { k="$1"; v="$2"; if grep -qE "^$k=" .env; then sed -i "s|^$k=.*|$k=$v|" .env; else printf "%s=%s\n" "$k" "$v" >> .env; fi; }
+insert_or_replace GOOGLE_APPLICATION_CREDENTIALS ./google-service-account.json
+insert_or_replace SHEETS_PARENT_FOLDER_ID "$SHEETS_PARENT_FOLDER_ID"
+
+echo "▶ Installing dependencies..."
+npm i --silent googleapis mysql2 dotenv
+
+echo "▶ Creating .env.example (no secrets)..."
+cat > .env.example <<'ENV'
+# Discord
+DISCORD_TOKEN=
+DISCORD_CLIENT_ID=
+DISCORD_GUILD_ID=
+
+# OpenAI
+OPENAI_API_KEY=
+
+# Database
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=s26873_slimy
+DB_USER=slimy_local
+DB_PASSWORD=***redacted***
+
+# Google
+GOOGLE_APPLICATION_CREDENTIALS=./google-service-account.json
+SHEETS_PARENT_FOLDER_ID=YOUR_FOLDER_ID
+ENV
+
+echo "▶ Patching LIMIT ? prepared-statement in lib/database.js (idempotent)..."
+node - <<'NODE'
+const fs=require('fs');const p='lib/database.js';
+if(!fs.existsSync(p)){ console.log('ℹ️ lib/database.js not found; skipping LIMIT patch'); process.exit(0); }
+let s=fs.readFileSync(p,'utf8'); let changed=false;
+if(/FROM\s+memories[\s\S]*LIMIT\s+\?/.test(s)){
+  s = s.replace(/(ORDER BY\s+created_at\s+DESC\s*)\n\s*LIMIT\s+\?/m, `$1\n    LIMIT \${lim}`);
+  if(!/const\s+lim\s*=/.test(s)){
+    s = s.replace(/(\bconst\s+sql\s*=\s*`[^`]*FROM\s+memories)/m,
+      'const lim = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(500, Number(limit))) : 50;\\n$1');
+  }
+  s = s.replace(/(\b(this\.\w+|\w+)\.(execute|query)\(\s*sql\s*,\s*\[\s*[^,\]]+,\s*[^,\]]+)\s*,\s*limit\s*\](\s*\))/m, '$1]$4');
+  changed=true;
+}
+if(changed){ fs.writeFileSync(p,s); console.log('✅ LIMIT patch applied'); } else { console.log('ℹ️ LIMIT patch not needed'); }
+NODE
+
+echo "▶ Updating Sheets creator to use Drive(files.create) in shared folder (safe override)..."
+mkdir -p lib
+cat > lib/sheets-drive-create.js <<'JS'
+const {google} = require('googleapis');
+
+async function getClients() {
+  const auth = new google.auth.GoogleAuth({
+    scopes: [
+      'https://www.googleapis.com/auth/drive',
+      'https://www.googleapis.com/auth/spreadsheets'
+    ],
+  });
+  const client = await auth.getClient();
+  return {
+    drive: google.drive({version:'v3', auth: client}),
+    sheets: google.sheets({version:'v4', auth: client}),
+  };
+}
+
+// Safe, idempotent creator; returns spreadsheetId
+async function createSnailStatsSheet({username, userId, guildId, guildName}) {
+  const {drive, sheets} = await getClients();
+  const parent = process.env.SHEETS_PARENT_FOLDER_ID;
+  const title = `Super Snail Stats - ${username || userId}${guildName ? ` @ ${guildName}` : ''}`.slice(0,120);
+
+  const {data:{id: spreadsheetId}} = await drive.files.create({
+    requestBody: {
+      name: title,
+      mimeType: 'application/vnd.google-apps.spreadsheet',
+      parents: parent ? [parent] : undefined
+    },
+    fields: 'id'
+  });
+
+  // optional header
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: 'Analysis Log!A1',
+    valueInputOption: 'RAW',
+    requestBody: { values: [['timestamp','user_id','guild_id','file_url','text','confidence']] }
+  }).catch(()=>{});
+
+  return spreadsheetId;
+}
+
+module.exports = { createSnailStatsSheet };
+JS
+
+# Soft override: if lib/sheets-creator.js exists, export our function too (non-breaking)
+if [ -f lib/sheets-creator.js ]; then
+  if ! grep -q "sheets-drive-create" lib/sheets-creator.js; then
+    cp lib/sheets-creator.js "lib/sheets-creator.js.bak.$(date +%s)"
+    echo "module.exports.createSnailStatsSheet = require('./sheets-drive-create').createSnailStatsSheet;" >> lib/sheets-creator.js
+    echo "✅ Added override export to lib/sheets-creator.js"
+  else
+    echo "ℹ️ lib/sheets-creator.js already references sheets-drive-create"
+  fi
+fi
+
+echo "▶ Creating seed & verify scripts..."
+mkdir -p scripts
+
+cat > scripts/seed-sheets.js <<'JS'
+require('dotenv').config();
+const {google} = require('googleapis');
+const m = require('mysql2/promise');
+const { createSnailStatsSheet } = require('../lib/sheets-drive-create');
+
+(async () => {
+  if (!process.env.SHEETS_PARENT_FOLDER_ID) throw new Error('SHEETS_PARENT_FOLDER_ID missing');
+  const db = await m.createPool({
+    host: process.env.DB_HOST, port: +(process.env.DB_PORT||3306),
+    user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME
+  });
+
+  const [rows] = await db.query(`
+    SELECT u.user_id, u.username, ug.guild_id, g.guild_name, ug.sheet_id
+    FROM users u
+    JOIN user_guilds ug ON ug.user_id = u.user_id
+    LEFT JOIN guilds g   ON g.guild_id = ug.guild_id
+    WHERE u.global_consent = 1
+  `);
+
+  let created=0, skipped=0;
+  for (const r of rows) {
+    if (r.sheet_id && r.sheet_id.trim()) { skipped++; continue; }
+    const spreadsheetId = await createSnailStatsSheet({
+      username: r.username, userId: r.user_id, guildId: r.guild_id, guildName: r.guild_name
+    });
+    await db.query('UPDATE user_guilds SET sheet_id=? WHERE user_id=? AND guild_id=?',
+                   [spreadsheetId, r.user_id, r.guild_id]);
+    created++;
+  }
+  console.log(`✅ Seed complete. Created ${created}, skipped ${skipped}.`);
+  process.exit(0);
+})().catch(e => { console.error('❌', e.response?.data || e); process.exit(1); });
+JS
+
+cat > scripts/verify-sheets.js <<'JS'
+require('dotenv').config();
+const {google} = require('googleapis');
+const m = require('mysql2/promise');
+
+(async () => {
+  const db = await m.createPool({
+    host: process.env.DB_HOST, port: +(process.env.DB_PORT||3306),
+    user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME
+  });
+  const [rows] = await db.query(
+    "SELECT user_id, guild_id, sheet_id FROM user_guilds WHERE sheet_id IS NOT NULL AND sheet_id<>'' LIMIT 1"
+  );
+  if (!rows.length) { console.log('ℹ️ No sheet_id to verify yet.'); process.exit(0); }
+
+  const {sheet_id, user_id, guild_id} = rows[0];
+
+  const auth = new google.auth.GoogleAuth({
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  const client = await auth.getClient();
+  const sheets = google.sheets({version:'v4', auth: client});
+
+  const now = new Date().toISOString();
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: sheet_id,
+    range: 'Analysis Log!A:F',
+    valueInputOption: 'RAW',
+    requestBody: { values: [[now, user_id, guild_id, '', 'verify-ok', '']] }
+  });
+
+  console.log('✅ Append ok on sheet:', sheet_id);
+  process.exit(0);
+})().catch(e => { console.error('❌', e.response?.data || e); process.exit(1); });
+JS
+
+echo "▶ Creating consent summary view & performance indexes..."
+node - <<'NODE'
+require('dotenv').config();
+const m=require('mysql2/promise');
+(async()=>{
+  const db=await m.createConnection({
+    host:process.env.DB_HOST, port:+(process.env.DB_PORT||3306),
+    user:process.env.DB_USER, password:process.env.DB_PASSWORD, database:process.env.DB_NAME
+  });
+  const ddl = `
+CREATE OR REPLACE VIEW v_guild_consent_summary AS
+SELECT
+  g.guild_id,
+  g.guild_name,
+  COUNT(DISTINCT ug.user_id) AS members,
+  SUM( (IFNULL(u.global_consent,0)=1) OR (IFNULL(ug.sheets_consent,0)=1) ) AS consent_on,
+  ROUND(100*SUM( (IFNULL(u.global_consent,0)=1) OR (IFNULL(ug.sheets_consent,0)=1) )
+       / NULLIF(COUNT(DISTINCT ug.user_id),0), 1) AS pct_effective
+FROM guilds g
+LEFT JOIN user_guilds ug ON ug.guild_id = g.guild_id
+LEFT JOIN users u        ON u.user_id   = ug.user_id
+GROUP BY g.guild_id, g.guild_name;
+
+CREATE INDEX IF NOT EXISTS idx_users_consent       ON users(global_consent, consent_granted_at);
+CREATE INDEX IF NOT EXISTS idx_ug_user             ON user_guilds(user_id);
+CREATE INDEX IF NOT EXISTS idx_ug_guild            ON user_guilds(guild_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ug_user_guild ON user_guilds(user_id, guild_id);
+`;
+  for (const stmt of ddl.split(';').map(s=>s.trim()).filter(Boolean)) {
+    await db.query(stmt);
+  }
+  console.log('✅ Views/indexes in place.');
+  await db.end();
+})().catch(e=>{console.error('❌',e);process.exit(1);});
+NODE
+
+echo "▶ Creating checklist script..."
+cat > scripts/checklist.sh <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+RED=$(printf '\033[31m'); GREEN=$(printf '\033[32m'); YELLOW=$(printf '\033[33m'); NC=$(printf '\033[0m')
+ok(){ echo "${GREEN}✔${NC} $*"; }
+warn(){ echo "${YELLOW}●${NC} $*"; }
+bad(){ echo "${RED}✖${NC} $*"; }
+
+# Env keys
+need=(DISCORD_TOKEN DB_HOST DB_NAME DB_USER DB_PASSWORD GOOGLE_APPLICATION_CREDENTIALS SHEETS_PARENT_FOLDER_ID)
+miss=0
+for k in "${need[@]}"; do
+  if grep -qE "^$k=" .env; then ok ".env has $k"; else warn ".env missing $k"; miss=1; fi
+done
+
+# DB ping
+node - <<'NODE' >/dev/null && echo -e "DB: ${GREEN}ok${NC}" || { echo -e "DB: ${RED}fail${NC}"; exit 1; }
+require('dotenv').config();
+const m=require('mysql2/promise');
+(async()=>{const db=await m.createConnection({
+  host:process.env.DB_HOST, port:+(process.env.DB_PORT||3306),
+  user:process.env.DB_USER, password:process.env.DB_PASSWORD, database:process.env.DB_NAME
+}); await db.query('SELECT 1'); await db.end();})();
+NODE
+
+# Consent summary quick look
+mysql -e "SELECT * FROM v_guild_consent_summary ORDER BY pct_effective DESC, consent_on DESC, guild_name LIMIT 10" "${DB_NAME:-s26873_slimy}" >/dev/null 2>&1 && ok "consent summary view" || warn "consent summary view not available"
+
+# Sheets append test (non-fatal)
+node scripts/verify-sheets.js >/dev/null 2>&1 && ok "sheets append test" || warn "sheets append test skipped/failed"
+
+# PM2 state
+pm2 ls >/dev/null 2>&1 && ok "PM2 running" || warn "PM2 not running"
+SH
+chmod +x scripts/checklist.sh
+
+echo "▶ PM2 logrotate & persistence..."
+pm2 install pm2-logrotate >/dev/null 2>&1 || true
+pm2 set pm2-logrotate:max_size 10M >/dev/null 2>&1 || true
+pm2 set pm2-logrotate:retain 7 >/dev/null 2>&1 || true
+pm2 save >/dev/null 2>&1 || true
+
+echo "▶ Configure MySQL client creds for non-interactive backups (creates ~/.my.cnf if missing)..."
+set +u
+. ./.env
+set -u
+if [ ! -f "$HOME/.my.cnf" ]; then
+  cat > "$HOME/.my.cnf" <<EOF
+[client]
+user=${DB_USER}
+password=${DB_PASSWORD}
+host=${DB_HOST}
+EOF
+  chmod 600 "$HOME/.my.cnf"
+  echo "✅ ~/.my.cnf created"
+else
+  echo "ℹ️ ~/.my.cnf already exists"
+fi
+
+echo "▶ Create nightly backup cron (3:00 AM)..."
+cron_line='0 3 * * * mysqldump --single-transaction --routines --triggers s26873_slimy > "$HOME/Desktop/slimyai_setup/backups/slimy_local.$(date +\%F-\%H\%M).sql"'
+( crontab -l 2>/dev/null | grep -v "slimy_local\."; echo "$cron_line" ) | crontab -
+
+echo "▶ Seed per-user Sheets (idempotent) and verify append..."
+node scripts/seed-sheets.js
+node scripts/verify-sheets.js || true
+
+echo "▶ Restart bot to pick up env..."
+pm2 restart slimyai --update-env || true
+
+echo "▶ Final quick checks..."
+./scripts/checklist.sh || true
+
+echo
+echo "🎉 Done. Try in Discord:"
+echo "   • /consent off → /consent on (creates/ensures your sheet in the shared folder)"
+echo "   • /snail analyze with a screenshot (DB row + new line in your sheet)"
+echo "   • /export (memories) — no LIMIT errors"
+echo
+echo "🗂  See per-guild consent:"
+echo "   mysql s26873_slimy -e \"SELECT * FROM v_guild_consent_summary ORDER BY pct_effective DESC, consent_on DESC, guild_name;\""
+echo "🧰 Re-run checklist anytime: ./scripts/checklist.sh"
+# ================================================================================
+
+```
+

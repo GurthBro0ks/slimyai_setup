@@ -60,11 +60,28 @@ module.exports = {
       ? `${minutes}m ${seconds}s`
       : `${seconds}s`;
 
+    // Error tracking
     const errorCount = stats.errors?.count || 0;
     const lastError = stats.errors?.lastError || 'none';
-    const lastErrorTime = stats.errors?.lastErrorTime
-      ? new Date(stats.errors.lastErrorTime).toISOString()
-      : 'never';
+
+    // Format last error time (relative)
+    let lastErrorTimeStr = 'never';
+    if (stats.errors?.lastErrorTime) {
+      const errorAgoMs = Date.now() - stats.errors.lastErrorTime;
+      const errorAgoSec = Math.floor(errorAgoMs / 1000);
+      if (errorAgoSec < 60) {
+        lastErrorTimeStr = `${errorAgoSec}s ago`;
+      } else if (errorAgoSec < 3600) {
+        lastErrorTimeStr = `${Math.floor(errorAgoSec / 60)}m ago`;
+      } else if (errorAgoSec < 86400) {
+        lastErrorTimeStr = `${Math.floor(errorAgoSec / 3600)}h ago`;
+      } else {
+        lastErrorTimeStr = `${Math.floor(errorAgoSec / 86400)}d ago`;
+      }
+    }
+
+    // Process start time (absolute timestamp)
+    const startTime = new Date(stats.startTime).toISOString().replace('T', ' ').substring(0, 19);
     // ---- End V2 features ----
 
     const intents = c.options?.intents;
@@ -79,6 +96,9 @@ module.exports = {
       return c.mentionHandlerReady ? '✅ ready' : '⚠ attached (pending ready)';
     })();
 
+    // Check snail auto-detect handler
+    const snailAutoDetectStatus = c._snailAutoDetectAttached ? '✅ attached' : '❌ not attached';
+
     const lines = [
       `**🤖 Slimy.ai Diagnostics v2**`,
       ``,
@@ -86,13 +106,15 @@ module.exports = {
       `• Logged in as: ${c.user?.tag || '(not ready)'}`,
       `• Node: ${process.version} | PID: ${process.pid}`,
       `• Git commit: \`${gitCommit}\``,
+      `• Started: ${startTime} UTC`,
       `• Uptime: ${uptimeStr}`,
       `• Errors: ${errorCount} total`,
-      errorCount > 0 ? `  └─ Last: "${lastError}" at ${lastErrorTime}` : '',
+      errorCount > 0 ? `  └─ Last: "${lastError}" (${lastErrorTimeStr})` : '',
       ``,
-      `**🔑 Env keys**`,
+      `**🔑 Environment**`,
       `• DISCORD_TOKEN: ${process.env.DISCORD_TOKEN ? '✅ set' : '❌ missing'}`,
       `• OPENAI_API_KEY: ${process.env.OPENAI_API_KEY ? '✅ set' : '⚠ optional/empty'}`,
+      `• VISION_MODEL: ${process.env.VISION_MODEL || 'gpt-4o (default)'}`,
       ``,
       `**📡 Intents (client)**`,
       `• Guilds: ${has(GatewayIntentBits.Guilds)}`,
@@ -106,6 +128,7 @@ module.exports = {
       ``,
       `**⚙️ Handlers**`,
       `• mention handler: ${mentionStatus} (listeners: ${mentionListeners})`,
+      `• snail auto-detect: ${snailAutoDetectStatus}`,
       ``,
       `**🧪 How to test @mention**`,
       `1) In this channel, type:  @${c.user?.username} pingtest`,

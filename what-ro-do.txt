@@ -1,0 +1,26 @@
+WHAT-RO-DO: RESTORE SHEET SEEDING
+
+Context:
+- The seeding script runs with the service account from `.env`.
+- Drive rejects `files.create` with `storageQuotaExceeded` because standalone service accounts have zero personal storage.
+- We must place the target folder inside a Shared Drive *or* delegate a human Workspace account before rerunning the script.
+
+Step-by-step:
+1. Shared Drive (preferred)
+   a. In Google Drive, create or choose an existing Shared Drive that belongs to your Workspace tenant.
+   b. Inside that Shared Drive, create a folder named `slimyai_sheets` (or reuse one) and note its ID from the URL.
+   c. In the Shared Drive’s “Manage members,” add the service account email (`slimy-ai@slimy-ai.iam.gserviceaccount.com`) with `Content manager` or higher.
+   d. Update `.env` → `SHEETS_PARENT_FOLDER_ID=<new_shared_drive_folder_id>` and run `npm start` once or `pm2 restart slimyai --update-env`.
+   e. Re-run `node scripts/seed-sheets.js` and then `node scripts/verify-sheets.js`.
+   f. Confirm at least one sheet appears in the Shared Drive and that `/scripts/checklist.sh` reports “sheets append test” as green.
+
+2. Domain-wide delegation (alt path if Shared Drive unavailable)
+   a. In Google Cloud console, enable domain-wide delegation on the service account and authorize it for Drive scopes in Workspace Admin.
+   b. Set `GOOGLE_IMPERSONATED_USER=<workspace_user@yourdomain>` in `.env`.
+   c. Modify `lib/sheets-drive-create.js` to pass the `subject` option when creating the `GoogleAuth` instance, then restart PM2.
+   d. Repeat the seeding and verification commands above.
+
+3. Cleanup & tracking
+   - If you moved existing spreadsheets manually, update their `sheet_id` values in `user_guilds` to prevent duplicates.
+   - Log the remediation in the ops runbook and attach the seeding script output for future audits.
+   - Schedule a quarterly check: `./scripts/checklist.sh` + manual Drive spot check to ensure quota stays healthy.

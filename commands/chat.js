@@ -1,61 +1,9 @@
 // commands/chat.js
-const { SlashCommandBuilder, ChannelType } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const personaStore = require('../lib/persona');
 const { maybeReplyWithImage } = require('../lib/auto-image');
 const modeHelper = require('../lib/modes');
 const { formatChatDisplay } = require('../lib/text-format');
-
-const THREAD_TYPES = new Set([
-  ChannelType.PublicThread,
-  ChannelType.PrivateThread,
-  ChannelType.AnnouncementThread,
-]);
-
-function buildEmptyModeState() {
-  const state = {};
-  for (const key of modeHelper.MODE_KEYS) state[key] = false;
-  return state;
-}
-
-function resolveModeContext(channel) {
-  if (!channel) return null;
-  const parents = [];
-  let targetType = 'channel';
-  const channelType = channel.type;
-
-  if (channelType === ChannelType.GuildCategory) {
-    targetType = 'category';
-  } else if (THREAD_TYPES.has(channelType)) {
-    targetType = 'thread';
-    if (channel.parentId) {
-      parents.push({ targetId: channel.parentId, targetType: 'channel' });
-      const parentChannel = channel.guild?.channels?.cache?.get(channel.parentId) || channel.parent;
-      if (parentChannel?.parentId) {
-        parents.push({ targetId: parentChannel.parentId, targetType: 'category' });
-      }
-    }
-  } else {
-    targetType = 'channel';
-    if (channel.parentId) {
-      parents.push({ targetId: channel.parentId, targetType: 'category' });
-    }
-  }
-
-  return { targetId: channel.id, targetType, parents };
-}
-
-function getEffectiveModesForChannel(guild, channel) {
-  if (!guild || !channel) return buildEmptyModeState();
-  const context = resolveModeContext(channel);
-  if (!context) return buildEmptyModeState();
-  const view = modeHelper.viewModes({
-    guildId: guild.id,
-    targetId: context.targetId,
-    targetType: context.targetType,
-    parents: context.parents,
-  });
-  return view.effective.modes;
-}
 
 // Short history per (channelId,userId)
 const histories = new Map();
@@ -100,7 +48,7 @@ async function runConversation({
   if (!effectiveModes) {
     const channel = global.client?.channels?.cache?.get(channelId);
     const guild = guildId ? global.client?.guilds?.cache?.get(guildId) : null;
-    effectiveModes = getEffectiveModesForChannel(guild, channel);
+    effectiveModes = modeHelper.getEffectiveModesForChannel(guild, channel);
   }
 
   if (effectiveModes.personality) {
@@ -153,7 +101,7 @@ module.exports = {
 
     try {
       const parentId = interaction.channel?.parentId || interaction.channel?.parent?.id;
-      const effectiveModes = getEffectiveModesForChannel(interaction.guild, interaction.channel);
+      const effectiveModes = modeHelper.getEffectiveModesForChannel(interaction.guild, interaction.channel);
       
       // FIX: Use the new mode keys
       const rating = effectiveModes.rating_unrated
@@ -199,5 +147,4 @@ module.exports = {
 
   runConversation,
   formatChatDisplay,
-  getEffectiveModesForChannel,
 };

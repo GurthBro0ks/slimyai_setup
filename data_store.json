@@ -1,37 +1,75 @@
 {
-  "prefs": [
-    {
-      "userId": "123",
-      "guildId": "456",
-      "key": "consent",
-      "value": "1"
-    },
-    {
-      "userId": "u1",
-      "guildId": "g1",
-      "key": "consent",
-      "value": "1"
-    },
-    {
-      "userId": "user1",
-      "guildId": "guild1",
-      "key": "consent",
-      "value": "1"
-    },
-    {
-      "userId": "user123",
-      "guildId": "guild456",
-      "key": "consent",
-      "value": "1"
-    }
-  ],
+  "prefs": [],
   "memos": [
     {
-      "_id": "1759579124763y3agseluxr",
+      "_id": "6f96d8fd-079c-4b0b-bc49-8250645e8ce8",
       "userId": "user1",
       "guildId": "guild1",
-      "content": "note",
-      "createdAt": 1759579124763
+      "content": "Note 0",
+      "createdAt": 1759946033718
+    },
+    {
+      "_id": "0e469ea0-812d-4188-9696-52d772080b5f",
+      "userId": "user1",
+      "guildId": "guild1",
+      "content": "Note 1",
+      "createdAt": 1759946033719
+    },
+    {
+      "_id": "091cf17e-8e4b-4c30-a645-23bc184bd24a",
+      "userId": "user1",
+      "guildId": "guild1",
+      "content": "Note 2",
+      "createdAt": 1759946033719
+    },
+    {
+      "_id": "ad483f76-2437-4237-9601-37c69726c63c",
+      "userId": "user1",
+      "guildId": "guild1",
+      "content": "Note 3",
+      "createdAt": 1759946033720
+    },
+    {
+      "_id": "d5f69ce8-deec-4ff3-b125-6c45dcdb7a21",
+      "userId": "user1",
+      "guildId": "guild1",
+      "content": "Note 4",
+      "createdAt": 1759946033720
+    },
+    {
+      "_id": "26259ca8-6acd-4f84-a770-b4b3c02aa33c",
+      "userId": "user1",
+      "guildId": "guild1",
+      "content": "Note 5",
+      "createdAt": 1759946033721
+    },
+    {
+      "_id": "8fc19800-af9d-463f-b56c-cc6e63074548",
+      "userId": "user1",
+      "guildId": "guild1",
+      "content": "Note 6",
+      "createdAt": 1759946033721
+    },
+    {
+      "_id": "24cf1281-5cad-401f-ab83-92e87704d8be",
+      "userId": "user1",
+      "guildId": "guild1",
+      "content": "Note 7",
+      "createdAt": 1759946033722
+    },
+    {
+      "_id": "09c0c789-4498-4c3a-b449-ec1a30779358",
+      "userId": "user1",
+      "guildId": "guild1",
+      "content": "Note 8",
+      "createdAt": 1759946033723
+    },
+    {
+      "_id": "897eef74-5867-4dcd-8502-9a3ae7f08b80",
+      "userId": "user1",
+      "guildId": "guild1",
+      "content": "Note 9",
+      "createdAt": 1759946033723
     }
   ],
   "channelModes": []

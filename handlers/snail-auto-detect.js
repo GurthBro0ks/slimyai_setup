@@ -1,7 +1,7 @@
 // handlers/snail-auto-detect.js
 const { Events } = require('discord.js');
 const { analyzeSnailScreenshot, formatSnailAnalysis } = require('../lib/snail-vision');
-const chat = require('../commands/chat');
+const modeHelper = require('../lib/modes');
 
 const COOLDOWN_MS = 10000; // 10 seconds per user
 const visionCooldown = new Map();
@@ -16,7 +16,7 @@ function attachSnailAutoDetect(client) {
       if (!message.attachments.size) return;
 
       // Check if super_snail mode is active in this channel
-      const effectiveModes = chat.getEffectiveModesForChannel(message.guild, message.channel);
+      const effectiveModes = modeHelper.getEffectiveModesForChannel(message.guild, message.channel);
       if (!effectiveModes.super_snail) return;
 
       // Check if attachment is an image
