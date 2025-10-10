@@ -1,6 +1,20 @@
 // commands/export.js - Database version (v2.0)
-const { SlashCommandBuilder, AttachmentBuilder, MessageFlags, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const db = require('../lib/database');
+const memoryStore = require('../lib/memory');
+
+function parseMaybeJson(value, fallback) {
+  if (value === null || value === undefined) return fallback;
+  if (Array.isArray(fallback) && Array.isArray(value)) return value;
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string') return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -8,21 +22,36 @@ module.exports = {
     .setDescription('Export your notes (latest 25)'),
 
   async execute(interaction) {
-    if (!db.isConfigured()) {
-      return interaction.reply({
-        content: '❌ Database not configured. Contact bot administrator.',
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
     try {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-      const memories = await db.getMemories(
-        interaction.user.id,
-        interaction.guildId,
-        25
-      );
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId || null;
+      const databaseConfigured = db.isConfigured();
+
+      const recordsRaw = databaseConfigured
+        ? await db.getMemories(userId, guildId, 25)
+        : await memoryStore.listMemos({ userId, guildId, limit: 25 });
+
+      const memories = (recordsRaw || []).map((record) => {
+        if (databaseConfigured) {
+          return {
+            id: record.id,
+            note: record.note,
+            tags: parseMaybeJson(record.tags, []),
+            context: parseMaybeJson(record.context, {}),
+            createdAt: record.createdAt || record.created_at || null,
+          };
+        }
+
+        return {
+          id: record._id || record.id,
+          note: record.content,
+          tags: Array.isArray(record.tags) ? record.tags : [],
+          context: record.context || {},
+          createdAt: record.createdAt || null,
+        };
+      });
 
       if (memories.length === 0) {
         return interaction.editReply({

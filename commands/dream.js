@@ -137,11 +137,24 @@ module.exports = {
       });
     }
 
-    const subcommand = interaction.options.getSubcommand(false);
+    let subcommand;
+    try {
+      subcommand = interaction.options.getSubcommand();
+    } catch (err) {
+      subcommand = null;
+    }
+
+    if (!subcommand) {
+      return interaction.reply({
+        content: '❓ Try `/dream styles` to preview options or `/dream create` to generate an image.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
     if (subcommand === 'styles') {
       return interaction.reply({
         embeds: [buildStylesEmbed()],
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 

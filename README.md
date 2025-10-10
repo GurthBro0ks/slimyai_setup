@@ -32,6 +32,18 @@ A powerful AI-powered Discord bot with advanced memory, image generation, and pe
 
 ---
 
+## 🛠 Recent Maintenance (Oct 2025)
+
+- Replaced deprecated `ephemeral` options with `MessageFlags` so `/dream`, `/consent`, `/remember`, `/export`, and `/forget` stay compatible with the latest Discord API.
+- Added fallback logic for memory and consent flows: when the database pool is unavailable the bot transparently uses the JSON store, keeping development servers functional.
+- Introduced `db.initialize()` and safer `LIMIT` handling to harden database calls on startup.
+- Sanitised the sample Google service account file and removed oversized backups from git; supply a real key before enabling `/consent sheets`.
+- Expanded `.gitignore` to keep future local archives (e.g. `app-files-backup.tar.gz`) out of commits.
+
+After pulling new changes, run `npm run deploy` to refresh slash commands before restarting the bot.
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -158,7 +170,7 @@ const mysql = require('mysql2/promise');
   const app = await mysql.createConnection({ host, port, user, password: pass, database: db });
   await app.query('SELECT 1');
   await app.end();
-  console.log('Database ready for local development.');
+  console.log('✅ Database ready');
 })();
 NODE
 ```

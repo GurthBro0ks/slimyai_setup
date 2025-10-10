@@ -1,6 +1,7 @@
 // commands/remember.js - Database version (v2.0)
-const { SlashCommandBuilder, MessageFlags, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const db = require('../lib/database');
+const memoryStore = require('../lib/memory');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,20 +19,22 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (!db.isConfigured()) {
-      return interaction.reply({
-        content: '❌ Database not configured. Contact bot administrator.',
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
     try {
       const note = interaction.options.getString('note', true);
       const tagsInput = interaction.options.getString('tags');
       const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()) : [];
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId || null;
+      const databaseConfigured = db.isConfigured();
 
       // Check consent (server-wide)
-      const hasConsent = await db.getUserConsent(interaction.user.id);
+      const hasConsent = databaseConfigured
+        ? typeof db.getUserConsent === 'function'
+          ? (db.getUserConsent.length >= 2
+            ? await db.getUserConsent(userId, guildId)
+            : await db.getUserConsent(userId))
+          : false
+        : await memoryStore.getConsent({ userId, guildId });
 
       if (!hasConsent) {
         return interaction.reply({
@@ -42,25 +45,39 @@ module.exports = {
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-      // Save memory with context
-      const memory = await db.saveMemory(
-        interaction.user.id,
-        interaction.guildId,
-        note,
-        tags,
-        {
-          channelId: interaction.channelId,
-          channelName: interaction.channel?.name || 'unknown',
-          timestamp: Date.now()
-        }
-      );
+      const context = {
+        channelId: interaction.channelId,
+        channelName: interaction.channel?.name || 'unknown',
+        timestamp: Date.now()
+      };
+
+      let memoryRecord;
+      if (databaseConfigured) {
+        memoryRecord = await db.saveMemory(
+          userId,
+          guildId,
+          note,
+          tags,
+          context
+        );
+      } else {
+        memoryRecord = await memoryStore.addMemo({
+          userId,
+          guildId,
+          content: note,
+          tags,
+          context
+        });
+      }
+
+      const memoryId = memoryRecord?.id || memoryRecord?._id || 'unknown';
 
       const embed = new EmbedBuilder()
         .setColor(0x00FF00)
         .setTitle('📝 Memory Saved')
         .setDescription(`**Note:** ${note}`)
         .addFields(
-          { name: 'Memory ID', value: `\`${memory.id}\``, inline: true },
+          { name: 'Memory ID', value: `\`${memoryId}\``, inline: true },
           { name: 'Server', value: interaction.guild?.name || 'Unknown', inline: true }
         )
         .setTimestamp();
@@ -81,10 +98,7 @@ module.exports = {
       if (interaction.deferred) {
         return interaction.editReply({ content: errorMsg });
       } else {
-        return interaction.reply({
-          content: errorMsg,
-          flags: MessageFlags.Ephemeral
-        });
+        return interaction.reply({ content: errorMsg, flags: MessageFlags.Ephemeral });
       }
     }
   }

@@ -1,7 +1,8 @@
 // commands/consent.js - Server-wide consent system (v2.0)
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const db = require('../lib/database');
 const sheetsCreator = require('../lib/sheets-creator');
+const memoryStore = require('../lib/memory');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -31,34 +32,75 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // Check database configuration
-    if (!db.isConfigured()) {
+    let subcommand;
+    try {
+      subcommand = interaction.options.getSubcommand();
+    } catch {
       return interaction.reply({
-        content: '❌ Database not configured. Please contact the bot administrator.',
-        flags: MessageFlags.Ephemeral
+        content: '❌ Choose a subcommand: `/consent status`, `/consent memory`, or `/consent sheets`.',
+        flags: MessageFlags.Ephemeral,
       });
     }
 
-    const subcommand = interaction.options.getSubcommand();
+    const userId = interaction.user.id;
+    const guildId = interaction.guildId || null;
+    const guildName = interaction.guild?.name || 'Unknown';
+    const databaseConfigured = db.isConfigured();
+
+    const getMemoryConsent = async () => {
+      if (databaseConfigured) {
+        try {
+          if (typeof db.getUserConsent === 'function') {
+            if (db.getUserConsent.length >= 2) {
+              return await db.getUserConsent(userId, guildId);
+            }
+            return await db.getUserConsent(userId);
+          }
+          return false;
+        } catch (err) {
+          console.error('[consent] Failed to read consent from database:', err);
+          return false;
+        }
+      }
+      return memoryStore.getConsent({ userId, guildId });
+    };
+
+    const setMemoryConsent = async (enabled) => {
+      if (databaseConfigured) {
+        if (typeof db.setUserConsent === 'function') {
+          if (db.setUserConsent.length >= 3) {
+            await db.setUserConsent(userId, guildId, enabled);
+          } else {
+            await db.setUserConsent(userId, enabled);
+          }
+        }
+      } else {
+        await memoryStore.setConsent({ userId, guildId, allowed: enabled });
+      }
+    };
 
     try {
       if (subcommand === 'status') {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        const userId = interaction.user.id;
-        const guildId = interaction.guildId;
+        const memoryConsent = await getMemoryConsent();
 
-        // Get memory consent
-        const memoryConsent = await db.getUserConsent(userId);
+        let sheetsFieldValue = '⚠️ Google Sheets integration requires the database to be configured by the administrator.';
+        if (databaseConfigured) {
+          const sheetsData = await db.getSheetsConsent(userId, guildId);
+          const sheetsEnabled = sheetsData.sheets_consent;
+          const sheetId = sheetsData.sheet_id;
 
-        // Get sheets consent
-        const sheetsData = await db.getSheetsConsent(userId, guildId);
+          sheetsFieldValue = sheetsEnabled && sheetId
+            ? `✅ **Enabled**\n[View Spreadsheet](https://docs.google.com/spreadsheets/d/${sheetId})`
+            : '❌ **Disabled** - Super Snail stats are not being saved to sheets';
+        }
 
         // Build embed
         const embed = new EmbedBuilder()
           .setColor(memoryConsent ? 0x00FF00 : 0xFF0000)
           .setTitle('📋 Your Consent Settings')
-          .setDescription(`Server: **${interaction.guild?.name || 'Unknown'}**`)
+          .setDescription(`Server: **${guildName}**`)
           .setTimestamp();
 
         // Memory consent field
@@ -71,13 +113,9 @@ module.exports = {
         });
 
         // Sheets consent field
-        const sheetsEnabled = sheetsData.sheets_consent;
-        const sheetId = sheetsData.sheet_id;
         embed.addFields({
           name: '📊 Google Sheets Integration',
-          value: sheetsEnabled && sheetId
-            ? `✅ **Enabled**\n[View Spreadsheet](https://docs.google.com/spreadsheets/d/${sheetId})`
-            : '❌ **Disabled** - Super Snail stats are not being saved to sheets',
+          value: sheetsFieldValue,
           inline: false
         });
 
@@ -88,18 +126,17 @@ module.exports = {
 
       if (subcommand === 'memory') {
         const enable = interaction.options.getBoolean('enable', true);
-        const userId = interaction.user.id;
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        await db.setUserConsent(userId, enable);
+        await setMemoryConsent(enable);
 
         const embed = new EmbedBuilder()
           .setColor(enable ? 0x00FF00 : 0xFF0000)
           .setTitle(enable ? '✅ Memory Enabled' : '🧽 Memory Disabled')
           .setDescription(
             enable
-              ? `Your notes will be saved **server-wide** in **${interaction.guild?.name}**.\n\nYou can now use:\n• \`/remember\` to save notes\n• \`/export\` to view saved notes\n• \`/forget\` to delete notes`
-              : `Memory has been disabled for **${interaction.guild?.name}**.\n\nNew notes will NOT be saved, but existing notes remain until you delete them with \`/forget all\`.`
+              ? `Your notes will be saved **server-wide** in **${guildName}**.\n\nYou can now use:\n• \`/remember\` to save notes\n• \`/export\` to view saved notes\n• \`/forget\` to delete notes`
+              : `Memory has been disabled for **${guildName}**.\n\nNew notes will NOT be saved, but existing notes remain until you delete them with \`/forget all\`.`
           )
           .setTimestamp();
 
@@ -107,9 +144,14 @@ module.exports = {
       }
 
       if (subcommand === 'sheets') {
+        if (!databaseConfigured) {
+          return interaction.reply({
+            content: '❌ Google Sheets integration requires the database to be configured by the bot administrator.',
+            flags: MessageFlags.Ephemeral
+          });
+        }
+
         const enable = interaction.options.getBoolean('enable', true);
-        const userId = interaction.user.id;
-        const guildId = interaction.guildId;
 
         if (enable) {
           // Check if Google Sheets is configured
@@ -169,7 +211,7 @@ module.exports = {
             .setColor(0xFF0000)
             .setTitle('📊 Google Sheets Disabled')
             .setDescription(
-              `Google Sheets integration has been disabled for **${interaction.guild?.name}**.\n\n` +
+              `Google Sheets integration has been disabled for **${guildName}**.\n\n` +
               `Your spreadsheet will remain intact but new stats will not be saved automatically.\n\n` +
               `You can re-enable it anytime with \`/consent sheets enable:true\``
             )

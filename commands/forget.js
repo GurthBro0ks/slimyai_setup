@@ -1,6 +1,7 @@
 // commands/forget.js - Database version (v2.0)
-const { SlashCommandBuilder, MessageFlags, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const db = require('../lib/database');
+const memoryStore = require('../lib/memory');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -13,23 +14,19 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (!db.isConfigured()) {
-      return interaction.reply({
-        content: '❌ Database not configured. Contact bot administrator.',
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
     try {
       const id = interaction.options.getString('id', true);
       const userId = interaction.user.id;
-      const guildId = interaction.guildId;
+      const guildId = interaction.guildId || null;
+      const databaseConfigured = db.isConfigured();
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       if (id.toUpperCase() === 'ALL') {
         // Delete all memories for this user in this server
-        const deleted = await db.deleteAllMemories(userId, guildId);
+        const deleted = databaseConfigured
+          ? await db.deleteAllMemories(userId, guildId)
+          : await memoryStore.deleteAllMemos({ userId, guildId });
 
         const embed = new EmbedBuilder()
           .setColor(0xFF6B6B)
@@ -40,7 +37,9 @@ module.exports = {
         return interaction.editReply({ embeds: [embed] });
       } else {
         // Delete specific memory
-        const deleted = await db.deleteMemory(userId, guildId, id.trim());
+        const deleted = databaseConfigured
+          ? await db.deleteMemory(userId, guildId, id.trim())
+          : await memoryStore.deleteMemo({ id: id.trim(), userId, guildId });
 
         if (deleted) {
           const embed = new EmbedBuilder()
@@ -65,10 +64,7 @@ module.exports = {
       if (interaction.deferred) {
         return interaction.editReply({ content: errorMsg });
       } else {
-        return interaction.reply({
-          content: errorMsg,
-          flags: MessageFlags.Ephemeral
-        });
+        return interaction.reply({ content: errorMsg, flags: MessageFlags.Ephemeral });
       }
     }
   }
