@@ -1,9 +1,9 @@
 const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { getEffectiveModesForChannel } = require('../lib/modes');
 const { generateImageWithSafety } = require('../lib/images');
-
-const COOLDOWN_MS = 10000;
-const userCooldowns = new Map();
+const rateLimiter = require('../lib/rate-limiter');
+const metrics = require('../lib/metrics');
+const logger = require('../lib/logger');
 
 const DREAM_STYLES = {
   standard: {
@@ -109,74 +109,40 @@ function buildStylesEmbed() {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('dream')
-    .setDescription('Generate images using AI - bring your dreams to life')
-    .addSubcommand(sub =>
-      sub.setName('create')
-        .setDescription('Generate an image with AI')
-        .addStringOption(o =>
-          o.setName('prompt')
-            .setDescription('Describe your dream image')
-            .setRequired(true)
-        )
-        .addStringOption(o =>
-          o.setName('style')
-            .setDescription('Art style for your dream')
-            .addChoices(...STYLE_CHOICES)
-        )
+    .setDescription('Generate AI images - bring your dreams to life')
+    .addStringOption(o =>
+      o.setName('prompt')
+        .setDescription('Describe your dream image')
+        .setRequired(true)
     )
-    .addSubcommand(sub =>
-      sub.setName('styles')
-        .setDescription('View available dream styles with examples')
+    .addStringOption(o =>
+      o.setName('style')
+        .setDescription('Art style (standard/poster/neon/photoreal/anime/watercolor/3d-render/pixel/sketch/cinematic)')
+        .addChoices(...STYLE_CHOICES)
     ),
 
   async execute(interaction) {
+    const startTime = Date.now();
+
+    // Rate limiting - 10 second cooldown
+    const check = rateLimiter.checkCooldown(interaction.user.id, 'dream', 10);
+    if (check.limited) {
+      metrics.trackCommand('dream', Date.now() - startTime, false);
+      return interaction.reply({
+        content: `⏳ Slow down! Please wait ${check.remaining}s before generating another image.`,
+        flags: MessageFlags.Ephemeral
+      });
+    }
+
     if (!process.env.OPENAI_API_KEY) {
+      metrics.trackCommand('dream', Date.now() - startTime, false);
       return interaction.reply({
         content: '❌ OPENAI_API_KEY is not configured. Ask an admin to set it first.',
         flags: MessageFlags.Ephemeral
       });
     }
 
-    let subcommand;
-    try {
-      subcommand = interaction.options.getSubcommand();
-    } catch (err) {
-      subcommand = null;
-    }
-
-    if (!subcommand) {
-      return interaction.reply({
-        content: '❓ Try `/dream styles` to preview options or `/dream create` to generate an image.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    if (subcommand === 'styles') {
-      return interaction.reply({
-        embeds: [buildStylesEmbed()],
-        flags: MessageFlags.Ephemeral
-      });
-    }
-
-    if (subcommand !== 'create') {
-      return interaction.reply({
-        content: '❓ Unsupported /dream subcommand. Try `/dream create` or `/dream styles`.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
     const prompt = interaction.options.getString('prompt', true);
-
-    const now = Date.now();
-    const lastUse = userCooldowns.get(interaction.user.id) || 0;
-    if (now - lastUse < COOLDOWN_MS) {
-      const waitMs = COOLDOWN_MS - (now - lastUse);
-      return interaction.reply({
-        content: formatCooldownMessage(waitMs),
-        flags: MessageFlags.Ephemeral
-      });
-    }
-    userCooldowns.set(interaction.user.id, now);
 
     const styleKey = interaction.options.getString('style') || 'standard';
     const style = DREAM_STYLES[styleKey] || DREAM_STYLES.standard;
@@ -209,8 +175,9 @@ module.exports = {
       });
 
       if (!result.success) {
-        // Reset cooldown so user can retry if generation failed
-        userCooldowns.delete(interaction.user.id);
+        metrics.trackCommand('dream', Date.now() - startTime, false);
+        metrics.trackError('dream_generation', result.message || 'Unknown error');
+        logger.error('Dream generation failed', { userId: interaction.user.id, error: result.message });
         return interaction.editReply({ content: result.message || '❌ Image generation failed.' });
       }
 
@@ -218,13 +185,16 @@ module.exports = {
         name: `dream-${styleKey}-${Date.now()}.png`
       });
 
+      metrics.trackCommand('dream', Date.now() - startTime, true);
       return interaction.editReply({
         content: `${style.emoji} **Dream Created!**\n**Style:** ${style.name}\n**Prompt:** ${prompt.trim()}`,
         files: [attachment]
       });
     } catch (err) {
+      metrics.trackCommand('dream', Date.now() - startTime, false);
+      metrics.trackError('dream_command', err.message);
+      logger.error('Dream command failed', { userId: interaction.user.id, error: err.message });
       console.error('[DREAM ERROR] Unexpected failure:', err);
-      userCooldowns.delete(interaction.user.id);
       const message = err?.message ? `❌ Dream creation failed: ${err.message}` : '❌ Dream creation failed.';
       return interaction.editReply({ content: message });
     }

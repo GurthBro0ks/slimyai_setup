@@ -2,6 +2,9 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const db = require('../lib/database');
 const memoryStore = require('../lib/memory');
+const rateLimiter = require('../lib/rate-limiter');
+const metrics = require('../lib/metrics');
+const logger = require('../lib/logger');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -19,7 +22,19 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    const startTime = Date.now();
+
     try {
+      // Rate limiting - 3 second cooldown
+      const check = rateLimiter.checkCooldown(interaction.user.id, 'remember', 3);
+      if (check.limited) {
+        metrics.trackCommand('remember', Date.now() - startTime, false);
+        return interaction.reply({
+          content: `⏳ Slow down! Please wait ${check.remaining}s before saving another memory.`,
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
       const note = interaction.options.getString('note', true);
       const tagsInput = interaction.options.getString('tags');
       const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()) : [];
@@ -38,7 +53,7 @@ module.exports = {
 
       if (!hasConsent) {
         return interaction.reply({
-          content: '❌ Memory consent required.\n\nEnable it with: `/consent memory enable:true`',
+          content: '❌ Memory consent required.\n\nEnable it with `/consent set allow:true`.',
           flags: MessageFlags.Ephemeral
         });
       }
@@ -88,9 +103,13 @@ module.exports = {
 
       embed.setFooter({ text: 'Use /export to view all memories or /forget to delete' });
 
+      metrics.trackCommand('remember', Date.now() - startTime, true);
       return interaction.editReply({ embeds: [embed] });
 
     } catch (err) {
+      metrics.trackCommand('remember', Date.now() - startTime, false);
+      metrics.trackError('remember_command', err.message);
+      logger.error('Remember command failed', { userId: interaction.user.id, error: err.message });
       console.error('[remember] Error:', err);
 
       const errorMsg = '❌ Failed to save memory. Please try again.';

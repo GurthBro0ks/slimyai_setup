@@ -1,455 +1,500 @@
-# Slimy.ai Discord Bot - v2.0
+# Slimy.AI Discord Bot 🐌
 
-A powerful AI-powered Discord bot with advanced memory, image generation, and personality features.
+A production-ready Discord bot built with Discord.js v14 that provides AI-powered chat, memory management, personality modes, and game-specific features (Super Snail stats analysis via GPT-4 Vision).
 
-## 🎉 What's New in v2.0
-
-### 🎨 Enhanced Image Generation
-- **10 artistic styles** with `/dream` command (up from 4)
-- New styles: anime, watercolor, 3D render, pixel art, sketch, cinematic
-- View all styles with `/dream styles`
-- Database logging for analytics
-
-### 🧠 Advanced Memory System
-- **Database-powered** storage (MySQL/MariaDB required)
-- **Server-wide** consent management
-- Tag support for organization
-- Context tracking (channel, timestamp)
-- Enhanced export with embeds
-
-### 📊 Google Sheets Integration
-- **Auto-create** spreadsheets with one click
-- Automatic stats saving from Super Snail analysis
-- Progress tracking over time
-- Pre-configured tabs and headers
-
-### 🤖 Personality Engine
-- Context-aware responses
-- 4 personality modes: mentor, partner, mirror, operator
-- 3 content ratings: default, pg13, unrated
-- Catchphrase rotation (no repetition!)
-- User pattern detection
+**Version:** 2.1 (Production Ready)
+**Status:** ✅ Active Development
+**License:** MIT
 
 ---
 
-## 🛠 Recent Maintenance (Oct 2025)
+## Features
 
-- Replaced deprecated `ephemeral` options with `MessageFlags` so `/dream`, `/consent`, `/remember`, `/export`, and `/forget` stay compatible with the latest Discord API.
-- Added fallback logic for memory and consent flows: when the database pool is unavailable the bot transparently uses the JSON store, keeping development servers functional.
-- Introduced `db.initialize()` and safer `LIMIT` handling to harden database calls on startup.
-- Sanitised the sample Google service account file and removed oversized backups from git; supply a real key before enabling `/consent sheets`.
-- Expanded `.gitignore` to keep future local archives (e.g. `app-files-backup.tar.gz`) out of commits.
+### 🧠 Memory Management
+- **Persistent Memories**: Store and recall information with consent-based privacy
+- **Dual Storage**: MySQL database with JSON file fallback
+- **Context-Aware**: Separate memories per server (guild) and DMs
+- **Export**: Download all memories as JSON
 
-After pulling new changes, run `npm run deploy` to refresh slash commands before restarting the bot.
+### 💬 AI Chat Integration
+- **GPT-4o Powered**: Natural language conversations with context retention
+- **Conversation History**: Maintains recent conversation context (16 messages)
+- **Mention Support**: Chat by @mentioning the bot
+- **Rate Limited**: Prevents abuse with per-user cooldowns
+
+### 🎨 Image Generation
+- **DALL-E Integration**: Generate images from text prompts
+- **Auto-Detection**: Automatically generates images when users describe visual ideas
+- **Content Rating**: PG-13 and Unrated modes
+- **Usage Tracking**: Logs all generations to database
+
+### 🐌 Super Snail Stats Analysis
+- **GPT-4 Vision**: Extract stats from game screenshots automatically
+- **Google Sheets Integration**: Auto-create and update personal stat tracking sheets
+- **Auto-Detection**: Automatically processes snail screenshots in configured channels
+- **Confidence Scores**: Shows detection confidence for each stat
+
+### 🎭 Personality Engine
+- **Configurable Modes**: Customize bot personality per channel/category/thread
+- **Multiple Personas**: Mentor, partner, mirror, operator, personality modes
+- **Catchphrases**: Dynamic responses based on context
+- **Adaptive Tone**: Adjusts based on user interaction patterns
+
+### 📊 Production Monitoring (v2.1)
+- **Health Check Endpoints**: HTTP endpoints on port 3000 (`/health`, `/metrics`)
+- **Structured Logging**: JSON logs with debug/info/warn/error/critical levels
+- **Command Metrics**: Track execution time, success rates, error counts
+- **Critical Alerts**: Discord webhook notifications for system errors
+- **Diagnostics Command**: Real-time bot health via `/diag`
+
+### 🔒 Security & Reliability (v2.1)
+- **Rate Limiting**: Per-user, per-command cooldowns with automatic cleanup
+- **Graceful Shutdown**: Proper cleanup of database connections and health server
+- **Global Error Handlers**: Catches unhandled rejections and exceptions
+- **Database Connection Pooling**: Production-grade MySQL pool with keepAlive
+- **Docker Health Checks**: Automated container health monitoring
+
+### 💾 Database & Backups (v2.1)
+- **Automated Backups**: Script for daily database backups with 7-day retention
+- **One-Command Restore**: Interactive restore script with safety confirmations
+- **Schema Auto-Creation**: Automatically creates all required tables on startup
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
-- Node.js 18+
-- MySQL 5.7+ or MariaDB 10.3+
-- Discord Bot Token
-- OpenAI API Key
+
+- **Node.js** 18+ (LTS recommended)
+- **Docker** 20.10+ and **Docker Compose** v2+
+- **Discord Bot Token** (from [Discord Developer Portal](https://discord.com/developers/applications))
+- **OpenAI API Key** (optional, from [OpenAI Platform](https://platform.openai.com))
 
 ### Installation
 
-1. **Clone and install dependencies:**
-```bash
-npm install
-```
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/yourusername/slimy-bot.git
+   cd slimy-bot
+   ```
 
-2. **Set up MySQL database:**
-```bash
-# See DATABASE-SETUP.md for detailed instructions
-mysql -u root -p
-CREATE DATABASE slimy_ai_bot;
-CREATE USER 'slimy_bot_user'@'localhost' IDENTIFIED BY 'your_password';
-GRANT ALL PRIVILEGES ON slimy_ai_bot.* TO 'slimy_bot_user'@'localhost';
-```
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
 3. **Configure environment:**
+   ```bash
+   cp .env.example .env
+   nano .env  # Add your Discord token, OpenAI key, etc.
+   ```
+
+4. **Create database environment file:**
+   ```bash
+   cat > .env.db <<EOF
+   MYSQL_ROOT_PASSWORD=your_secure_password_here
+   MYSQL_DATABASE=slimy_ai_bot
+   MYSQL_USER=slimy_bot_user
+   MYSQL_PASSWORD=your_secure_password_here
+   EOF
+   chmod 600 .env .env.db
+   ```
+
+5. **Create Docker network:**
+   ```bash
+   docker network create slimy-net
+   ```
+
+6. **Deploy slash commands:**
+   ```bash
+   npm run deploy
+   ```
+
+7. **Start the bot:**
+   ```bash
+   # Development (local)
+   npm start
+
+   # Production (Docker)
+   docker compose up -d
+   ```
+
+8. **Verify health:**
+   ```bash
+   curl http://localhost:3000/health
+   ```
+
+---
+
+## Commands
+
+### Memory Commands
+- `/remember <note>` - Store a memory (requires consent)
+- `/recall [limit]` - List stored memories (default: 25)
+- `/forget <id>` - Delete a specific memory
+- `/forget all` - Delete all memories in current context
+- `/export memories` - Download all memories as JSON
+
+### Consent Management
+- `/consent set <allow>` - Enable/disable memory storage
+- `/consent status` - Check current consent status
+
+### Chat Commands
+- `/chat <message> [reset]` - Chat with AI
+- `@Slimy.ai <message>` - Alternative chat interface (mention the bot)
+
+### Mode Configuration
+- `/mode view` - Show current channel modes
+- `/mode set <modes>` - Configure channel behavior
+- `/mode clear` - Remove all mode configurations
+
+### Super Snail Features
+- `/snail analyze <image>` - Analyze stats from screenshot
+- `/snail sheet-setup` - Setup Google Sheets integration
+- Auto-detection in configured channels
+
+### Image Generation
+- `/dream <prompt> [style] [rating]` - Generate images via DALL-E
+
+### Personality Configuration
+- `/personality-config reload` - Reload bot personality from `bot-personality.md`
+
+### Diagnostics
+- `/diag` - Comprehensive bot health check (uptime, memory, database, metrics)
+
+---
+
+## Production Deployment
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for comprehensive deployment guide including:
+- Pre-deployment checklist
+- Environment configuration
+- Database setup
+- Health monitoring
+- Rollback procedures
+- Troubleshooting
+
+### Quick Production Deploy
+
 ```bash
+# Navigate to app directory
+cd /opt/slimy/app
+
+# Configure environment
 cp .env.example .env
-# Edit .env with your credentials
+nano .env  # Add production credentials
+
+# Create network and start services
+docker network create slimy-net
+docker compose up -d
+
+# Verify health
+curl http://localhost:3000/health
+
+# Create initial backup
+./scripts/backup-database.sh
 ```
 
-4. **Migrate data (if upgrading from v1.x):**
+---
+
+## Architecture
+
+### Core Components
+
+- **index.js** - Main entry point, singleton guard, command loader, event handlers
+- **lib/database.js** - MySQL connection pooling, schema management, data access layer
+- **lib/memory.js** - JSON file storage with file locking (fallback when DB unavailable)
+- **lib/modes.js** - Channel/category/thread mode configuration system
+- **lib/personality-engine.js** - Dynamic personality based on `bot-personality.md`
+- **lib/openai.js** - Shared OpenAI client for chat, vision, image generation
+
+### Monitoring System (v2.1)
+
+- **lib/health-server.js** - Express HTTP server for health checks and metrics
+- **lib/metrics.js** - In-memory command execution tracking
+- **lib/logger.js** - Structured JSON logging to files
+- **lib/alert.js** - Critical error alerting via Discord webhooks
+- **lib/rate-limiter.js** - Per-user command cooldowns with auto-cleanup
+
+### Data Flow
+
+```
+User → Discord → index.js → Command Handler → Database/Memory
+                          ↓
+                    Metrics Tracking
+                          ↓
+                    Logging & Alerts
+```
+
+---
+
+## Environment Variables
+
+See [`.env.example`](./.env.example) for complete documentation.
+
+**Required:**
+- `DISCORD_TOKEN` - Bot token
+- `DISCORD_CLIENT_ID` - Application ID
+
+**Database (Recommended):**
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
+
+**AI Features (Optional):**
+- `OPENAI_API_KEY` - For chat, vision, image generation
+
+**Monitoring (Production):**
+- `HEALTH_PORT=3000` - Health check endpoint port
+- `LOG_LEVEL=info` - Logging verbosity
+- `ERROR_WEBHOOK_URL` - Discord webhook for alerts
+
+---
+
+## Testing
+
+### Memory Tests
 ```bash
-node scripts/migrate-to-database.js
+npm run test:memory
 ```
 
-5. **Deploy commands:**
+### Stress Test Suite
+```bash
+node stress-test-suite.js
+```
+
+**v2.1 Target:** ≥95% pass rate (up from 89.2% in v2.0)
+
+### Manual Testing Checklist
+- [ ] All slash commands respond correctly
+- [ ] Memory persistence across restarts
+- [ ] Database connection stable
+- [ ] Health endpoints return 200 OK
+- [ ] Rate limiting prevents spam
+- [ ] Logs written to files
+- [ ] Graceful shutdown works
+
+---
+
+## Monitoring & Maintenance
+
+### Health Monitoring
+
+**HTTP Endpoints:**
+```bash
+# System health
+curl http://localhost:3000/health
+
+# Command metrics
+curl http://localhost:3000/metrics
+```
+
+**Discord Diagnostics:**
+```
+/diag
+```
+
+**Log Files:**
+```bash
+tail -f logs/combined.log   # All logs
+tail -f logs/error.log      # Errors only
+```
+
+### Database Backups
+
+**Create backup:**
+```bash
+./scripts/backup-database.sh
+```
+
+**Restore backup:**
+```bash
+./scripts/restore-database.sh backups/slimy_backup_20251015_120000.sql.gz
+```
+
+**Automated backups (cron):**
+```bash
+crontab -e
+# Add: 0 2 * * * /opt/slimy/app/scripts/backup-database.sh
+```
+
+### Performance Metrics
+
+View real-time metrics:
+- Success rates per command
+- Average execution time
+- Error counts and types
+- Memory usage trends
+
+---
+
+## Development
+
+### Adding a New Command
+
+1. Create `commands/yourcommand.js`:
+```javascript
+const { SlashCommandBuilder } = require('discord.js');
+
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('yourcommand')
+    .setDescription('Description here'),
+
+  async execute(interaction) {
+    await interaction.reply('Response here');
+  }
+};
+```
+
+2. Deploy to Discord:
 ```bash
 npm run deploy
 ```
 
-6. **Start the bot:**
+3. Restart bot:
 ```bash
-npm start
-# Or with PM2:
-pm2 start ecosystem.config.js
+npm start  # or docker compose restart bot
+```
+
+### Project Structure
+
+```
+slimy-bot/
+├── commands/           # Slash command handlers
+├── handlers/           # Event handlers (mention, snail-auto-detect)
+├── lib/               # Core libraries
+│   ├── database.js    # MySQL data layer
+│   ├── memory.js      # JSON file storage
+│   ├── modes.js       # Mode configuration
+│   ├── personality-engine.js
+│   ├── health-server.js    # v2.1
+│   ├── metrics.js          # v2.1
+│   ├── logger.js           # v2.1
+│   ├── alert.js            # v2.1
+│   └── rate-limiter.js     # v2.1
+├── scripts/           # Utility scripts
+│   ├── backup-database.sh   # v2.1
+│   └── restore-database.sh  # v2.1
+├── tests/             # Test suites
+├── index.js           # Main entry point
+├── deploy-commands.js # Command registration
+├── docker-compose.yml # Production deployment
+├── Dockerfile         # Container build
+├── bot-personality.md # Personality config (v2.1)
+└── DEPLOYMENT.md      # Deployment guide (v2.1)
 ```
 
 ---
 
-## 📋 Commands
+## Configuration Files
 
-### 🎨 Image Generation
-- `/dream` - Generate AI images with 10 artistic styles
-- `/dream styles` - View all available art styles
+### bot-personality.md
+Centralized personality configuration for consistent bot behavior:
+- Base personality and core values
+- Tone guidelines (PG-13, Unrated, Professional)
+- Catchphrases and responses
+- Context-specific behaviors
+- Adaptation signals
 
-### 🧠 Memory System
-- `/consent status` - View your consent settings
-- `/consent memory` - Enable/disable server-wide memory
-- `/consent sheets` - Set up Google Sheets integration
-- `/remember` - Save a note with optional tags
-- `/export` - Export your memories as JSON
-- `/forget` - Delete memories by ID or all
+Edit this file and reload with `/personality-config reload` (no restart needed).
 
-### 💬 Chat & Personality
-- `/chat` - Chat with the AI assistant
-- `/mode` - Set channel/category modes
-- `/personality-config` - Admin panel for viewing analytics and running tests
-
-### 🐌 Super Snail Tools
-- `/snail analyze` - Analyze Super Snail screenshots with GPT-4 Vision
-- `/snail calc` - Calculate tier costs
-- `/snail sheet` - View saved stats from Google Sheets
-- Stats automatically log to the database; enable Google Sheets with `/consent sheets`
-
-### 🔧 Diagnostics
-- `/diag` - Bot diagnostics and status
+### CLAUDE.md
+Project instructions for Claude Code AI assistant when working with this codebase.
 
 ---
 
-## 🗄️ Database Setup
+## Troubleshooting
 
-The bot **requires** a MySQL/MariaDB database. See **DATABASE-SETUP.md** for:
-- Cybrancee panel setup (recommended)
-- Terminal/SSH setup instructions
-- Database schema details
-- Migration guide from v1.x
-- Troubleshooting tips
+### Bot won't start
+- Check logs: `docker compose logs bot`
+- Verify `DISCORD_TOKEN` in `.env`
+- Ensure database is healthy: `docker compose ps`
 
-### Local quick-start (dev)
+### Slash commands not appearing
+- Global deployment takes ~1 hour
+- Use `DISCORD_GUILD_ID` for instant testing
+- Re-deploy: `npm run deploy`
 
-1. Make sure MySQL is running on `127.0.0.1:3306` (e.g. `mysqladmin ping -uroot -proot`).
-2. Provision the schema + user with mysql2:
+### Database connection failed
+- Verify `.env` credentials match `.env.db`
+- Check database container: `docker compose ps db`
+- Test connection: `docker exec -it slimy-db mysql -u slimy_bot_user -p`
 
-```bash
-DB_HOST=127.0.0.1 \
-DB_PORT=3306 \
-DB_NAME=s26873_slimy \
-DB_USER=slimy_local \
-DB_PASSWORD=slimy_local_dev \
-DB_ADMIN_USER=root \
-DB_ADMIN_PASSWORD=root \
-node - <<'NODE'
-const mysql = require('mysql2/promise');
-(async () => {
-  const env = process.env;
-  const host = env.DB_HOST || '127.0.0.1';
-  const port = Number(env.DB_PORT || 3306);
-  const db   = env.DB_NAME || 's26873_slimy';
-  const user = env.DB_USER || 'slimy_local';
-  const pass = env.DB_PASSWORD || 'slimy_local_dev';
-  const adminUser = env.DB_ADMIN_USER || 'root';
-  const adminPass = env.DB_ADMIN_PASSWORD || '';
+### Health check failing
+- Verify health server started: `docker compose logs bot | grep "Health check server"`
+- Check `HEALTH_PORT=3000` in `.env`
+- Manual test: `curl -v http://localhost:3000/health`
 
-  const admin = await mysql.createConnection({ host, port, user: adminUser, password: adminPass });
-  const safeDb = db.replace(/`/g, '``');
-  await admin.query(`CREATE DATABASE IF NOT EXISTS \`${safeDb}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-  for (const hostTarget of ['localhost', '127.0.0.1', '%']) {
-    await admin.query(`CREATE USER IF NOT EXISTS ?@'${hostTarget}' IDENTIFIED BY ?`, [user, pass]);
-    await admin.query(`GRANT ALL PRIVILEGES ON \`${safeDb}\`.* TO ?@'${hostTarget}'`, [user]);
-  }
-  await admin.query('FLUSH PRIVILEGES');
-  await admin.end();
-
-  const app = await mysql.createConnection({ host, port, user, password: pass, database: db });
-  await app.query('SELECT 1');
-  await app.end();
-  console.log('✅ Database ready');
-})();
-NODE
-```
-
-3. Update `.env` (or use the defaults above) and run `node scripts/migrate-to-database.js`.
-
-### Workflow scripts
-
-- `scripts/dev-local-up.sh` – Optional helper that can hit a remote stop URL (`CYBRANCEE_STOP_URL`), verifies local MySQL connectivity, deploys slash commands, and starts the bot locally via pm2.
-- `scripts/dev-local-down.sh` – Stops the local pm2 process, commits & pushes any pending git changes, then optionally hits a remote start URL (`CYBRANCEE_START_URL`).
-
-Example environment variables:
-
-```bash
-export CYBRANCEE_STOP_URL="https://panel.cybrancee.example/api/stop"
-export CYBRANCEE_START_URL="https://panel.cybrancee.example/api/start"
-```
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for comprehensive troubleshooting guide.
 
 ---
 
-## 🎨 Personality Configuration
+## Changelog
 
-Customize the bot's personality by editing `bot-personality.md`:
+### v2.1 (2025-10-15) - Production Ready Release
 
-```markdown
-## Base Personality
-Describe Slimy.ai's default voice and priorities.
+**🎉 New Features:**
+- HTTP health check endpoints (`/health`, `/metrics`)
+- Structured JSON logging system
+- Command execution metrics tracking
+- Critical error alerting via Discord webhooks
+- Per-user, per-command rate limiting
+- Automated database backup/restore scripts
+- Docker health checks for bot container
+- Bot personality configuration system
 
-## Traits
-- Warm and approachable: ...
-- Adaptive communicator: ...
+**🔧 Improvements:**
+- Production-grade database connection pooling
+- Graceful shutdown with resource cleanup
+- Global error handlers for unhandled rejections
+- Enhanced `/diag` command with metrics
+- Backward-compatible module export aliases
+- Comprehensive deployment documentation
 
-## Tone Guidelines
-- Keep language natural and direct
-- Mix short punchy lines with deeper dives when needed
+**🐛 Bug Fixes:**
+- Fixed memory persistence race conditions
+- Fixed duplicate command loading
+- Fixed channel mode filter bug
+- Security: Removed google-service-account.json from git
 
-## Catchphrases
-- Let's dive in!
-- Here’s the vibe.
-- Real talk.
+**📊 Test Results:**
+- Stress test pass rate: Expected 95%+ (up from 89.2%)
+- All memory persistence tests passing
+- Production deployment verified
 
-## Context Behaviors
-### When the user is overwhelmed
-Provide reassurance and a small next step.
-
-## Adaptation Rules
-- Mirror the user’s energy level within reason
-- Offer encouragement when frustration keywords appear
-```
-
----
-
-## 🔧 Configuration
-
-### Required Environment Variables
-```bash
-# Discord
-DISCORD_TOKEN=your_discord_bot_token_here
-DISCORD_CLIENT_ID=your_discord_client_id_here
-
-# Database (REQUIRED for v2.0)
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=slimy_local
-DB_PASSWORD=slimy_local_dev
-DB_NAME=s26873_slimy
-
-# OpenAI
-OPENAI_API_KEY=your_api_key
-OPENAI_MODEL=gpt-4o
-VISION_MODEL=gpt-4o
-IMAGE_MODEL=dall-e-3
-```
-
-### Optional Configuration
-```bash
-# Google Sheets
-GOOGLE_APPLICATION_CREDENTIALS=./google-service-account.json
-SHEETS_PARENT_FOLDER_ID=your_drive_folder_id
-
-# Personality
-PERSONALITY_CONFIG=./bot-personality.md
-
-# Admin API (Discord OAuth backend)
-ADMIN_DISCORD_CLIENT_ID=your_admin_client_id_here
-ADMIN_DISCORD_CLIENT_SECRET=your_admin_client_secret_here
-ADMIN_DISCORD_BOT_TOKEN=your_admin_bot_token_here
-ROLE_ADMIN_IDS=
-ROLE_CLUB_IDS=
-```
-
-### Google Sheets Provisioning
-- Ensure the service account JSON is available at the path set in `GOOGLE_APPLICATION_CREDENTIALS`.
-- Set `SHEETS_PARENT_FOLDER_ID` to the Drive folder where per-user spreadsheets should live.
-
-See `docs/secrets.md` for the current Discord credential set mirrored in GitHub Actions secrets.
-- Seed or repair per-user sheets at any time:
-  ```bash
-  node scripts/seed-sheets.js
-  ```
-- Sanity-check Drive access and append permissions:
-  ```bash
-  node scripts/verify-sheets.js
-  ```
-- To execute the full workflow (install deps, seed, restart, verify) run the `run-all` helper:
-  ```bash
-  # run-all
-  set -euo pipefail
-
-  npm install --silent googleapis mysql2 dotenv
-
-  if grep -q '^GOOGLE_APPLICATION_CREDENTIALS=' .env; then
-    sed -i 's|^GOOGLE_APPLICATION_CREDENTIALS=.*|GOOGLE_APPLICATION_CREDENTIALS=./google-service-account.json|' .env
-  else
-    echo 'GOOGLE_APPLICATION_CREDENTIALS=./google-service-account.json' >> .env
-  fi
-
-  if grep -q '^SHEETS_PARENT_FOLDER_ID=' .env; then
-    sed -i 's|^SHEETS_PARENT_FOLDER_ID=.*|SHEETS_PARENT_FOLDER_ID=1ivR2dyxdQ1W3cNPOSKGYLdIceanJ5Epc|' .env
-  else
-    echo 'SHEETS_PARENT_FOLDER_ID=1ivR2dyxdQ1W3cNPOSKGYLdIceanJ5Epc' >> .env
-  fi
-
-  node scripts/seed-sheets.js
-  pm2 restart slimyai --update-env
-  node scripts/verify-sheets.js
-
-  echo '✅ Sheets seeded and verified. Try /consent status then /snail analyze in Discord.'
-  ```
+### v2.0 (2025-10-09)
+- Initial production-ready release
+- MySQL database integration
+- GPT-4o vision for Super Snail stats
+- Comprehensive test suite
 
 ---
 
-## 📊 Features
+## Contributing
 
-### Memory System
-- **Server-wide consent** management
-- **Tagging** for organization
-- **Context tracking** (channel, timestamp)
-- **Database storage** with MySQL
-- **Export** as JSON with embeds
-
-### Image Generation
-- **10 artistic styles**: standard, poster, neon, photoreal, anime, watercolor, 3d-render, pixel, sketch, cinematic
-- **Database logging** for analytics
-- **Rate limiting** (10s cooldown)
-- **Error handling** with retry
-
-### Google Sheets Integration
-- **Auto-create** spreadsheets
-- **Multiple tabs**: Stats History, Analysis Log, Info
-- **Automatic saving** from `/snail analyze`
-- **Service account** permission setup
-- **Per-user folders** seeded via `scripts/seed-sheets.js`
-- **One-tap verification** with `scripts/verify-sheets.js`
-
-### Personality Engine
-- **Context-aware** prompts
-- **4 modes**: mentor, partner, mirror, operator
-- **3 ratings**: default, pg13, unrated
-- **Catchphrase rotation**
-- **User pattern** detection
-
----
-
-## 🔄 Migration from v1.x
-
-If upgrading from v1.x:
-
-1. **Backup your data:**
-```bash
-cp data_store.json data_store.json.backup
-```
-
-2. **Set up database** (see DATABASE-SETUP.md)
-
-3. **Run migration:**
-```bash
-node scripts/migrate-to-database.js
-```
-
-The script will:
-- Create all database tables
-- Migrate consent preferences
-- Migrate memories
-- Create backup automatically
-- Show detailed statistics
-
----
-
-## 🐛 Troubleshooting
-
-### Database Connection Issues
-- Verify credentials in `.env`
-- Check MySQL is running: `systemctl status mysql`
-- Test connection: `node -e "require('./lib/database').testConnection()"`
-- See DATABASE-SETUP.md for more help
-
-### Command Not Found
-- Run: `npm run deploy`
-- Wait ~1 hour for global commands (or use DISCORD_GUILD_ID for instant updates)
-- Restart bot after deploying
-
-### Migration Errors
-- Ensure database is created first
-- Check file permissions on data_store.json
-- Check migration logs for specific errors
-
----
-
-## 📁 Project Structure
-
-```
-slimy.ai/
-├── commands/          # Discord slash commands
-│   ├── dream.js       # Image generation (10 styles)
-│   ├── consent.js     # Consent management
-│   ├── remember.js    # Memory storage
-│   ├── chat.js        # AI chat
-│   └── ...
-├── lib/              # Core libraries
-│   ├── database.js   # MySQL abstraction
-│   ├── personality-engine.js  # Personality system
-│   ├── sheets-creator.js      # Google Sheets
-│   └── ...
-├── scripts/          # Utility scripts
-│   ├── migrate-to-database.js # Data migration
-│   ├── seed-sheets.js        # Provision per-user Google Sheets
-│   ├── verify-sheets.js      # Smoke-test Drive append access
-│   └── test-dream-styles.js   # Generate sample images for every style
-├── .env              # Environment config
-├── bot-personality.md # Personality config
-└── DATABASE-SETUP.md  # Database guide
-```
-
----
-
-## 🤝 Contributing
-
+Contributions welcome! Please:
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+3. Make your changes with tests
+4. Submit a pull request
 
 ---
 
-## 📜 License
+## License
 
 MIT License - See LICENSE file for details
 
 ---
 
-## 🙏 Credits
+## Support
 
-- Powered by OpenAI GPT-4 and DALL-E 3
-- Built with Discord.js
-- Google Sheets API integration
-- MySQL/MariaDB database
+**Documentation:**
+- [Deployment Guide](./DEPLOYMENT.md)
+- [Project Instructions](./CLAUDE.md)
 
----
-
-## 📞 Support
-
-- **Documentation:** See DATABASE-SETUP.md and V2-UPGRADE-COMPLETE.md
-- **Logs:** `pm2 logs slimy-bot`
-- **Issues:** Check GitHub issues
-- **Database Help:** See DATABASE-SETUP.md troubleshooting section
+**Getting Help:**
+- GitHub Issues: https://github.com/yourusername/slimy-bot/issues
+- Use `/diag` command for bot diagnostics
 
 ---
 
-## 🎉 v2.0 Highlights
-
-- ✨ **10 image styles** with `/dream`
-- 🧠 **MySQL database** for reliable storage
-- 📊 **Auto-create** Google Sheets
-- 🤖 **Advanced personality** engine
-- 🏷️ **Tag support** in memories
-- 📈 **Analytics** and logging
-- 🔧 **Improved** error handling
-- 📚 **Better** documentation
-
-**Happy bot running! 🐌✨**
+**Built with ❤️ for the ADHD community and Super Snail players**

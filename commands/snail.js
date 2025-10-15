@@ -5,7 +5,9 @@ const costs = require('../supersnail-costs.js');
 const { analyzeSnailScreenshot } = require('../lib/snail-vision');
 const database = require('../lib/database');
 const sheetsCreator = require('../lib/sheets-creator');
-const mcpClient = require('../services/mcp-client');
+const rateLimiter = require('../lib/rate-limiter');
+const metrics = require('../lib/metrics');
+const logger = require('../lib/logger');
 
 // Small helper to pick the right tier function
 function pickCalc(tier) {
@@ -219,9 +221,22 @@ module.exports = {
       }
 
       if (interaction.options.getSubcommand() === 'analyze') {
+        const startTime = Date.now();
+
+        // Rate limiting - 5 second cooldown for expensive vision analysis
+        const check = rateLimiter.checkCooldown(interaction.user.id, 'snail-analyze', 5);
+        if (check.limited) {
+          metrics.trackCommand('snail-analyze', Date.now() - startTime, false);
+          return interaction.reply({
+            content: `⏳ Slow down! Please wait ${check.remaining}s before analyzing another screenshot.`,
+            ephemeral: true
+          });
+        }
+
         const attachment = interaction.options.getAttachment('screenshot', true);
 
         if (!attachment.contentType?.startsWith('image/')) {
+          metrics.trackCommand('snail-analyze', Date.now() - startTime, false);
           return interaction.reply({
             content: '⚠️ Please provide an image file (PNG, JPG, WEBP).',
             ephemeral: true
@@ -241,11 +256,6 @@ module.exports = {
           const guildId = interaction.guildId;
           const username = interaction.user.username;
           const guildName = interaction.guild?.name || 'Unknown';
-
-          // Track usage in MCP analytics (non-blocking)
-          mcpClient.getUserStats(userId, guildId, '30d')
-            .then(() => console.log(`[MCP] Tracked snail analysis for user ${userId}`))
-            .catch(err => console.error('[MCP] Analytics tracking failed:', err.message));
 
           let savedToSheet = false;
           const sheetDetails = await ensureSheetForUser({
@@ -430,7 +440,12 @@ module.exports = {
             }
           });
 
+          metrics.trackCommand('snail-analyze', Date.now() - startTime, true);
+
         } catch (err) {
+          metrics.trackCommand('snail-analyze', Date.now() - startTime, false);
+          metrics.trackError('snail_analyze', err.message);
+          logger.error('Snail analyze failed', { userId: interaction.user.id, error: err.message });
           console.error('[snail] vision error:', err);
           await interaction.editReply({
             content: `❌ Analysis failed: ${err.message}`
@@ -491,7 +506,7 @@ module.exports = {
 
       if (interaction.options.getSubcommand() === 'sheet-setup') {
         return interaction.reply({
-          content: '📊 **Sheet Setup**\n\nUse `/consent sheets enable:true` to generate a personal Google Sheet automatically. The bot will create the sheet, share it with the service account, and sync stats from `/snail analyze`. Make sure the bot administrator has configured Google credentials first.',
+          content: '📊 **Sheet Setup**\n\nTo enable automatic Google Sheets tracking:\n\n1. Use `/snail analyze` with a screenshot\n2. Click the "📊 Enable Google Sheets Tracking" button in the response\n3. A personal sheet will be created automatically\n\nAll future `/snail analyze` commands will auto-save to your sheet. Make sure the bot administrator has configured Google credentials first.',
           ephemeral: true
         });
       }
