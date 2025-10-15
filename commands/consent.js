@@ -1,49 +1,79 @@
-// commands/consent.js - FIXED VERSION
-const { SlashCommandBuilder, MessageFlags } = require("discord.js");
-const mem = require("../lib/memory");
+// commands/consent.js - Database version (v2.0)
+const { SlashCommandBuilder } = require('discord.js');
+const db = require('../lib/database');
+const memoryStore = require('../lib/memory');
+
+/** Get consent - prefer database, fallback to file **/
+async function getConsent({ guildId, userId }) {
+  const databaseConfigured = db.isConfigured();
+
+  if (databaseConfigured) {
+    try {
+      // Database uses global consent (not per-guild)
+      return await db.getUserConsent(userId);
+    } catch (err) {
+      console.error('[consent] Database error:', err.message);
+    }
+  }
+
+  // Fallback to file-based storage
+  return await memoryStore.getConsent({ guildId, userId });
+}
+
+/** Set consent - prefer database, fallback to file **/
+async function setConsent({ guildId, userId, allow }) {
+  const databaseConfigured = db.isConfigured();
+
+  if (databaseConfigured) {
+    try {
+      // Database uses global consent (not per-guild)
+      await db.setUserConsent(userId, allow);
+      return true;
+    } catch (err) {
+      console.error('[consent] Database error:', err.message);
+    }
+  }
+
+  // Fallback to file-based storage
+  return await memoryStore.setConsent({ guildId, userId, allowed: allow });
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("consent")
-    .setDescription("Allow or revoke remembering your notes")
-    .addBooleanOption((o) =>
-      o
-        .setName("allow")
-        .setDescription("true = allow memory")
-        .setRequired(true),
-    ),
+    .setName('consent')
+    .setDescription('Manage memory consent')
+    .addSubcommand(sc =>
+      sc.setName('set')
+        .setDescription('Enable or disable memory here')
+        .addBooleanOption(o =>
+          o.setName('allow').setDescription('true to enable, false to disable').setRequired(true)))
+    .addSubcommand(sc =>
+      sc.setName('status').setDescription('Show current memory consent here')),
   async execute(interaction) {
-    try {
-      const allow = interaction.options.getBoolean("allow", true);
+    const guildId = interaction.guild?.id || interaction.channelId;
+    const userId = interaction.user.id;
 
-      // Defer ONCE at the start - simple and safe
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    // Prefer subcommands if present
+    const sub = interaction.options.getSubcommand(false);
 
-      await mem.setConsent({
-        userId: interaction.user.id,
-        guildId: interaction.guildId || null,
-        allowed: allow,
-      });
-
-      return await interaction.editReply({
-        content: allow
-          ? "✅ Memory ON for you here."
-          : "🧽 Memory OFF (new notes won't be saved).",
-      });
-    } catch (err) {
-      console.error("consent error:", err);
-      const failure = "❌ consent crashed. Check logs.";
-
-      // Safe fallback - only edit if we already deferred
-      if (interaction.deferred) {
-        return interaction.editReply({ content: failure }).catch(() => {});
-      }
-
-      // Otherwise try to reply
-      return interaction.reply({ 
-        content: failure, 
-        flags: MessageFlags.Ephemeral 
-      }).catch(() => {});
+    if (sub === 'status') {
+      const on = await getConsent({ guildId, userId });
+      return interaction.reply({ content: on ? '✅ Memory ON here.' : '❌ Memory OFF here.', ephemeral: true });
     }
-  },
+
+    if (sub === 'set') {
+      const allow = interaction.options.getBoolean('allow', true);
+      await setConsent({ guildId, userId, allow });
+      return interaction.reply({ content: allow ? '✅ Memory ON for this server.' : '🛑 Memory OFF for this server.', ephemeral: true });
+    }
+
+    // Legacy fallback: /consent allow:true|false (no subcommand)
+    const legacy = interaction.options.getBoolean('allow'); // not required
+    if (legacy !== null) {
+      await setConsent({ guildId, userId, allow: legacy });
+      return interaction.reply({ content: legacy ? '✅ Memory ON for this server.' : '🛑 Memory OFF for this server.', ephemeral: true });
+    }
+
+    return interaction.reply({ content: 'Usage: /consent set allow:true|false  •  /consent status', ephemeral: true });
+  }
 };

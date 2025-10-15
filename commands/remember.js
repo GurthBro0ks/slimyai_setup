@@ -1,51 +1,124 @@
-// commands/remember.js - FIXED VERSION
-const { SlashCommandBuilder, MessageFlags } = require("discord.js");
-const mem = require("../lib/memory");
+// commands/remember.js - Database version (v2.0)
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
+const db = require('../lib/database');
+const memoryStore = require('../lib/memory');
+const rateLimiter = require('../lib/rate-limiter');
+const metrics = require('../lib/metrics');
+const logger = require('../lib/logger');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("remember")
-    .setDescription("Store a short note (requires /consent allow:true)")
-    .addStringOption((o) =>
-      o
-        .setName("note")
-        .setDescription("What should I remember?")
-        .setRequired(true),
+    .setName('remember')
+    .setDescription('Save a note (server-wide memory with /consent)')
+    .addStringOption(o =>
+      o.setName('note')
+        .setDescription('What should I remember?')
+        .setRequired(true)
+    )
+    .addStringOption(o =>
+      o.setName('tags')
+        .setDescription('Optional tags (comma-separated)')
+        .setRequired(false)
     ),
+
   async execute(interaction) {
+    const startTime = Date.now();
+
     try {
-      const note = interaction.options.getString("note", true);
-      
-      const ok = await mem.getConsent({
-        userId: interaction.user.id,
-        guildId: interaction.guildId || null,
-      });
-      
-      if (!ok) {
+      // Rate limiting - 3 second cooldown
+      const check = rateLimiter.checkCooldown(interaction.user.id, 'remember', 3);
+      if (check.limited) {
+        metrics.trackCommand('remember', Date.now() - startTime, false);
         return interaction.reply({
-          content: "❌ No consent. Run `/consent allow:true` first.",
-          flags: MessageFlags.Ephemeral,
+          content: `⏳ Slow down! Please wait ${check.remaining}s before saving another memory.`,
+          flags: MessageFlags.Ephemeral
         });
       }
-      
-      await mem.addMemo({
-        userId: interaction.user.id,
-        guildId: interaction.guildId || null,
-        content: note,
-      });
-      
-      return interaction.reply({
-        content: "📝 Noted.",
-        flags: MessageFlags.Ephemeral,
-      });
+
+      const note = interaction.options.getString('note', true);
+      const tagsInput = interaction.options.getString('tags');
+      const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()) : [];
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId || null;
+      const databaseConfigured = db.isConfigured();
+
+      // Check consent (server-wide)
+      const hasConsent = databaseConfigured
+        ? typeof db.getUserConsent === 'function'
+          ? (db.getUserConsent.length >= 2
+            ? await db.getUserConsent(userId, guildId)
+            : await db.getUserConsent(userId))
+          : false
+        : await memoryStore.getConsent({ userId, guildId });
+
+      if (!hasConsent) {
+        return interaction.reply({
+          content: '❌ Memory consent required.\n\nEnable it with `/consent set allow:true`.',
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      const context = {
+        channelId: interaction.channelId,
+        channelName: interaction.channel?.name || 'unknown',
+        timestamp: Date.now()
+      };
+
+      let memoryRecord;
+      if (databaseConfigured) {
+        memoryRecord = await db.saveMemory(
+          userId,
+          guildId,
+          note,
+          tags,
+          context
+        );
+      } else {
+        memoryRecord = await memoryStore.addMemo({
+          userId,
+          guildId,
+          content: note,
+          tags,
+          context
+        });
+      }
+
+      const memoryId = memoryRecord?.id || memoryRecord?._id || 'unknown';
+
+      const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('📝 Memory Saved')
+        .setDescription(`**Note:** ${note}`)
+        .addFields(
+          { name: 'Memory ID', value: `\`${memoryId}\``, inline: true },
+          { name: 'Server', value: interaction.guild?.name || 'Unknown', inline: true }
+        )
+        .setTimestamp();
+
+      if (tags.length > 0) {
+        embed.addFields({ name: 'Tags', value: tags.map(t => `\`${t}\``).join(' '), inline: false });
+      }
+
+      embed.setFooter({ text: 'Use /export to view all memories or /forget to delete' });
+
+      metrics.trackCommand('remember', Date.now() - startTime, true);
+      return interaction.editReply({ embeds: [embed] });
+
     } catch (err) {
-      console.error("remember error:", err);
-      return interaction
-        .reply({
-          content: "❌ remember crashed. Check logs.",
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      metrics.trackCommand('remember', Date.now() - startTime, false);
+      metrics.trackError('remember_command', err.message);
+      logger.error('Remember command failed', { userId: interaction.user.id, error: err.message });
+      console.error('[remember] Error:', err);
+
+      const errorMsg = '❌ Failed to save memory. Please try again.';
+
+      if (interaction.deferred) {
+        return interaction.editReply({ content: errorMsg });
+      } else {
+        return interaction.reply({ content: errorMsg, flags: MessageFlags.Ephemeral });
+      }
     }
-  },
+  }
 };

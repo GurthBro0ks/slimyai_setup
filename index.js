@@ -1,5 +1,6 @@
-// index.js - PRODUCTION READY
+// index.js - PRODUCTION READY v2.1
 require('dotenv').config();
+const db = require('./lib/database');
 const fs = require('fs');
 const path = require('path');
 const {
@@ -10,6 +11,22 @@ const {
   Events,
   MessageFlags
 } = require('discord.js');
+
+// Import monitoring systems
+const logger = require('./lib/logger');
+const metrics = require('./lib/metrics');
+const alert = require('./lib/alert');
+
+db.initialize();
+
+// Start health check server
+let healthServer;
+try {
+  healthServer = require('./lib/health-server');
+  logger.info('Health check server started successfully');
+} catch (err) {
+  logger.error('Failed to start health server', { error: err.message });
+}
 
 // ---- Singleton guard ----
 const LOCK_FILE = path.join(__dirname, '.slimy-singleton.lock');
@@ -149,21 +166,33 @@ client.once(Events.ClientReady, (c) => {
   console.log(`📡 Connected to ${c.guilds.cache.size} server(s)`);
 });
 
-// ---- Slash command dispatcher ----
+// ---- Slash command dispatcher with metrics ----
 client.on(Events.InteractionCreate, async (interaction) => {
+  const startTime = Date.now();
+
   try {
     if (!interaction.isChatInputCommand()) return;
-    
+
     const command = client.commands.get(interaction.commandName);
     if (!command) {
-      return interaction.reply({ 
-        content: '❌ Unknown command.', 
-        flags: MessageFlags.Ephemeral 
+      metrics.trackCommand('unknown', Date.now() - startTime, false);
+      return interaction.reply({
+        content: '❌ Unknown command.',
+        flags: MessageFlags.Ephemeral
       }).catch(() => {});
     }
-    
+
     await command.execute(interaction);
+    // Note: Individual commands track their own metrics, this is fallback
   } catch (err) {
+    const commandName = interaction.commandName || 'unknown';
+    metrics.trackError(commandName, err.message);
+    logger.error('Command execution failed', {
+      command: commandName,
+      userId: interaction.user?.id,
+      guildId: interaction.guild?.id,
+      error: err.message
+    });
     console.error('Command error:', err);
     recordError(err); // Track error in stats
 
@@ -219,8 +248,51 @@ try {
 
 // ---- Login (ONLY ONCE) ----
 if (!process.env.DISCORD_TOKEN) {
+  logger.critical('DISCORD_TOKEN not set in environment');
   console.error('❌ DISCORD_TOKEN not set in environment.');
   process.exit(1);
 }
 
+// Global error handlers
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Promise Rejection', { reason: String(reason), promise: String(promise) });
+  alert.criticalError('Unhandled Promise Rejection', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  logger.critical('Uncaught Exception', { error: error.message, stack: error.stack });
+  alert.criticalError('Uncaught Exception', error);
+  process.exit(1);
+});
+
+// Graceful shutdown
+const shutdown = async (signal) => {
+  logger.info(`${signal} received, shutting down gracefully...`);
+
+  // Close health server
+  if (healthServer) {
+    try {
+      healthServer.close(() => {
+        logger.info('Health server closed');
+      });
+    } catch (err) {
+      logger.error('Error closing health server', { error: err.message });
+    }
+  }
+
+  // Close database pool
+  try {
+    await db.close();
+    logger.info('Database connections closed');
+  } catch (err) {
+    logger.error('Error closing database', { error: err.message });
+  }
+
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+logger.info('Starting Slimy.AI bot...');
 client.login(process.env.DISCORD_TOKEN);

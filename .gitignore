@@ -14,3 +14,28 @@ slimy-ai-*.json
 data_store.json.tmp
 tokens.txt
 *.zip
+
+# Google Service Account Credentials
+google-service-account.json
+
+# Backup Files
+backups/
+*.sql
+*.sql.gz
+
+# Log Files
+*.log
+
+# Database files
+.env.db
+data.sqlite3
+*.db
+
+# Backup and temporary files
+*.bak
+*.bak.*
+.env.bak
+
+# Test and generated files
+test-results.json
+STRESS-TEST-REPORT.md

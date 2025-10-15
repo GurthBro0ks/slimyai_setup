@@ -4,6 +4,9 @@ const personaStore = require('../lib/persona');
 const { maybeReplyWithImage } = require('../lib/auto-image');
 const modeHelper = require('../lib/modes');
 const { formatChatDisplay } = require('../lib/text-format');
+const rateLimiter = require('../lib/rate-limiter');
+const metrics = require('../lib/metrics');
+const logger = require('../lib/logger');
 
 const THREAD_TYPES = new Set([
   ChannelType.PublicThread,
@@ -139,10 +142,22 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    const startTime = Date.now();
     const userMsg = interaction.options.getString('message', true);
     const reset = interaction.options.getBoolean('reset') || false;
 
+    // Rate limiting - 5 second cooldown
+    const check = rateLimiter.checkCooldown(interaction.user.id, 'chat', 5);
+    if (check.limited) {
+      metrics.trackCommand('chat', Date.now() - startTime, false);
+      return interaction.reply({
+        content: `⏳ Slow down! Please wait ${check.remaining}s before chatting again.`,
+        ephemeral: true
+      });
+    }
+
     if (!process.env.OPENAI_API_KEY) {
+      metrics.trackCommand('chat', Date.now() - startTime, false);
       return interaction.reply({
         content: '❌ OPENAI_API_KEY is not set.',
         ephemeral: true,
@@ -190,7 +205,11 @@ module.exports = {
         response: result.response,
       });
       await interaction.editReply({ content });
+      metrics.trackCommand('chat', Date.now() - startTime, true);
     } catch (err) {
+      metrics.trackCommand('chat', Date.now() - startTime, false);
+      metrics.trackError('chat_command', err.message);
+      logger.error('Chat command failed', { userId: interaction.user.id, error: err.message });
       console.error('OpenAI error:', err);
       const msg = err?.response?.data?.error?.message || err.message || String(err);
       await interaction.editReply({ content: `❌ OpenAI error: ${msg}` });
