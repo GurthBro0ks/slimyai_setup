@@ -19,6 +19,12 @@ const alert = require('./lib/alert');
 
 db.initialize();
 
+try {
+  require('./lib/scheduled-sync');
+} catch (err) {
+  console.error('[scheduler]', err.message);
+}
+
 // Start health check server
 let healthServer;
 try {
@@ -149,6 +155,9 @@ if (fs.existsSync(commandsPath)) {
       if (cmd?.data && cmd?.execute) {
         client.commands.set(cmd.data.name, cmd);
         console.log(`✅ Loaded command: ${cmd.data.name}`);
+      } else if (cmd && (cmd.registerSubcommand || cmd.handleCodes)) {
+        // helper module for shared command logic
+        continue;
       } else {
         console.warn(`[WARN] Skipping ${file}: missing data/execute`);
       }
@@ -171,6 +180,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
   const startTime = Date.now();
 
   try {
+    if (interaction.isButton()) {
+      const [namespace] = String(interaction.customId || '').split(':');
+      const handler = namespace ? client.commands.get(namespace) : null;
+      if (handler?.handleButton) {
+        await handler.handleButton(interaction);
+      }
+      return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const command = client.commands.get(interaction.commandName);

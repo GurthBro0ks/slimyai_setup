@@ -149,7 +149,8 @@ A production-ready Discord bot built with Discord.js v14 that provides AI-powere
 - `/mode clear` - Remove all mode configurations
 
 ### Super Snail Features
-- `/snail analyze <image>` - Analyze stats from screenshot
+- `/snail analyze <image>` - Review and save one screenshot at a time
+- `/snail stats` - Combine saved screenshots into a full report
 - `/snail sheet-setup` - Setup Google Sheets integration
 - Auto-detection in configured channels
 
