@@ -1,13 +1,77 @@
 // commands/snail.js
 // CommonJS – discord.js v14
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { v4: uuidv4 } = require('uuid');
 const costs = require('../supersnail-costs.js');
-const { analyzeSnailScreenshot } = require('../lib/snail-vision');
 const database = require('../lib/database');
-const sheetsCreator = require('../lib/sheets-creator');
 const rateLimiter = require('../lib/rate-limiter');
 const metrics = require('../lib/metrics');
 const logger = require('../lib/logger');
+const { handleCodes } = require('../lib/snail-codes');
+const fetch = require('node-fetch');
+const sharp = require('sharp');
+const { detectTypeAndRegions } = require('../lib/screen-detector');
+const { extractRadar, bottleneckFrom } = require('../lib/radar-extractor');
+const { detectActiveLoadout, extractGearIcons } = require('../lib/loadout-extractor');
+const { extractRelicIcons } = require('../lib/compass-extractor');
+const { findActiveSnapshot, getOrCreateSnapshot, upsertSnapshotPart, getSnapshotParts, finalizeSnapshot } = require('../lib/snapshots');
+const { upsertUserLoadout } = require('../lib/loadouts');
+const layout = require('../lib/layouts/supersnail.json');
+const { analyzeImage } = require('../lib/vision');
+const { setVisionFallback } = require('../lib/icon-match');
+const { recordMetrics } = require('../lib/analyze-metrics');
+const REQUIRED_TYPES = ['STATS_MAIN', 'LOADOUT_GEAR', 'COMPASS_RELICS'];
+const TYPE_LABELS = {
+  STATS_MAIN: 'Pentagon Stats',
+  LOADOUT_GEAR: 'Loadout & Gear',
+  COMPASS_RELICS: 'Compass Relics'
+};
+
+const pendingApprovals = new Map();
+const PENDING_TTL_MS = 15 * 60 * 1000;
+
+setVisionFallback(async () => null);
+
+function rememberPending(entry) {
+  const id = uuidv4();
+  const expiresAt = Date.now() + PENDING_TTL_MS;
+  pendingApprovals.set(id, { ...entry, expiresAt });
+
+  const timeout = setTimeout(() => {
+    const current = pendingApprovals.get(id);
+    if (current && current.expiresAt <= Date.now()) {
+      pendingApprovals.delete(id);
+    }
+  }, PENDING_TTL_MS);
+  if (typeof timeout.unref === 'function') {
+    timeout.unref();
+  }
+
+  return id;
+}
+
+function pullPending(id) {
+  const pending = pendingApprovals.get(id);
+  if (!pending) return null;
+  if (pending.expiresAt <= Date.now()) {
+    pendingApprovals.delete(id);
+    return null;
+  }
+  pendingApprovals.delete(id);
+  return pending;
+}
+
+function peekPending(id) {
+  const pending = pendingApprovals.get(id);
+  if (!pending) return null;
+  if (pending.expiresAt <= Date.now()) {
+    pendingApprovals.delete(id);
+    return null;
+  }
+  return pending;
+}
+
+const enableSheetsSync = process.env.FEATURE_SHEETS === 'true';
 
 // Small helper to pick the right tier function
 function pickCalc(tier) {
@@ -58,6 +122,59 @@ function formatStatsLine(stats = {}) {
     .join(' \u2022 ');
 }
 
+const WHY_NEEDED = {
+  STATS_MAIN: 'Needed for real Bottleneck & readiness (AFFCT numbers from the pentagon).',
+  LOADOUT_GEAR: 'Needed to analyze what you’re actually wearing (active loadout & gear).',
+  COMPASS_RELICS: 'Needed for compass bonuses and element checks (FAME/ART/CIV/TECH/FTH relics).'
+};
+
+const MISSING_TIPS = {
+  STATS_MAIN: 'Open the main character screen showing the pentagon. Ensure **FAME/TECH/ART/CIV/FTH** labels and numbers are visible.',
+  LOADOUT_GEAR: 'Open loadouts so the **three circle buttons** are visible at the bottom. The **red** one is the active loadout.',
+  COMPASS_RELICS: 'Open **Compass** and show all five relic slots (**FAME/ART/CIV/TECH/FTH**) clearly.'
+};
+
+const FOOTER = [
+  '— — —',
+  '_Work in progress: results may evolve as detection improves._',
+  '_ChatGPT Codex Autopilot — **/snail analyze** (sequential capture + icons + radar + coverage)_'
+].join('\n');
+
+function buildMissingSection(missing) {
+  if (!missing.length) return '';
+  const lines = missing.map(key => `• **${key}** — ${MISSING_TIPS[key]}  \n  _${WHY_NEEDED[key]}_`);
+  return [
+    'These stats are still needed for a full analysis.',
+    'True stats **cannot** be calculated without this screenshot data.\n',
+    ...lines
+  ].join('\n');
+}
+
+function stripJsonFence(text) {
+  let cleaned = String(text || '').trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```[a-zA-Z]*\n?/, '').replace(/```$/, '');
+  }
+  return cleaned.trim();
+}
+
+function parseRadarJson(text, fallback = { FAME: 0, TECH: 0, ART: 0, CIV: 0, FTH: 0 }) {
+  if (!text) return fallback;
+  try {
+    const parsed = JSON.parse(stripJsonFence(text));
+    return parsed && typeof parsed === 'object' ? parsed : fallback;
+  } catch (err) {
+    return fallback;
+  }
+}
+
+function formatNumber(value) {
+  if (value === null || typeof value === 'undefined') return '—';
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '—';
+  return num.toLocaleString();
+}
+
 function formatConfidenceBlock(confidence, notes) {
   const emoji = {
     high: '✅',
@@ -72,69 +189,81 @@ function formatConfidenceBlock(confidence, notes) {
   return text;
 }
 
-function formatEquipmentBlock(equipment) {
-  if (!equipment) return null;
-  const lines = Object.entries(equipment)
-    .filter(([, value]) => value)
-    .map(([slot, value]) => `• ${slot.toUpperCase()}: ${value}`);
-  return lines.length ? lines.join('\n') : null;
+function formatRadarPreview(radar) {
+  if (!radar) return 'Radar: not detected';
+  if (radar.readable === false) {
+    return 'Radar: detected but unreadable — retake with labels visible.';
+  }
+  const parts = ['FAME', 'TECH', 'ART', 'CIV', 'FTH']
+    .map(stat => `${stat} ${formatNumber(radar[stat])}`);
+  const confidence = radar.confidence ? ` (${radar.confidence}% conf)` : '';
+  return `Radar: ${parts.join(' • ')}${confidence}`;
 }
 
-async function ensureSheetForUser({ userId, username, guildId, guildName }) {
-  if (!sheetsCreator.hasCredentials()) {
-    return { consent: false, sheetId: null, sheetUrl: null, created: false };
-  }
+function formatGearPreview(loadoutSlot, items = []) {
+  if (!items.length) return 'Gear: not detected';
+  const avg = Math.round(items.reduce((sum, item) => sum + (item.confidence || 0), 0) / items.length);
+  const header = loadoutSlot
+    ? `Active Loadout: ${loadoutSlot} (${avg}% avg confidence)`
+    : 'Active Loadout: not detected';
 
-  try {
-    const consentRecord = await database.getSheetsConsent(userId, guildId);
-
-    if (!consentRecord.sheets_consent) {
-      return { consent: false, sheetId: null, sheetUrl: null, created: false };
-    }
-
-    let sheetId = consentRecord.sheet_id;
-    let sheetUrl = sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}` : null;
-    let created = false;
-
-    if (!sheetId) {
-      const sheet = await sheetsCreator.ensureSnailStatsSheet({
-        userId,
-        username,
-        guildId,
-        guildName
-      });
-
-      sheetId = sheet?.spreadsheetId || null;
-      sheetUrl = sheet?.url || (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}` : null);
-
-      if (sheetId) {
-        created = !sheet?.existed;
-        await database.setSheetsConsent(userId, guildId, true, sheetId);
-      }
-    }
-
-    return { consent: true, sheetId, sheetUrl, created };
-
-  } catch (err) {
-    console.error('[snail] Failed to ensure user sheet:', err);
-    return { consent: true, sheetId: null, sheetUrl: null, created: false, error: err };
-  }
+  const lines = items.map(item =>
+    `• ${item.item_slot.toUpperCase()}: ${item.canonical_name} (${item.confidence || 0}%)`
+  );
+  return [header, ...lines].join('\n');
 }
 
-function buildAnalysisSummary(analysis) {
-  const missing = Object.entries(analysis.stats || {})
-    .filter(([, value]) => value === null)
-    .map(([key]) => key.toUpperCase());
+function formatRelicPreview(items = []) {
+  if (!items.length) return 'Relics: not detected';
+  return items
+    .map(item => `• ${item.item_slot}: ${item.canonical_name} (${item.confidence || 0}%)`)
+    .join('\n');
+}
 
-  const pieces = ['Automated analysis complete.'];
-  if (missing.length) {
-    pieces.push(`Missing stats: ${missing.join(', ')}.`);
-  }
-  if (analysis.notes) {
-    pieces.push(analysis.notes);
+function buildFullAnalysis({ loadoutSlot, loadoutItems = [], relicItems = [], radar = null }) {
+  const lines = ['**Full Analysis (3/3)**'];
+
+  if (loadoutItems.length) {
+    const avgGearConfidence = Math.round(loadoutItems.reduce((sum, item) => sum + (item.confidence || 0), 0) / loadoutItems.length);
+    lines.push(
+      loadoutSlot
+        ? `Active Loadout: ${loadoutSlot} (${avgGearConfidence}% avg confidence)`
+        : 'Active Loadout: detected gear, but active slot unknown.'
+    );
+    lines.push(
+      ...loadoutItems.map(item => `- ${item.item_slot.toUpperCase()}: ${item.canonical_name} (${item.confidence || 0}%)`)
+    );
+  } else {
+    lines.push('Active Loadout: not detected');
   }
 
-  return pieces.join(' ');
+  if (relicItems.length) {
+    lines.push(
+      '',
+      'Relics:',
+      ...relicItems.map(item => `- ${item.item_slot}: ${item.canonical_name} (${item.confidence || 0}%)`)
+    );
+  } else {
+    lines.push('', 'Relics: not detected');
+  }
+
+  if (radar) {
+    lines.push(
+      '',
+      `Radar: FAME ${formatNumber(radar.FAME)} • TECH ${formatNumber(radar.TECH)} • ART ${formatNumber(radar.ART)} • CIV ${formatNumber(radar.CIV)} • FTH ${formatNumber(radar.FTH)}${radar.confidence ? ` (${radar.confidence}% conf)` : ''}`
+    );
+    const bottleneckInfo = bottleneckFrom(radar);
+    if (bottleneckInfo) {
+      lines.push(`Bottleneck: ${bottleneckInfo.stat} (${bottleneckInfo.behindPct}% behind)`);
+    } else {
+      lines.push('Bottleneck: Unknown');
+    }
+  } else {
+    lines.push('', 'Radar: not captured');
+  }
+
+  lines.push('', 'All required screenshots captured. ✅');
+  return lines;
 }
 
 module.exports = {
@@ -178,11 +307,33 @@ module.exports = {
     )
     .addSubcommand(sc =>
       sc.setName('analyze')
-        .setDescription('Analyze a Super Snail screenshot using GPT-4 Vision')
+        .setDescription('Analyze a single Super Snail screenshot')
         .addAttachmentOption(o =>
           o.setName('screenshot')
-            .setDescription('Upload a Super Snail stats screenshot')
+            .setDescription('Upload exactly one Super Snail screenshot per run')
             .setRequired(true))
+    )
+    .addSubcommand(sc =>
+      sc.setName('analyze_help')
+        .setDescription('Show examples & tips for screenshots needed')
+    )
+    .addSubcommand(sc =>
+      sc.setName('stats')
+        .setDescription('Show the combined Super Snail analysis from saved screenshots')
+    )
+    .addSubcommand(sc =>
+      sc.setName('codes')
+        .setDescription('View or copy active Super Snail codes')
+        .addStringOption(o =>
+          o.setName('action')
+            .setDescription('Choose which codes to show')
+            .addChoices(
+              { name: 'View Active Codes', value: 'active' },
+              { name: 'Recent (7 Days)', value: 'recent' },
+              { name: 'All (Archive)', value: 'all' },
+              { name: 'Copy All (Game Format)', value: 'copy' }
+            )
+        )
     )
     .addSubcommand(sc =>
       sc.setName('sheet')
@@ -203,7 +354,10 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      if (interaction.options.getSubcommand() === 'test') {
+      const subcommand = interaction.options.getSubcommand();
+      console.log('[snail] received subcommand:', subcommand);
+
+      if (subcommand === 'test') {
         // A simple, known-good T6 example:
         // l1=3, r1=3, l2=2, compass=0, r2=0, l3=0, r3=0, ritual=1
         const result = costs.formT6Calc(3, 3, 2, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, false);
@@ -220,242 +374,298 @@ module.exports = {
         });
       }
 
-      if (interaction.options.getSubcommand() === 'analyze') {
+      if (subcommand === 'codes') {
+        return handleCodes(interaction);
+      }
+
+      if (subcommand === 'analyze_help') {
+        const requiredLines = REQUIRED_TYPES.map(type => `• **${type}** — ${WHY_NEEDED[type]} \n  _${MISSING_TIPS[type]}_`);
+        const lines = [
+          '**What we need for a full `/snail analyze`**',
+          ...requiredLines,
+          '',
+          '**Workflow**',
+          '• Run `/snail analyze` with one screenshot at a time.',
+          '• Review the preview and click **Save Screenshot Data** if it looks correct.',
+          '• Repeat for each required screen, then run `/snail stats` for the full breakdown.',
+          '',
+          'Tips:',
+          '• Avoid tooltips covering numbers or icons.',
+          '• Include the full UI area for each screenshot (no heavy cropping).',
+          '',
+          FOOTER
+        ];
+
+        return interaction.reply({ content: lines.join('\n'), ephemeral: true });
+      }
+
+      if (subcommand === 'analyze') {
         const startTime = Date.now();
+        const attachment = interaction.options.getAttachment('screenshot');
 
-        // Rate limiting - 5 second cooldown for expensive vision analysis
-        const check = rateLimiter.checkCooldown(interaction.user.id, 'snail-analyze', 5);
-        if (check.limited) {
+        if (!attachment) {
           metrics.trackCommand('snail-analyze', Date.now() - startTime, false);
           return interaction.reply({
-            content: `⏳ Slow down! Please wait ${check.remaining}s before analyzing another screenshot.`,
+            content: '⚠️ Please attach exactly one Super Snail screenshot.',
             ephemeral: true
           });
         }
 
-        const attachment = interaction.options.getAttachment('screenshot', true);
-
-        if (!attachment.contentType?.startsWith('image/')) {
+        if (!attachment.contentType || !attachment.contentType.startsWith('image/')) {
           metrics.trackCommand('snail-analyze', Date.now() - startTime, false);
           return interaction.reply({
-            content: '⚠️ Please provide an image file (PNG, JPG, WEBP).',
+            content: '⚠️ The attachment must be an image file (PNG, JPG, WEBP).',
             ephemeral: true
           });
         }
 
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
+
+        const userId = interaction.user.id;
+        const guildId = interaction.guildId || null;
+        const username = interaction.user.username;
+        const guildName = interaction.guild?.name || 'Unknown';
+        const warnings = [];
 
         try {
-          const analysis = await analyzeSnailScreenshot(attachment.url);
-          const summary = buildAnalysisSummary(analysis);
-          const statsField = formatStatsBlock(analysis.stats || {});
-          const confidenceField = formatConfidenceBlock(analysis.confidence, analysis.notes);
-          const equipmentField = formatEquipmentBlock(analysis.equipment);
-
-          const userId = interaction.user.id;
-          const guildId = interaction.guildId;
-          const username = interaction.user.username;
-          const guildName = interaction.guild?.name || 'Unknown';
-
-          let savedToSheet = false;
-          const sheetDetails = await ensureSheetForUser({
-            userId,
-            username,
-            guildId,
-            guildName
-          });
-
-          if (sheetDetails.error) {
-            console.error('[snail] Auto-save disabled due to sheet error:', sheetDetails.error.message);
+          const response = await fetch(attachment.url);
+          if (!response.ok) {
+            throw new Error(`download failed (${response.status})`);
           }
 
-          let sheetIdForSave = sheetDetails.sheetId;
-
-          const attemptSheetSave = async (spreadsheetId) => {
-            await sheetsCreator.saveStats({
-              spreadsheetId,
-              userId,
-              username,
-              stats: analysis.stats || {},
-              screenshotUrl: attachment.url,
-              notes: analysis.notes || ''
+          const buffer = await response.buffer();
+          const detection = await detectTypeAndRegions(buffer);
+          if (!detection?.type || !TYPE_LABELS[detection.type]) {
+            metrics.trackCommand('snail-analyze', Date.now() - startTime, false);
+            return interaction.editReply({
+              content: '❌ Unable to recognize this screenshot. Please retake and ensure the full UI is visible.',
+              components: []
             });
-            savedToSheet = true;
-          };
-
-          if (sheetIdForSave) {
-            try {
-              await attemptSheetSave(sheetIdForSave);
-            } catch (err) {
-              const isNotFound = err?.code === 404 || err?.status === 404 || err?.errors?.some(e => e.reason === 'notFound');
-              if (isNotFound) {
-                console.warn('[snail] Stored sheet missing, creating a new one...');
-                try {
-                  const recreated = await sheetsCreator.ensureSnailStatsSheet({
-                    userId,
-                    username,
-                    guildId,
-                    guildName
-                  });
-                  const newSheetId = recreated?.spreadsheetId;
-                  if (newSheetId && newSheetId !== sheetIdForSave) {
-                    sheetIdForSave = newSheetId;
-                    await database.setSheetsConsent(userId, guildId, true, newSheetId);
-                    sheetDetails.sheetId = newSheetId;
-                    sheetDetails.sheetUrl = recreated?.url || `https://docs.google.com/spreadsheets/d/${newSheetId}`;
-                    sheetDetails.created = !recreated?.existed;
-                    await attemptSheetSave(newSheetId);
-                  }
-                } catch (createErr) {
-                  console.error('[snail] Failed to recreate sheet:', createErr);
-                }
-              } else {
-                console.error('[snail] Failed to auto-save stats:', err.message);
-              }
-            }
           }
 
-          const statId = await database.saveSnailStat({
+          const meta = await sharp(buffer).metadata();
+          const width = meta.width || 0;
+          const height = meta.height || 0;
+
+          let fields = {};
+          const summaryLines = [];
+
+          if (detection.type === 'STATS_MAIN') {
+            const radar = await extractRadar(buffer, detection.rois, width, height, async (cropBuffer) => {
+              try {
+                const dataUrl = `data:image/png;base64,${cropBuffer.toString('base64')}`;
+                const text = await analyzeImage({
+                  imageUrl: dataUrl,
+                  prompt: 'Read the Super Snail AFFCT radar. Return JSON like {"FAME":123,"TECH":123,"ART":123,"CIV":123,"FTH":123}.',
+                  systemPrompt: 'You are a precise OCR utility. Only respond with strict JSON.'
+                });
+                return parseRadarJson(text, { FAME: 0, TECH: 0, ART: 0, CIV: 0, FTH: 0 });
+              } catch (err) {
+                warnings.push(`Radar OCR failed: ${err.message}`);
+                return { FAME: 0, TECH: 0, ART: 0, CIV: 0, FTH: 0, readable: false };
+              }
+            });
+            fields = { radar };
+            summaryLines.push(formatRadarPreview(radar));
+            const bottleneckInfo = bottleneckFrom(radar);
+            if (bottleneckInfo) {
+              summaryLines.push(`Bottleneck insight: ${bottleneckInfo.stat} is ${bottleneckInfo.behindPct}% behind.`);
+            }
+          } else if (detection.type === 'LOADOUT_GEAR') {
+            const loadout = await detectActiveLoadout(buffer, layout, width, height);
+            const items = await extractGearIcons(buffer, layout.gear_slots, width, height);
+            fields = { loadout, items };
+            summaryLines.push(formatGearPreview(loadout, items));
+          } else if (detection.type === 'COMPASS_RELICS') {
+            const items = await extractRelicIcons(buffer, layout.relic_slots, width, height);
+            fields = { items };
+            summaryLines.push(formatRelicPreview(items));
+          }
+
+          if (summaryLines.length === 0) {
+            summaryLines.push('No actionable data detected yet. Try a clearer screenshot with the full UI visible.');
+          }
+
+          const pendingId = rememberPending({
             userId,
             guildId,
             username,
             guildName,
-            screenshotUrl: attachment.url,
-            stats: analysis.stats || {},
-            confidence: { level: analysis.confidence, notes: analysis.notes || null },
-            analysisText: summary,
-            savedToSheet
+            attachmentUrl: attachment.url,
+            type: detection.type,
+            fields,
+            quality: detection.quality || 0,
+            warnings
           });
 
-          const embed = new EmbedBuilder()
-            .setTitle('📊 Super Snail Analysis')
-            .setDescription(summary)
-            .setColor(0x00FF00)
-            .setImage(attachment.url)
-            .addFields(
-              { name: 'Stats', value: statsField, inline: true },
-              { name: 'Confidence', value: confidenceField, inline: true }
-            );
+          const lines = [
+            `**${TYPE_LABELS[detection.type]} Preview**`,
+            ...summaryLines,
+            '',
+            '_Click **Save Screenshot Data** if everything looks correct. Upload the next required screen afterwards._',
+            '_When all screenshots are saved, run `/snail stats` to see the full breakdown._',
+            '',
+            FOOTER
+          ];
 
-          if (equipmentField) {
-            embed.addFields({ name: 'Equipment', value: equipmentField, inline: false });
+          if (warnings.length) {
+            lines.splice(lines.length - 2, 0, 'Warnings:', ...warnings.map(w => `• ${w}`), '');
           }
 
-          let content = '✅ Screenshot analyzed!';
-          const components = [];
-
-          if (savedToSheet) {
-            const sheetMessages = [];
-            if (sheetDetails.sheetUrl) {
-              sheetMessages.push(`📊 Saved to Google Sheet: ${sheetDetails.sheetUrl}`);
-            }
-            if (sheetDetails.created) {
-              sheetMessages.push('🆕 A new sheet was provisioned for you automatically.');
-            }
-            if (sheetMessages.length) {
-              content += `\n\n${sheetMessages.join('\n')}`;
-            }
-            embed.setFooter({ text: '✅ Auto-saved to your Google Sheet • Analyzed with gpt-4o' });
-            await interaction.editReply({ content, embeds: [embed], components });
-            return;
-          }
-
-          if (sheetsCreator.hasCredentials()) {
-            const row = new ActionRowBuilder().addComponents(
+          const components = [
+            new ActionRowBuilder().addComponents(
               new ButtonBuilder()
-                .setCustomId(`enable-sheets-${statId}`)
-                .setLabel('📊 Enable Google Sheets Tracking')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji('🎮')
-            );
-            components.push(row);
-          } else {
-            content += '\n\n⚙️ Sheets integration is not configured by the bot administrator.';
-          }
-
-          const reply = await interaction.editReply({
-            content,
-            embeds: [embed],
-            components
-          });
-
-          if (components.length === 0) {
-            return;
-          }
-
-          const collector = reply.createMessageComponentCollector({
-            filter: i => i.customId === `enable-sheets-${statId}` && i.user.id === userId,
-            time: 60_000,
-            max: 1
-          });
-
-          collector.on('collect', async (i) => {
-            await i.deferUpdate();
-
-            try {
-              const sheet = await sheetsCreator.ensureSnailStatsSheet({
-                title: `${guildName} - Super Snail Stats - ${username}`,
-                userId,
-                username,
-                guildId,
-                guildName
-              });
-
-              await database.setSheetsConsent(userId, guildId, true, sheet.spreadsheetId);
-
-              await sheetsCreator.saveStats({
-                spreadsheetId: sheet.spreadsheetId,
-                userId,
-                username,
-                stats: analysis.stats || {},
-                screenshotUrl: attachment.url,
-                notes: analysis.notes || ''
-              });
-
-              await database.markSnailStatSaved(statId);
-
-              embed.setFooter({
-                text: '✅ Auto-saved to your new Google Sheet • Analyzed with gpt-4o'
-              });
-
-              const provisionNote = sheet.existed ? '📊 **Google Sheets re-enabled!**' : '📊 **Google Sheets enabled!**';
-              await i.editReply({
-                content: `✅ Screenshot analyzed and saved!\n\n${provisionNote} [View your sheet](${sheet.url})`,
-                embeds: [embed],
-                components: []
-              });
-            } catch (err) {
-              console.error('[snail] enable sheets error:', err);
-              await i.editReply({
-                content: `✅ Screenshot analyzed!\n\n❌ Failed to enable sheets: ${err.message}`,
-                embeds: [embed],
-                components: []
-              });
-            }
-          });
-
-          collector.on('end', async (collected, reason) => {
-            if (reason === 'time' && collected.size === 0) {
-              await interaction.editReply({ embeds: [embed], components: [] }).catch(() => {});
-            }
-          });
+                .setCustomId(`snail:approve:${pendingId}`)
+                .setLabel('Save Screenshot Data')
+                .setStyle(ButtonStyle.Success),
+              new ButtonBuilder()
+                .setCustomId(`snail:cancel:${pendingId}`)
+                .setLabel('Discard')
+                .setStyle(ButtonStyle.Secondary)
+            )
+          ];
 
           metrics.trackCommand('snail-analyze', Date.now() - startTime, true);
-
+          return interaction.editReply({
+            content: lines.join('\n'),
+            components
+          });
         } catch (err) {
           metrics.trackCommand('snail-analyze', Date.now() - startTime, false);
           metrics.trackError('snail_analyze', err.message);
           logger.error('Snail analyze failed', { userId: interaction.user.id, error: err.message });
-          console.error('[snail] vision error:', err);
-          await interaction.editReply({
-            content: `❌ Analysis failed: ${err.message}`
+          console.error('[snail] analyze error:', err);
+          return interaction.editReply({
+            content: `❌ Analysis failed: ${err.message}`,
+            components: []
           });
         }
-
-        return;
       }
 
-      if (interaction.options.getSubcommand() === 'sheet') {
+      if (subcommand === 'stats') {
+        const startTime = Date.now();
+        await interaction.deferReply({ ephemeral: true });
+
+        const userId = interaction.user.id;
+        const guildId = interaction.guildId || null;
+        const username = interaction.user.username;
+        const guildName = interaction.guild?.name || 'Unknown';
+
+        try {
+          const snapshotId = await findActiveSnapshot(userId, guildId);
+
+          if (snapshotId) {
+            const parts = await getSnapshotParts(snapshotId);
+
+            if (!parts.length) {
+              metrics.trackCommand('snail-stats', Date.now() - startTime, false);
+              return interaction.editReply({
+                content: '📸 No saved screenshot data yet. Use `/snail analyze` to capture each required screen.'
+              });
+            }
+
+            const capturedTypes = new Set(parts.map(p => p.part_type));
+            const missingTypes = REQUIRED_TYPES.filter(t => !capturedTypes.has(t));
+
+            if (missingTypes.length) {
+              const lines = [
+                `Progress: ${capturedTypes.size}/${REQUIRED_TYPES.length} screenshots saved.`,
+                '',
+                'Still needed:',
+                ...missingTypes.map(type => `• **${TYPE_LABELS[type]}** — ${WHY_NEEDED[type]}`),
+                '',
+                'Upload the missing screenshots with `/snail analyze`, then click **Save Screenshot Data** on each preview.'
+              ];
+
+              metrics.trackCommand('snail-stats', Date.now() - startTime, true);
+              return interaction.editReply({ content: lines.join('\n') });
+            }
+
+            const statsPart = parts.find(p => p.part_type === 'STATS_MAIN');
+            const loadoutPart = parts.find(p => p.part_type === 'LOADOUT_GEAR');
+            const relicPart = parts.find(p => p.part_type === 'COMPASS_RELICS');
+
+            const radar = statsPart?.fields?.radar || null;
+            const loadoutItems = Array.isArray(loadoutPart?.fields?.items) ? loadoutPart.fields.items : [];
+            const loadoutSlot = loadoutPart?.fields?.loadout || null;
+            const relicItems = Array.isArray(relicPart?.fields?.items) ? relicPart.fields.items : [];
+
+            const summaryLines = buildFullAnalysis({ loadoutSlot, loadoutItems, relicItems, radar });
+            summaryLines.push('', FOOTER);
+
+            const analysisText = summaryLines.join('\n');
+
+            const snailStatId = await database.saveSnailStat({
+              userId,
+              guildId,
+              username,
+              guildName,
+              screenshotUrl: statsPart?.image_url || null,
+              stats: {
+                hp: null,
+                atk: null,
+                def: null,
+                rush: null,
+                fame: radar?.FAME ?? null,
+                tech: radar?.TECH ?? null,
+                art: radar?.ART ?? null,
+                civ: radar?.CIV ?? null,
+                fth: radar?.FTH ?? null
+              },
+              wikiEnrichment: null,
+              confidence: { level: radar?.confidence ?? null, notes: null },
+              analysisText,
+              savedToSheet: false,
+              activeLoadout: loadoutSlot,
+              loadoutSnapshotId: loadoutPart ? snapshotId : null
+            });
+
+            await finalizeSnapshot(snapshotId);
+
+            const lines = [
+              analysisText,
+              '',
+              `📦 Saved entry #${snailStatId}. Use \`/snail sheet\` to review history or share via Google Sheets if enabled.`
+            ];
+
+            metrics.trackCommand('snail-stats', Date.now() - startTime, true);
+            return interaction.editReply({ content: lines.join('\n') });
+          }
+
+          const [latest] = await database.getRecentSnailStats(userId, guildId, 1);
+          if (latest) {
+            const timestamp = latest.createdAt
+              ? new Date(latest.createdAt).toISOString()
+              : 'unknown time';
+            const lines = [
+              `📊 Last saved Super Snail stats (recorded ${timestamp})`,
+              '',
+              latest.analysisText ||
+                `${formatStatsBlock(latest.stats)}\n\nGear/Relic details unavailable in this record.`,
+              '',
+              FOOTER
+            ];
+
+            metrics.trackCommand('snail-stats', Date.now() - startTime, true);
+            return interaction.editReply({ content: lines.join('\n') });
+          }
+
+          metrics.trackCommand('snail-stats', Date.now() - startTime, false);
+          return interaction.editReply({
+            content: '📸 No stats saved yet. Use `/snail analyze` and save each screenshot to build your first report.'
+          });
+        } catch (err) {
+          metrics.trackCommand('snail-stats', Date.now() - startTime, false);
+          metrics.trackError('snail_stats', err.message);
+          logger.error('Snail stats failed', { userId, error: err.message });
+          console.error('[snail] stats error:', err);
+          return interaction.editReply({
+            content: `❌ Failed to build stats: ${err.message}`
+          });
+        }
+      }
+
+      if (subcommand === 'sheet') {
         await interaction.deferReply({ ephemeral: true });
 
         try {
@@ -485,16 +695,21 @@ module.exports = {
             });
           });
 
-          const sheetsInfo = await database.getSheetsConsent(targetUser.id, interaction.guildId);
-          if (sheetsInfo.sheets_consent && sheetsInfo.sheet_id) {
-            embed.setFooter({ text: 'Google Sheets connected' });
-            return interaction.editReply({
-              embeds: [embed],
-              content: `📊 Stored in database. Google Sheet: https://docs.google.com/spreadsheets/d/${sheetsInfo.sheet_id}`
-            });
+          if (enableSheetsSync) {
+            const sheetsInfo = await database.getSheetsConsent(targetUser.id, interaction.guildId);
+            if (sheetsInfo.sheets_consent && sheetsInfo.sheet_id) {
+              embed.setFooter({ text: 'Google Sheets connected' });
+              return interaction.editReply({
+                embeds: [embed],
+                content: `📊 Stored in database. Google Sheet: https://docs.google.com/spreadsheets/d/${sheetsInfo.sheet_id}`
+              });
+            }
           }
 
-          return interaction.editReply({ embeds: [embed] });
+          return interaction.editReply({
+            embeds: [embed],
+            content: '🗄️ Historical entries are stored in the database.'
+          });
 
         } catch (err) {
           console.error('[snail] Error fetching stats:', err);
@@ -504,9 +719,23 @@ module.exports = {
         }
       }
 
-      if (interaction.options.getSubcommand() === 'sheet-setup') {
+      if (subcommand === 'sheet-setup') {
+        if (!enableSheetsSync) {
+          return interaction.reply({
+            content: '📊 Sheets synchronization is currently disabled. All stats are stored directly in the database.',
+            ephemeral: true
+          });
+        }
+
         return interaction.reply({
           content: '📊 **Sheet Setup**\n\nTo enable automatic Google Sheets tracking:\n\n1. Use `/snail analyze` with a screenshot\n2. Click the "📊 Enable Google Sheets Tracking" button in the response\n3. A personal sheet will be created automatically\n\nAll future `/snail analyze` commands will auto-save to your sheet. Make sure the bot administrator has configured Google credentials first.',
+          ephemeral: true
+        });
+      }
+
+      if (subcommand !== 'calc') {
+        return interaction.reply({
+          content: `❌ Unknown subcommand: ${subcommand}`,
           ephemeral: true
         });
       }
@@ -581,4 +810,148 @@ module.exports = {
       });
     }
   },
+  async handleButton(interaction) {
+    return handleSnailButton(interaction);
+  }
 };
+
+async function handleSnailButton(interaction) {
+  const [namespace, action, pendingId] = interaction.customId.split(':');
+  if (namespace !== 'snail' || !pendingId) {
+    return false;
+  }
+
+  if (action === 'approve') {
+    const preview = peekPending(pendingId);
+    if (!preview) {
+      await interaction.update({
+        content: '⌛ This preview has expired. Please run `/snail analyze` again with a fresh screenshot.',
+        components: []
+      });
+      return true;
+    }
+
+    if (interaction.user.id !== preview.userId) {
+      await interaction.reply({
+        content: `Only <@${preview.userId}> can save this screenshot.`,
+        ephemeral: true
+      });
+      return true;
+    }
+
+    const pending = pullPending(pendingId);
+
+    try {
+      const snapshotId = await getOrCreateSnapshot(pending.userId, pending.guildId);
+      await upsertSnapshotPart(snapshotId, pending.type, pending.attachmentUrl, pending.fields, pending.quality || 0);
+
+      if (pending.type === 'LOADOUT_GEAR') {
+        const loadoutSlot = pending.fields.loadout || null;
+        const loadoutItems = Array.isArray(pending.fields.items) ? pending.fields.items : [];
+        if (loadoutSlot && loadoutItems.length) {
+          try {
+            await upsertUserLoadout(pending.userId, loadoutSlot, loadoutItems);
+          } catch (err) {
+            logger.warn('[snail] Failed to persist loadout', { userId: pending.userId, error: err.message });
+          }
+        }
+      }
+
+      const parts = await getSnapshotParts(snapshotId);
+      const capturedTypes = new Set(parts.map(p => p.part_type));
+      const missingTypes = REQUIRED_TYPES.filter(t => !capturedTypes.has(t));
+
+      let radar = null;
+      let loadoutItems = [];
+      let relicItems = [];
+      for (const part of parts) {
+        if (part.part_type === 'STATS_MAIN') {
+          radar = part.fields?.radar || null;
+        } else if (part.part_type === 'LOADOUT_GEAR') {
+          loadoutItems = Array.isArray(part.fields?.items) ? part.fields.items : [];
+        } else if (part.part_type === 'COMPASS_RELICS') {
+          relicItems = Array.isArray(part.fields?.items) ? part.fields.items : [];
+        }
+      }
+
+      const gearMap = Object.fromEntries(loadoutItems.map(item => [item.item_slot, item]));
+      const relicMap = Object.fromEntries(relicItems.map(item => [item.item_slot, item]));
+
+      await recordMetrics({
+        userId: pending.userId,
+        coverage: capturedTypes.size,
+        confidences: {
+          weapon: gearMap.weapon?.confidence,
+          armor: gearMap.armor?.confidence,
+          acc1: gearMap.acc1?.confidence,
+          acc2: gearMap.acc2?.confidence,
+          FAME: relicMap.FAME?.confidence,
+          ART: relicMap.ART?.confidence,
+          CIV: relicMap.CIV?.confidence,
+          TECH: relicMap.TECH?.confidence,
+          FTH: relicMap.FTH?.confidence
+        },
+        radarConf: radar?.confidence ?? 0,
+        firstRun: false
+      });
+
+      const lines = [
+        `✅ Saved **${TYPE_LABELS[pending.type]}** screenshot.`,
+        `Captured ${capturedTypes.size}/${REQUIRED_TYPES.length} required screenshots.`
+      ];
+
+      if (missingTypes.length) {
+        lines.push(`Still need: ${missingTypes.map(type => TYPE_LABELS[type]).join(', ')}.`);
+        lines.push('Use `/snail analyze` again with the next required screenshot.');
+      } else {
+        lines.push('All required screenshots captured! Run `/snail stats` to view the full breakdown and recommendations.');
+      }
+
+      if (pending.warnings?.length) {
+        lines.push('', 'Warnings noted:', ...pending.warnings.map(w => `• ${w}`));
+      }
+
+      await interaction.update({
+        content: lines.join('\n'),
+        components: []
+      });
+      return true;
+    } catch (err) {
+      logger.error('Snail save failed', { userId: pending.userId, error: err.message });
+      await interaction.update({
+        content: `❌ Failed to save screenshot: ${err.message}`,
+        components: []
+      });
+      return true;
+    }
+  }
+
+  if (action === 'cancel') {
+    const preview = peekPending(pendingId);
+    if (!preview) {
+      await interaction.update({
+        content: 'This preview was already handled or expired.',
+        components: []
+      });
+      return true;
+    }
+
+    if (interaction.user.id !== preview.userId) {
+      await interaction.reply({
+        content: `Only <@${preview.userId}> can discard this screenshot.`,
+        ephemeral: true
+      });
+      return true;
+    }
+
+    pullPending(pendingId);
+
+    await interaction.update({
+      content: '🗑️ Preview discarded. No data was saved.',
+      components: []
+    });
+    return true;
+  }
+
+  return false;
+}

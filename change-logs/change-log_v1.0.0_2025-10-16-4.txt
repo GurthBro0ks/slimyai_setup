@@ -1,0 +1,7 @@
+## 2025-10-16 – Sequential Snail Capture & Stats Rollup
+
+- Reworked `/snail analyze` to accept one screenshot per run, generate contextual previews, and require an explicit "Save Screenshot Data" button press before persisting.
+- Added `/snail stats` command to combine saved snapshot parts, finalize the session, and record a consolidated entry in `snail_stats`.
+- Extended snapshot persistence with `guild_id` + `finalized_at` columns, reusing in-progress sessions until `/snail stats` completes.
+- Routed Discord button interactions through `commands/snail.js` and wired the global dispatcher in `index.js` to recognize the new buttons.
+- Updated README guidance to reflect the sequential analyze flow and added deployment steps: `node deploy-commands.js`, `docker compose restart bot`.
