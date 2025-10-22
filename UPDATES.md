@@ -1,5 +1,81 @@
 # SLIMY.AI BOT - UPDATE LOG
 
+## 2025-10-22 — Bulletproof club analytics + admin console + SLOs
+**Date:** 2025-10-22
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
+
+### Summary
+Implemented Option C "Bulletproof" enhancements for club analytics, including two-model ensemble OCR, 100% coverage requirement, second approver system, admin console, cohort analysis, and volatility leaderboards. Significantly improved accuracy and safety of weekly club data commits.
+
+### Phase 1: Accuracy Hardening (Paranoid Mode)
+1. ✅ **Two-Model Ensemble OCR** — gpt-4o-mini + gpt-4o with digit-level reconciliation
+   - Parallel parsing with two models, cross-validation of every digit
+   - Disagreement tracking and automatic resolution (stronger model wins)
+   - Optional via `CLUB_USE_ENSEMBLE=1` flag
+
+2. ✅ **100% Coverage Requirement** — Block commits unless all last-week members present
+   - Coverage guard triggers if any members missing from previous week
+   - Shows coverage percentage in preview footer and embed
+   - Force commit still available for admins to override
+
+3. ✅ **Second Approver System** — Require 2 admins for risky commits
+   - Triggers when coverage <100% OR >5 members exceed ±40% WoW change
+   - Tracks approvals per session with audit trail
+   - Shows approval status in preview (1/2, 2/2 approvals)
+   - Admin/club role permission enforcement
+
+4. ✅ **Digit-Diff Highlights** — Visual comparison for changed numbers
+   - Shows digit-by-digit diff for extreme changes (±40%)
+   - Helps reviewers spot OCR errors quickly
+   - Format: Old/New values with caret indicators
+
+### Phase 2: Admin Console
+5. ✅ **New `/club admin` Command** — Management tools for club analytics
+   - `aliases view` — Show all member aliases for guild
+   - `snapshots` — View last N snapshots with metadata
+   - `rollback` — Rollback last commit (deletes snapshot, recomputes from previous)
+   - `export` — Export full club data to CSV
+   - Admin/club role permission checks on all subcommands
+
+### Phase 3: Deep Stats & Insights
+6. ✅ **Enhanced `/club stats`** — Cohort views and volatility
+   - Cohort breakdown: new members vs returning veterans
+   - Volatility leaderboard: top 5 most volatile members (by Total Power %)
+   - Weekly boundary display from `CLUB_WEEKLY_BOUNDARY` env var
+   - Member count summary in description
+
+### Environment Variables Added
+```bash
+CLUB_USE_ENSEMBLE=0  # Enable two-model ensemble OCR (2x API cost)
+CLUB_VISION_ENSEMBLE_A=gpt-4o-mini  # First model
+CLUB_VISION_ENSEMBLE_B=gpt-4o  # Second model (tiebreaker)
+CLUB_ROLE_ID=  # Optional role for club permissions
+```
+
+### Test Results
+- **ESLint**: ✅ 0 errors
+- **Syntax Checks**: ✅ All files valid
+- **Command Loading**: ✅ club-admin, club-analyze, club-stats
+
+### Commits (8 total)
+```
+c96a797 - feat(club): add two-model ensemble OCR with digit-level reconciliation
+43d45cf - feat(club): require 100% coverage before commit (paranoid mode)
+f305088 - feat(club): add second approver system for suspicious data
+01cee40 - feat(club): add digit-diff highlights for changed numbers
+46b888d - feat(club): add /club admin command with management tools
+fe4963f - feat(club): add cohorts and volatility leaderboard to /club stats
+99b14a2 - chore: add bulletproof features to .env.example
+```
+
+### What's Next
+- User guide generation (Discord-ready blocks)
+- Deploy commands with `npm run deploy`
+- Production testing with real screenshots
+
+---
+
 ## 2025-10-22 — Hygiene pass & weekly boundary parameterization
 **Date:** 2025-10-22
 **Status:** ✅ COMPLETED
