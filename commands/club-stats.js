@@ -135,6 +135,38 @@ function buildCsv(latest) {
   return [header, ...rows].join("\n");
 }
 
+async function computeCohorts(latest) {
+  const newMembers = [];
+  const veterans = [];
+  const mostVolatile = [];
+
+  for (const member of latest) {
+    // New: no previous data
+    if (!member.total_prev && !member.sim_prev) {
+      newMembers.push(member);
+    } else {
+      veterans.push(member);
+    }
+
+    // Track volatility (total change %)
+    const volatility = Math.abs(toNumber(member.total_pct_change) || 0);
+    if (volatility > 0) {
+      mostVolatile.push({ ...member, volatility });
+    }
+  }
+
+  // Sort most volatile by absolute change
+  mostVolatile.sort((a, b) => b.volatility - a.volatility);
+
+  return {
+    newMembers,
+    veterans,
+    mostVolatile: mostVolatile.slice(0, 5),
+    newCount: newMembers.length,
+    veteranCount: veterans.length,
+  };
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("club-stats")
@@ -187,16 +219,18 @@ module.exports = {
 
       await interaction.deferReply({ ephemeral: false });
 
-      const [aggregates, latest, totalMovers, simMovers] = await Promise.all([
-        getAggregates(interaction.guildId),
-        getLatestForGuild(interaction.guildId),
-        metric === "sim"
-          ? null
-          : getTopMovers(interaction.guildId, "total", safeTop),
-        metric === "total"
-          ? null
-          : getTopMovers(interaction.guildId, "sim", safeTop),
-      ]);
+      const [aggregates, latest, totalMovers, simMovers, cohorts] =
+        await Promise.all([
+          getAggregates(interaction.guildId),
+          getLatestForGuild(interaction.guildId),
+          metric === "sim"
+            ? null
+            : getTopMovers(interaction.guildId, "total", safeTop),
+          metric === "total"
+            ? null
+            : getTopMovers(interaction.guildId, "sim", safeTop),
+          computeCohorts(latest),
+        ]);
 
       if (format === "csv") {
         const csv = buildCsv(latest);
@@ -218,10 +252,10 @@ module.exports = {
         .setColor(0x6366f1)
         .setDescription(
           [
-            `**Members:** ${aggregates.members}`,
+            `**Members:** ${aggregates.members} (${cohorts.newCount} new, ${cohorts.veteranCount} returning)`,
             `**Total Power:** ${formatNumber(aggregates.totalPower)}`,
             `**Average Power:** ${formatNumber(aggregates.averagePower)}`,
-          ].join(" • "),
+          ].join("\n"),
         );
 
       if (metric !== "sim" && totalMovers) {
@@ -238,9 +272,30 @@ module.exports = {
         });
       }
 
+      // Add volatility leaderboard
+      if (cohorts.mostVolatile.length > 0) {
+        const volatileLines = cohorts.mostVolatile.map((member, index) => {
+          const pct =
+            member.total_pct_change !== null && member.total_pct_change !== undefined
+              ? member.total_pct_change
+              : 0;
+          const sign = pct >= 0 ? "▲" : "▼";
+          return `${index + 1}. **${member.name_display}** ${sign} ${Math.abs(pct).toFixed(1)}%`;
+        });
+        embed.addFields({
+          name: "🔥 Most Volatile (Total Power)",
+          value: volatileLines.join("\n"),
+          inline: false,
+        });
+      }
+
       const sheetId =
         process.env.GOOGLE_SHEETS_SPREADSHEET_ID ||
         process.env.SHEETS_SPREADSHEET_ID;
+      const weeklyBoundary =
+        process.env.CLUB_WEEKLY_BOUNDARY || "FRI_00:00_America/Detroit";
+      const boundaryDisplay = weeklyBoundary.replace(/_/g, " ");
+
       const components = [];
       if (sheetId) {
         const row = new ActionRowBuilder().addComponents(
@@ -251,10 +306,10 @@ module.exports = {
         );
         components.push(row);
         embed.setFooter({
-          text: "Mon 00:00 UTC window • Open Sheet → button below",
+          text: `Weekly window: ${boundaryDisplay} • Open Sheet → button below`,
         });
       } else {
-        embed.setFooter({ text: "Mon 00:00 UTC window" });
+        embed.setFooter({ text: `Weekly window: ${boundaryDisplay}` });
       }
 
       await interaction.editReply({
