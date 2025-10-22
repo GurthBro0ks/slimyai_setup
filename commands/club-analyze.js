@@ -15,9 +15,9 @@ const stubs = TEST ? require("../test/mocks/stubs") : null;
 const database = TEST ? stubs.database : require("../lib/database");
 const logger = require("../lib/logger");
 const metrics = TEST ? stubs.metrics : require("../lib/metrics");
-const { parseManageMembersImage } = TEST
-  ? stubs.clubVision
-  : require("../lib/club-vision");
+const clubVision = TEST ? stubs.clubVision : require("../lib/club-vision");
+const { parseManageMembersImage, parseManageMembersImageEnsemble } =
+  clubVision;
 const clubStore = TEST ? stubs.clubStore : require("../lib/club-store");
 const {
   canonicalize,
@@ -38,6 +38,7 @@ const SUSPICIOUS_THRESHOLD = Number(
   process.env.CLUB_QA_SUSPICIOUS_JUMP_PCT || 85,
 );
 const BUTTON_PREFIX = "club-analyze";
+const USE_ENSEMBLE = process.env.CLUB_USE_ENSEMBLE === "1";
 
 const sessions = new Map();
 
@@ -91,6 +92,8 @@ function createSession(interaction, type, attachments, forceCommit) {
     replyMessageId: null,
     strictRuns: 0,
     initialInteraction: interaction,
+    useEnsemble: USE_ENSEMBLE,
+    ensembleMetadata: null,
   };
 
   sessions.set(id, session);
@@ -293,6 +296,18 @@ function buildPreviewEmbed(session) {
     `  • Total: ${totalTotal}`,
   ];
 
+  if (session.useEnsemble && session.ensembleMetadata) {
+    const meta = session.ensembleMetadata;
+    description.push(
+      `• **Ensemble Mode**: ${meta.disagreements} digit conflicts reconciled`,
+    );
+    if (meta.disagreements > 0) {
+      description.push(
+        `  • Both models agreed: ${meta.bothModels - meta.disagreements}/${meta.bothModels}`,
+      );
+    }
+  }
+
   if (warnMissingMetric) {
     description.push("⚠️ Both metrics were requested but not fully detected.");
   }
@@ -397,13 +412,43 @@ async function parseAttachments(session, strict = false) {
   const forcedMetric =
     session.type === "sim" ? "sim" : session.type === "power" ? "total" : null;
 
+  const useEnsemble = session.useEnsemble && !strict;
+
   for (const attachment of session.attachments) {
     try {
-      const result = await parseManageMembersImage(
-        attachment.url,
-        forcedMetric,
-        { strict },
-      );
+      let result;
+      if (useEnsemble) {
+        result = await parseManageMembersImageEnsemble(
+          attachment.url,
+          forcedMetric,
+        );
+        // Accumulate ensemble metadata
+        if (result.ensembleMetadata) {
+          if (!session.ensembleMetadata) {
+            session.ensembleMetadata = {
+              totalMembers: 0,
+              disagreements: 0,
+              onlyInA: 0,
+              onlyInB: 0,
+              bothModels: 0,
+            };
+          }
+          session.ensembleMetadata.totalMembers +=
+            result.ensembleMetadata.totalMembers;
+          session.ensembleMetadata.disagreements +=
+            result.ensembleMetadata.disagreements;
+          session.ensembleMetadata.onlyInA += result.ensembleMetadata.onlyInA;
+          session.ensembleMetadata.onlyInB += result.ensembleMetadata.onlyInB;
+          session.ensembleMetadata.bothModels +=
+            result.ensembleMetadata.bothModels;
+        }
+      } else {
+        result = await parseManageMembersImage(
+          attachment.url,
+          forcedMetric,
+          { strict },
+        );
+      }
       mergeRows(session, result.metric, result.rows, attachment.url);
     } catch (err) {
       logger.error("[club-analyze] Vision parse failed", {
