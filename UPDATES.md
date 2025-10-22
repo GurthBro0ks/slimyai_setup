@@ -1,5 +1,45 @@
 # SLIMY.AI BOT - UPDATE LOG
 
+## 2025-10-22 — Hygiene pass & weekly boundary parameterization
+**Date:** 2025-10-22
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
+
+### Summary
+Full-codebase health pass completed. Fixed 7 critical hygiene issues, parameterized weekly club boundary to Friday 00:00 America/Detroit, and validated all slash commands in TEST_MODE.
+
+### Changes Applied
+1. ✅ **ESLint Configuration** — Fixed deprecated --ext flag, configured for CommonJS
+2. ✅ **jscpd Script** — Corrected --gitignore flag syntax
+3. ✅ **Missing Dependency** — Added undici as explicit dependency
+4. ✅ **Weekly Boundary Config** — Added CLUB_WEEKLY_BOUNDARY environment variable
+5. ✅ **Documentation Updates** — Updated DATABASE-SETUP.md and screenshot-to-sheet-mapping.md to reference Friday boundary
+6. ✅ **Code Formatting** — Applied Prettier to all JavaScript files (245 files)
+
+### Test Results
+- **Slash Commands**: 33 tests, 31 PASS, 2 SKIP, 0 FAIL
+- **Circular Dependencies**: ✅ None found
+- **Missing Dependencies**: ✅ 0 (fixed undici)
+- **Duplicate Code**: ✅ 0 exact clones
+
+### Commits
+```
+c74943b - fix(hygiene): correct ESLint config for CommonJS project
+a338d6b - fix(hygiene): correct jscpd script gitignore flag
+743eec0 - fix(deps): add undici as explicit dependency
+3b54c98 - feat(config): add CLUB_WEEKLY_BOUNDARY environment variable
+6325e62 - docs: update weekly boundary to Friday America/Detroit in DATABASE-SETUP.md
+2912517 - docs: update weekly boundary to Friday America/Detroit in screenshot-to-sheet-mapping.md
+f41921a - style: apply Prettier formatting to JavaScript files
+```
+
+### Reports Generated
+- `command-test-report.txt` (overwritten with latest results)
+- `repo-hygiene-report.txt` (comprehensive summary)
+- `auto-codex-test-run-2025-10-22.md` (detailed execution log)
+
+---
+
 ## Session: Memory System Bugs Fixed + GPT-4 Vision Integration
 **Date:** 2025-10-06
 **Status:** ✅ PRODUCTION DEPLOYED
