@@ -37,6 +37,8 @@ const SESSION_TTL_MS = 15 * 60 * 1000;
 const SUSPICIOUS_THRESHOLD = Number(
   process.env.CLUB_QA_SUSPICIOUS_JUMP_PCT || 85,
 );
+const EXTREME_VOLATILITY_THRESHOLD = 40; // ±40% WoW change
+const EXTREME_VOLATILITY_COUNT = 5; // >5 members
 const BUTTON_PREFIX = "club-analyze";
 const USE_ENSEMBLE = process.env.CLUB_USE_ENSEMBLE === "1";
 
@@ -94,6 +96,8 @@ function createSession(interaction, type, attachments, forceCommit) {
     initialInteraction: interaction,
     useEnsemble: USE_ENSEMBLE,
     ensembleMetadata: null,
+    approvals: new Set(), // Track user IDs who have approved
+    auditTrail: [], // Track approval history
   };
 
   sessions.set(id, session);
@@ -258,6 +262,17 @@ function recomputeQA(session) {
   const fullCoverage = missing.length === 0 && lastWeekCount > 0;
   const coverageGuardTriggered = !fullCoverage && lastWeekCount > 0;
 
+  // Detect extreme volatility: >5 members exceed ±40% WoW
+  const extremeVolatile = suspicious.filter(
+    (row) => Math.abs(row.pct) >= EXTREME_VOLATILITY_THRESHOLD,
+  );
+  const hasExtremeVolatility =
+    extremeVolatile.length > EXTREME_VOLATILITY_COUNT;
+
+  // Second approver required if: coverage <100% OR extreme volatility
+  const requiresSecondApprover =
+    coverageGuardTriggered || hasExtremeVolatility;
+
   session.qa = {
     missing,
     newNames,
@@ -276,6 +291,9 @@ function recomputeQA(session) {
     coverage,
     coveragePct,
     fullCoverage,
+    extremeVolatile,
+    hasExtremeVolatility,
+    requiresSecondApprover,
   };
 }
 
@@ -379,7 +397,30 @@ function buildPreviewEmbed(session) {
     });
   }
 
-  if (session.qa.coverageGuardTriggered) {
+  if (session.qa.requiresSecondApprover && session.approvals.size === 0) {
+    const reasons = [];
+    if (session.qa.coverageGuardTriggered) {
+      reasons.push(`Coverage ${session.qa.coveragePct}% (need 100%)`);
+    }
+    if (session.qa.hasExtremeVolatility) {
+      reasons.push(
+        `${session.qa.extremeVolatile.length} members exceed \u00b140% WoW`,
+      );
+    }
+    embed.addFields({
+      name: "🔐 Second Approval Required",
+      value: `**Reason**: ${reasons.join(", ")}\n**Status**: Awaiting approval from 2 admins\n\nForce commit (admin) can override this requirement.`,
+    });
+  } else if (
+    session.qa.requiresSecondApprover &&
+    session.approvals.size === 1
+  ) {
+    const firstApprover = Array.from(session.approvals)[0];
+    embed.addFields({
+      name: "🔐 Second Approval Required",
+      value: `**Status**: 1/2 approvals (<@${firstApprover}> approved)\n**Needed**: 1 more admin approval to commit`,
+    });
+  } else if (session.qa.coverageGuardTriggered) {
     embed.addFields({
       name: `🛡️ Coverage Guard: ${session.qa.coveragePct}%`,
       value:
@@ -396,19 +437,35 @@ function buildPreviewEmbed(session) {
 }
 
 function buildPreviewComponents(session) {
-  const approveDisabled =
-    (session.qa.coverageGuardTriggered || session.qa.missingGuardTriggered) &&
-    !session.forceCommit;
   const notEnoughRows = session.qa.totalRows < MIN_ROWS_FOR_COMMIT;
-  const disabledApprove = approveDisabled || notEnoughRows;
+
+  // Determine approval button state
+  let approveLabel = "Approve & Commit";
+  let approveDisabled = notEnoughRows;
+
+  if (session.qa.requiresSecondApprover && !session.forceCommit) {
+    // Second approval required
+    if (session.approvals.size === 0) {
+      approveLabel = "Approve (1/2)";
+      approveDisabled = notEnoughRows;
+    } else if (session.approvals.size === 1) {
+      approveLabel = "Approve (2/2) & Commit";
+      approveDisabled = notEnoughRows;
+    }
+  } else if (
+    (session.qa.coverageGuardTriggered || session.qa.missingGuardTriggered) &&
+    !session.forceCommit
+  ) {
+    approveDisabled = true; // Block if guards are active without second approver
+  }
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${BUTTON_PREFIX}:approve:${session.id}`)
       .setEmoji("✅")
-      .setLabel("Approve & Commit")
+      .setLabel(approveLabel)
       .setStyle(ButtonStyle.Success)
-      .setDisabled(disabledApprove),
+      .setDisabled(approveDisabled),
     new ButtonBuilder()
       .setCustomId(`${BUTTON_PREFIX}:ocr:${session.id}`)
       .setEmoji("🪄")
@@ -852,14 +909,60 @@ async function handleInitialRun(interaction) {
 }
 
 async function handleApprove(interaction, session) {
-  const isOwner = interaction.user.id === session.userId;
-  if (!isOwner) {
+  // Check permissions - must be admin or have elevated permissions
+  const isAdmin = interaction.memberPermissions?.has(
+    PermissionFlagsBits.Administrator,
+  );
+  const clubRoleId = process.env.CLUB_ROLE_ID;
+  const hasClubRole =
+    clubRoleId && interaction.member?.roles?.cache?.has(clubRoleId);
+
+  if (!isAdmin && !hasClubRole) {
     return interaction.reply({
       ephemeral: true,
-      content: "Only the original caller can approve this session.",
+      content: "Only administrators or club role holders can approve commits.",
     });
   }
 
+  const userId = interaction.user.id;
+
+  // Check if already approved by this user
+  if (session.approvals.has(userId)) {
+    return interaction.reply({
+      ephemeral: true,
+      content: "You have already approved this session.",
+    });
+  }
+
+  // Record approval
+  session.approvals.add(userId);
+  session.auditTrail.push({
+    userId,
+    username: interaction.user.username,
+    action: "approve",
+    timestamp: new Date().toISOString(),
+  });
+
+  // Check if we need second approval
+  if (
+    session.qa.requiresSecondApprover &&
+    !session.forceCommit &&
+    session.approvals.size < 2
+  ) {
+    // Need second approval - update preview
+    await interaction.deferUpdate();
+    recomputeQA(session);
+    const embed = buildPreviewEmbed(session);
+    const components = buildPreviewComponents(session);
+    await session.initialInteraction.editReply({
+      content: `<@${userId}> approved (1/2). Awaiting second admin approval.`,
+      embeds: [embed],
+      components,
+    });
+    return;
+  }
+
+  // Proceed with commit (either 2 approvals or no second approval required)
   await interaction.deferReply({ ephemeral: true });
 
   try {
@@ -869,6 +972,20 @@ async function handleApprove(interaction, session) {
       session.forceCommit ? "force" : "normal",
     );
     const embed = buildSuccessEmbed(session, commitSummary);
+
+    // Add audit trail to success message
+    if (session.auditTrail.length > 0) {
+      const approvers = session.auditTrail
+        .filter((entry) => entry.action === "approve")
+        .map((entry) => `<@${entry.userId}>`)
+        .join(", ");
+      embed.addFields({
+        name: "Approved by",
+        value: approvers,
+        inline: true,
+      });
+    }
+
     await session.initialInteraction.editReply({
       content: "✅ Snapshot committed.",
       embeds: [],
