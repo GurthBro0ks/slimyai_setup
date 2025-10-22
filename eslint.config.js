@@ -20,11 +20,11 @@ module.exports = [
         clearInterval: "readonly",
       },
       ecmaVersion: 2021,
-      sourceType: "commonjs"
+      sourceType: "commonjs",
     },
     rules: {
       "no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
-      "no-console": "off"
-    }
-  }
+      "no-console": "off",
+    },
+  },
 ];

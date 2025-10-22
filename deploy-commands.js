@@ -6,7 +6,9 @@ const { REST, Routes } = require("discord.js");
 
 const commands = [];
 const cmdsPath = path.join(__dirname, "commands");
-const files = fs.readdirSync(cmdsPath).filter(f => f.endsWith(".js") && !f.includes(".bak"));
+const files = fs
+  .readdirSync(cmdsPath)
+  .filter((f) => f.endsWith(".js") && !f.includes(".bak"));
 
 console.log("🔍 Finding command files...");
 
@@ -18,7 +20,9 @@ for (const file of files) {
       commands.push(command.data.toJSON());
       console.log(`✅ Loaded: ${file}`);
     } else {
-      console.warn(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+      console.warn(
+        `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`,
+      );
     }
   } catch (error) {
     console.error(`❌ Failed to load command at ${filePath}:`, error);
@@ -38,26 +42,26 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
     if (!appId) {
       throw new Error("Missing DISCORD_CLIENT_ID in .env");
     }
-    
+
     const guildId = process.env.DISCORD_GUILD_ID;
-    
+
     if (guildId) {
       // Guild-specific deployment
-      console.log(`\n🚀 Deploying ${commands.length} command(s) to guild ${guildId}...`);
-      await rest.put(
-        Routes.applicationGuildCommands(appId, guildId),
-        { body: commands }
+      console.log(
+        `\n🚀 Deploying ${commands.length} command(s) to guild ${guildId}...`,
       );
+      await rest.put(Routes.applicationGuildCommands(appId, guildId), {
+        body: commands,
+      });
       console.log("✅ Slash commands registered to guild successfully.");
     } else {
       // Global deployment
       console.log(`\n🚀 Deploying ${commands.length} command(s) globally...`);
-      await rest.put(
-        Routes.applicationCommands(appId),
-        { body: commands }
-      );
+      await rest.put(Routes.applicationCommands(appId), { body: commands });
       console.log("✅ Slash commands registered globally.");
-      console.log("⏱️  Note: Global commands can take up to an hour to appear on all servers.");
+      console.log(
+        "⏱️  Note: Global commands can take up to an hour to appear on all servers.",
+      );
     }
   } catch (e) {
     console.error("❌ Deployment failed:", e);

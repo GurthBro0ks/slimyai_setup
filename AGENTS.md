@@ -1,21 +1,39 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`index.js` boots the Discord client, enforces singleton startup, and wires global utilities. Slash command handlers live in `commands/*.js` (e.g., `commands/snail.js`), while reactive listeners are in `handlers/` for mention and auto-detect flows. Shared services and integrations sit in `lib/`, including memory persistence (`lib/memory.js`), Google Sheets helpers, and OpenAI adapters. Operational scripts reside in `scripts/` for database migrations and sheet seeding, and persona configuration is versioned under `config/`. Tests, fixtures, and manual checklists are grouped in `tests/` alongside validation docs.
+- `index.js` boots the Discord client, health probes, and global schedulers. Treat it as the integration layer and keep it lean.
+- `lib/` hosts core services (databases, logging, persona engine, vision utilities); mirror existing file boundaries when adding new capabilities.
+- `handlers/` contains mention and vision entry points, while slash command payloads live under `commands/`.
+- `scripts/` holds operational helpers (deploy, system-check, backups) and SQL migrations; use these for manual maintenance work.
+- Assets are under `icons/` and long-term data sits in `backups/` and `var/`. Automated and manual specs reside in `tests/`.
 
 ## Build, Test, and Development Commands
-- `npm start` loads `.env`, connects to Discord, and starts the production bot.
-- `npm run deploy` refreshes slash command definitions via `deploy-commands.js`.
-- `npm run test:memory` exercises `tests/memory-simple.test.js` for datastore regressions.
-- `npm run test:integration[:verbose|:force]` runs the Discord integration smoke test; provide valid tokens before use.
-- `npm run test:personality` executes Node’s built-in test runner for persona scenarios.
-For local DB validation or sheet seeding, run `node scripts/migrate-to-database.js` or `node scripts/seed-sheets.js` with the required `.env` values.
+- `npm install` — install Node 18+ dependencies; rerun after touching `package.json`.
+- `npm start` — run the bot locally with the current `.env` configuration.
+- `npm run deploy` — register slash commands (required whenever command definitions change).
+- `npm run test:memory` — executes `tests/memory-simple.test.js` for regression coverage of the memory pipeline.
+- `node scripts/system-check.sh` (bash) and `node scripts/db-test.js` help validate infrastructure dependencies before production pushes.
+- `npm run analyze-test` — smoke-checks critical flows using `scripts/analyze-smoke.js`.
 
 ## Coding Style & Naming Conventions
-Use Node.js ≥18 and CommonJS modules. Follow the prevailing two-space indentation, trailing semicolons, and single quotes in string literals. Prefer `camelCase` for functions and variables, `SCREAMING_SNAKE_CASE` for environment keys, and kebab-case filenames inside `handlers/` when the module encapsulates a feature (e.g., `snail-auto-detect`). Keep command exports consistent with Discord.js expectations (`data`, `execute`).
+- CommonJS modules, 2-space indentation, semicolons, and single quotes are standard; follow existing imports/exports and logging patterns.
+- Use `camelCase` for functions/variables, `PascalCase` for classes, and `UPPER_SNAKE_CASE` for constants (see `lib/logger.js`).
+- Keep configuration and persona schemas aligned with `config/slimy_ai.persona.json`; document any new mode keys in both JS and TS helpers.
+- Prefer small, composable helpers within `lib/` and surface them through explicit exports to ease reuse.
 
 ## Testing Guidelines
-Place automated tests in `tests/` and name them `*.test.js` or `*-test.js` to match existing patterns. Fast feedback should come from `npm run test:memory`; run integration tests only after confirming Discord credentials in `.env`. When adding new flows, include harness helpers from `tests/test-helpers.js` and document manual scenarios in the adjacent markdown checklists. Capture command output for any non-trivial test run when sharing results.
+- Place automated specs in `tests/` using the `*.test.js` suffix so they can be invoked directly with `node`.
+- Mirror the structure of `memory-simple.test.js` when adding harness code; keep assertions isolated and reset in-memory caches between cases.
+- Update `test-memory-flow.js` or related smoke runners when altering long-running workflows, and capture manual steps in `test-memory-manual.md`.
+- Aim to cover new data stores or schedulers with deterministic fixtures; include sample payloads under `test_imgs/` if vision parsing is involved.
 
 ## Commit & Pull Request Guidelines
-Follow the repository’s history by writing imperative, topic-prefixed commit subjects (e.g., `Fix: reconcile duplicate command loads`, `Phase 2: expand vision coverage`). Limit body text to problem, approach, and test notes. Pull requests should summarize behavior changes, link associated issues or Trello cards, list relevant test commands, and attach screenshots or logs for Discord-facing features. Mention configuration updates (e.g., `.env` keys or Google service accounts) so deployers can replicate the setup.
+- Follow the existing git style: `feat: ...`, `fix: ...`, `chore: ...`, etc., using short imperative subjects plus optional scoped prefixes.
+- Reference relevant scripts or configs in the body (e.g., “touches `lib/logger.js` logging levels”).
+- PRs should outline the change, the validation (tests or manual runs), linked issues, and screenshots/log excerpts for user-facing updates.
+- Flag breaking config changes prominently and note required environment variable or database migrations.
+
+## Configuration & Operational Notes
+- Secrets live in `.env` / `.env.db`; never commit real keys. Point contributors to the templates and list new variables there first.
+- `docker-compose.yml` and `ecosystem.config.js` describe production process managers—keep them synchronized with new services.
+- Any new external integration should ship with an update to `scripts/system-check.sh` or a comparable diagnostic to preserve operability.

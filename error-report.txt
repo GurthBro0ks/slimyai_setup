@@ -1,0 +1,31 @@
+# Error Report — npm start / deployment blockers
+
+## Summary
+- `npm start` currently exits immediately because the singleton lock `.slimy-singleton.lock` points to an already running Node pid (`1896587`).
+- Bot startup also requires `DISCORD_TOKEN` and `OPENAI_API_KEY`; absence will keep slash commands unloaded and handlers disabled.
+- File logging attempted to write under `/opt/slimy/app/logs/`; ensure the runtime user can write there to avoid repeated `[logger] Failed to write to log file` warnings.
+
+## Recommended Fixes
+1. Stop the leftover process and remove the lock file:
+   ```bash
+   sudo kill 1896587  # or the pid listed in .slimy-singleton.lock
+   rm -f .slimy-singleton.lock
+   ```
+2. Populate required environment variables (e.g. via `.env`):
+   ```
+   DISCORD_TOKEN=... # Discord bot token
+   DISCORD_CLIENT_ID=... # Used by deploy script
+   OPENAI_API_KEY=...
+   DB_HOST=... DB_USER=... DB_PASSWORD=... DB_NAME=...
+   ```
+3. Ensure the application user has write permissions to `logs/`:
+   ```bash
+   mkdir -p logs
+   chmod u+w logs
+   ```
+4. Re-run `npm start` once environment and permissions are set.
+5. To redeploy slash commands, run `npm run deploy` (now points at `deploy-commands.js`) after credentials are in place.
+
+## Additional Context
+- The scheduler module now polyfills `File/FormData/Blob` using `undici`, preventing the previous `ReferenceError: File is not defined` at boot.
+- Memory persistence tests (`npm run test:memory`) pass using the isolated store under `tests/tmp-memory-store/`.

@@ -1,0 +1,16 @@
+slimy.ai Bot v1.0.0 – Session Summary (2025-10-15)
+
+Key Work Completed
+- Added hourly Snelp scraper with redis-backed caching and live code storage in MySQL; `/snail codes` now shows public results with a copy button and posts alerts for new codes.
+- Expanded `/snail analyze` to enrich stats, store recommendations in the new `snail_recommendations` table, and operate without Google Sheets by default (feature toggle and DB persistence).
+- Hardened vision parsing with a refinement pass to reduce stat misreads and improved Redis resilience to avoid hangs when the cache is offline.
+- Introduced maintenance tooling (db-test script, change-log folder) and migration updates to keep schema idempotent.
+
+Tests & Validation
+- `node scripts/db-test.js`
+- Manual scraper dry run (`scrapeSnelpCodes`) and MySQL seed verification
+- Container rebuild/restarts after each major change (`docker compose build bot && docker compose up -d bot`)
+
+Follow-Ups
+- Configure `CODES_ALERT_CHANNEL_ID`/`CODES_ALERT_ROLE_ID` in `.env` to receive new-code ping alerts.
+- Re-enable Sheets later (set `FEATURE_SHEETS=true`) once Google Drive storage issues are resolved.
