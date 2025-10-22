@@ -71,6 +71,30 @@ function formatPercent(value) {
   return `${sign} ${Math.abs(num).toFixed(2)}%`;
 }
 
+function formatDigitDiff(oldValue, newValue) {
+  const oldStr = String(oldValue || "").padStart(10, " ");
+  const newStr = String(newValue || "").padStart(10, " ");
+  const maxLen = Math.max(oldStr.length, newStr.length);
+
+  // Build difference indicator
+  let diffLine = "";
+  for (let i = 0; i < maxLen; i++) {
+    const oldDigit = oldStr[i] || " ";
+    const newDigit = newStr[i] || " ";
+    if (oldDigit !== newDigit) {
+      diffLine += "^";
+    } else {
+      diffLine += " ";
+    }
+  }
+
+  // Only return if there are actual differences
+  if (diffLine.trim()) {
+    return `\`\`\`\nOld: ${oldStr}\nNew: ${newStr}\n     ${diffLine}\`\`\``;
+  }
+  return null;
+}
+
 function createSession(interaction, type, attachments, forceCommit) {
   const id = uuidv4();
   const session = {
@@ -378,13 +402,33 @@ function buildPreviewEmbed(session) {
   }
 
   if (session.qa.suspicious.length) {
-    const sample = session.qa.suspicious.slice(0, 5).map((row) => {
-      return `${formatPercent(row.pct)} • ${row.display} (${formatNumber(row.previous)} → ${formatNumber(row.current)})`;
-    });
-    embed.addFields({
-      name: `Suspicious total changes (${session.qa.suspicious.length})`,
-      value: sample.join("\n"),
-    });
+    // Show top 3 with digit diffs for extreme changes
+    const top3 = session.qa.suspicious.slice(0, 3);
+    const extreme = top3.filter(
+      (row) => Math.abs(row.pct) >= EXTREME_VOLATILITY_THRESHOLD,
+    );
+
+    if (extreme.length > 0) {
+      // Show with digit-diff highlights
+      const sample = extreme.map((row) => {
+        const digitDiff = formatDigitDiff(row.previous, row.current);
+        const header = `${formatPercent(row.pct)} • **${row.display}**`;
+        return digitDiff ? `${header}\n${digitDiff}` : header;
+      });
+      embed.addFields({
+        name: `⚠️ Suspicious changes (${session.qa.suspicious.length} total)`,
+        value: sample.join("\n"),
+      });
+    } else {
+      // Show without digit diffs (normal suspicious changes)
+      const sample = session.qa.suspicious.slice(0, 5).map((row) => {
+        return `${formatPercent(row.pct)} • ${row.display} (${formatNumber(row.previous)} → ${formatNumber(row.current)})`;
+      });
+      embed.addFields({
+        name: `Suspicious total changes (${session.qa.suspicious.length})`,
+        value: sample.join("\n"),
+      });
+    }
   }
 
   if (session.qa.lowConfidence.length) {
