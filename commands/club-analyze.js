@@ -251,6 +251,12 @@ function recomputeQA(session) {
 
   const lastWeekCount = session.lastWeekSet.size;
   const missingRatio = lastWeekCount > 0 ? missing.length / lastWeekCount : 0;
+  const coverage = lastWeekCount > 0 ? 1 - missingRatio : 1;
+  const coveragePct = Math.round(coverage * 100);
+
+  // Paranoid mode: require 100% coverage unless force commit
+  const fullCoverage = missing.length === 0 && lastWeekCount > 0;
+  const coverageGuardTriggered = !fullCoverage && lastWeekCount > 0;
 
   session.qa = {
     missing,
@@ -264,17 +270,27 @@ function recomputeQA(session) {
       sim: session.metrics.sim.size > 0,
     },
     totalRows,
-    missingGuardTriggered: missingRatio >= 0.2 && lastWeekCount > 0,
+    missingGuardTriggered: missingRatio >= 0.2 && lastWeekCount > 0, // Legacy guard (20%)
+    coverageGuardTriggered, // New paranoid guard (100% required)
     missingRatio,
+    coverage,
+    coveragePct,
+    fullCoverage,
   };
 }
 
 function buildPreviewEmbed(session) {
+  const coverageColor = session.qa?.coverageGuardTriggered
+    ? 0xff3366 // Red for <100% coverage
+    : session.qa?.missingGuardTriggered
+      ? 0xffa500 // Orange for legacy guard
+      : 0x3b82f6; // Blue for good
+
   const embed = new EmbedBuilder()
     .setTitle("Club Analyze — Preview")
-    .setColor(session.qa?.missingGuardTriggered ? 0xffa500 : 0x3b82f6)
+    .setColor(coverageColor)
     .setFooter({
-      text: "Review and approve to commit. Manual fixes are available.",
+      text: `Coverage: ${session.qa?.coveragePct || 0}% • Manual fixes available`,
     });
 
   const totalSim = session.metrics.sim.size;
@@ -363,11 +379,16 @@ function buildPreviewEmbed(session) {
     });
   }
 
-  if (session.qa.missingGuardTriggered) {
+  if (session.qa.coverageGuardTriggered) {
     embed.addFields({
-      name: "Guard: High missing rate",
+      name: `🛡️ Coverage Guard: ${session.qa.coveragePct}%`,
       value:
-        "More than 20% of last week's members are missing. Manual confirmation or force commit required.",
+        "**100% coverage required** for commit. All last week's members must be present. Use manual fixes to add missing members, or force commit (admin only) to override.",
+    });
+  } else if (session.qa.missingGuardTriggered) {
+    embed.addFields({
+      name: "⚠️ Warning: High missing rate",
+      value: `${session.qa.coveragePct}% coverage. Consider manual fixes before committing.`,
     });
   }
 
@@ -376,7 +397,8 @@ function buildPreviewEmbed(session) {
 
 function buildPreviewComponents(session) {
   const approveDisabled =
-    session.qa.missingGuardTriggered && !session.forceCommit;
+    (session.qa.coverageGuardTriggered || session.qa.missingGuardTriggered) &&
+    !session.forceCommit;
   const notEnoughRows = session.qa.totalRows < MIN_ROWS_FOR_COMMIT;
   const disabledApprove = approveDisabled || notEnoughRows;
 
@@ -594,6 +616,18 @@ async function commitSession(session, interaction, source) {
     );
   }
 
+  // Check coverage guard (100% required)
+  if (
+    session.qa.coverageGuardTriggered &&
+    !session.forceCommit &&
+    source !== "force"
+  ) {
+    throw new Error(
+      `Coverage guard active: ${session.qa.coveragePct}% coverage. 100% required. ${session.qa.missing.length} members missing from last week. Use manual fixes or force commit.`,
+    );
+  }
+
+  // Legacy guard (20% threshold)
   if (
     session.qa.missingGuardTriggered &&
     !session.forceCommit &&
