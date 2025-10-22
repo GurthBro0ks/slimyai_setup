@@ -45,13 +45,6 @@ function formatNumber(value) {
   return num.toLocaleString();
 }
 
-function formatPercent(value) {
-  const num = toNumber(value);
-  if (num === null) return "—";
-  const arrow = num > 0 ? "▲" : num < 0 ? "▼" : "▶";
-  return `${arrow} ${Math.abs(num).toFixed(2)}%`;
-}
-
 function formatDelta(current, previous) {
   const curr = toNumber(current);
   const prev = toNumber(previous);

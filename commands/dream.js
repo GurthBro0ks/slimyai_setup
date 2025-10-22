@@ -1,7 +1,6 @@
 const {
   SlashCommandBuilder,
   AttachmentBuilder,
-  EmbedBuilder,
   MessageFlags,
 } = require("discord.js");
 const TEST = process.env.TEST_MODE === "1";
@@ -102,29 +101,6 @@ const STYLE_CHOICES = Object.entries(DREAM_STYLES).map(([value, style]) => ({
   name: style.name,
   value,
 }));
-
-function formatCooldownMessage(waitMs) {
-  const seconds = Math.ceil(waitMs / 1000);
-  return `⏳ Hold up! Try again in ${seconds}s.`;
-}
-
-function buildStylesEmbed() {
-  const embed = new EmbedBuilder()
-    .setTitle("🎨 Dream Styles Available")
-    .setDescription("Choose from 10 unique artistic styles!")
-    .setColor(0x7b68ee)
-    .setFooter({ text: 'Try: /dream prompt:"a friendly robot" style:anime' });
-
-  for (const style of Object.values(DREAM_STYLES)) {
-    embed.addFields({
-      name: `${style.emoji} ${style.name}`,
-      value: style.description,
-      inline: true,
-    });
-  }
-
-  return embed;
-}
 
 module.exports = {
   data: new SlashCommandBuilder()

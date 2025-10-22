@@ -8,7 +8,6 @@ const path = require("path");
 
 // Test database file (isolated from production)
 const TEST_DB_FILE = path.join(__dirname, "..", "data_store_test.json");
-const ORIGINAL_FILE = path.join(__dirname, "..", "data_store.json");
 
 // Colors for output
 const GREEN = "\x1b[32m";
@@ -28,7 +27,6 @@ const results = {
 // Helper to load memory module with test database
 function loadMemoryModule() {
   // Backup original file path
-  const originalEnv = process.env.NODE_ENV;
 
   // Clear module cache to reload with new file path
   delete require.cache[require.resolve("../lib/memory.js")];
@@ -626,7 +624,7 @@ async function dataIntegrityTests() {
   });
 
   await test("User isolation: Users cannot delete other users memos", async () => {
-    const user1Memo = await mem.addMemo({
+    await mem.addMemo({
       userId: "user1",
       guildId: "guild1",
       content: "User 1",

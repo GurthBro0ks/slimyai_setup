@@ -105,7 +105,7 @@ function loadCommandModules() {
     if (!entry.name.endsWith(".js")) continue;
 
     const filePath = path.join(commandsDir, entry.name);
-    // eslint-disable-next-line import/no-dynamic-require, global-require
+    // eslint-disable-next-line global-require
     const mod = require(filePath);
     if (!mod?.data || typeof mod.execute !== "function") continue;
 

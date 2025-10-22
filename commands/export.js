@@ -99,7 +99,7 @@ module.exports = {
           )
           .setTimestamp();
 
-        memories.slice(0, 5).forEach((mem, i) => {
+        memories.slice(0, 5).forEach((mem, _i) => {
           const createdAt = mem.createdAt || mem.created_at;
           const safeNote = mem.note || "";
           embed.addFields({

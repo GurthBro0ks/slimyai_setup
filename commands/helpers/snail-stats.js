@@ -12,7 +12,7 @@ async function runSnailStats({
   WHY_NEEDED,
   buildFullAnalysis,
   formatStatsBlock,
-  formatStatsLine,
+  formatStatsLine: _formatStatsLine,
   FOOTER,
 }) {
   const startTime = Date.now();

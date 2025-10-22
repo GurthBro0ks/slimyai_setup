@@ -66,7 +66,8 @@ const PANEL_MESSAGE =
   process.env.PANEL_MESSAGE ||
   "Join project roles via the buttons below. Click to toggle. Need builder access? Use the request button.";
 
-const P = PermissionsBitField.Flags;
+  // eslint-disable-next-line no-unused-vars
+const _P = PermissionsBitField.Flags;
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
@@ -287,6 +288,7 @@ client.on("interactionCreate", async (ix) => {
     if (ix.isModalSubmit() && ix.customId === "builders_request_modal") {
       const guild = ix.guild;
       const review = await ensureReviewChannel(guild);
+    // eslint-disable-next-line no-unused-vars
       const buildersRole = await ensureRole(
         guild,
         BUILDERS_ROLE_NAME,
@@ -401,7 +403,7 @@ client.on("interactionCreate", async (ix) => {
             .setDisabled(true),
         );
         await ix.message.edit({ components: [row] });
-      } catch {}
+      } catch { /* Intentionally empty */ }
       return;
     }
   } catch (err) {

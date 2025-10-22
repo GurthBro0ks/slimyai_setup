@@ -344,7 +344,8 @@ async function testAtomicWrites() {
   console.log(`\n${YELLOW}[Test 7]${RESET} Atomic write validation`);
 
   // Verify temp file is cleaned up after successful write
-  const memo = await mem.addMemo({
+  // eslint-disable-next-line no-unused-vars
+  const _memo = await mem.addMemo({
     userId: TEST_USER_1,
     guildId: TEST_GUILD_1,
     content: "Atomic write test",

@@ -10,12 +10,6 @@ const { setModes, viewModes, listModes, formatModeState } = TEST
   ? stubs.modes
   : require("../lib/modes.js");
 
-const THREAD_TYPES = new Set([
-  ChannelType.PublicThread,
-  ChannelType.PrivateThread,
-  ChannelType.AnnouncementThread,
-]);
-
 const MODE_PROFILES = [
   {
     key: "chat|personality|rating_pg13",

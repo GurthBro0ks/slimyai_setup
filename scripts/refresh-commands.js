@@ -9,7 +9,7 @@ const TEST = process.env.TEST_MODE === "1";
 
 function requireCommand(modulePath) {
   try {
-    // eslint-disable-next-line import/no-dynamic-require, global-require
+    // eslint-disable-next-line global-require
     return require(modulePath);
   } catch (error) {
     logger.error("[refresh] Failed to load command module", {

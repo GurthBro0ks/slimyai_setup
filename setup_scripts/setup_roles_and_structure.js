@@ -170,7 +170,8 @@ async function ensureChannel(guild, parentId, [name, kind, opts]) {
 
 async function setForumTagsIfNeeded(channel, tags) {
   if (channel.type !== ChannelType.GuildForum || !tags?.length) return;
-  const wanted = new Map(tags.map((t) => [t, true]));
+  // eslint-disable-next-line no-unused-vars
+  const _wanted = new Map(tags.map((t) => [t, true]));
   const have = new Map((channel.availableTags || []).map((t) => [t.name, t]));
   const merged = [
     ...new Set([...(channel.availableTags || []).map((t) => t.name), ...tags]),
@@ -178,7 +179,7 @@ async function setForumTagsIfNeeded(channel, tags) {
   if (merged.length !== (channel.availableTags || []).length) {
     try {
       await channel.setAvailableTags(merged);
-    } catch {}
+    } catch { /* Intentionally empty */ }
   }
 }
 

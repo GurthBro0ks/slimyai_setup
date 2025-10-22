@@ -306,14 +306,16 @@ client.on("interactionCreate", async (ix) => {
   try {
     if (!ix.isChatInputCommand()) return;
 
-    const findForumByName = async (name) => {
+    // eslint-disable-next-line no-unused-vars
+    const _findForumByName = async (name) => {
       const guild = ix.guild;
       await guild.channels.fetch();
       return guild.channels.cache.find(
         (c) => c.type === ChannelType.GuildForum && c.name === name,
       );
     };
-    const tagIdByName = (forum, n) =>
+    // eslint-disable-next-line no-unused-vars
+    const _tagIdByName = (forum, n) =>
       forum?.availableTags?.find(
         (t) => t.name.toLowerCase() === n.toLowerCase(),
       )?.id;

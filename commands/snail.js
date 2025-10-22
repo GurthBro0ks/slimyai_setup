@@ -10,7 +10,6 @@ const {
 const { v4: uuidv4 } = require("uuid");
 const costs = require("../supersnail-costs.js");
 const database = require("../lib/database");
-const rateLimiter = require("../lib/rate-limiter");
 const metrics = require("../lib/metrics");
 const logger = require("../lib/logger");
 const { handleCodes } = require("../lib/snail-codes");
@@ -175,18 +174,6 @@ const FOOTER = [
   "_Work in progress: results may evolve as detection improves._",
 ].join("\n");
 
-function buildMissingSection(missing) {
-  if (!missing.length) return "";
-  const lines = missing.map(
-    (key) => `• **${key}** — ${MISSING_TIPS[key]}  \n  _${WHY_NEEDED[key]}_`,
-  );
-  return [
-    "These stats are still needed for a full analysis.",
-    "True stats **cannot** be calculated without this screenshot data.\n",
-    ...lines,
-  ].join("\n");
-}
-
 function stripJsonFence(text) {
   let cleaned = String(text || "").trim();
   if (cleaned.startsWith("```")) {
@@ -213,21 +200,6 @@ function formatNumber(value) {
   const num = Number(value);
   if (!Number.isFinite(num)) return "—";
   return num.toLocaleString();
-}
-
-function formatConfidenceBlock(confidence, notes) {
-  const emoji =
-    {
-      high: "✅",
-      medium: "⚠️",
-      low: "❌",
-    }[confidence] || "ℹ️";
-
-  let text = `${emoji} ${confidence ? confidence.toUpperCase() : "UNKNOWN"}`;
-  if (notes) {
-    text += `\nNotes: ${notes}`;
-  }
-  return text;
 }
 
 function formatRadarPreview(radar) {

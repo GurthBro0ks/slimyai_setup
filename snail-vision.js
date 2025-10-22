@@ -63,6 +63,7 @@ Return ONLY the JSON object, no other text.`;
 }
 
 function formatSnailAnalysis(analysis) {
+  // eslint-disable-next-line no-unused-vars
   const { stats, equipment, confidence, notes } = analysis;
 
   let output = "🐌 **Super Snail Stats Extracted**\n\n";

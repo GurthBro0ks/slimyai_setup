@@ -265,7 +265,7 @@ const clubStore = {
   },
 
   async getTopMovers(_guildId, metric, top = 5) {
-    const data = clubStoreState.latest.slice(0, top).map((entry, index) => ({
+    const data = clubStoreState.latest.slice(0, top).map((entry, _index) => ({
       name_display: entry.name_display,
       pct_change:
         metric === "total" ? entry.total_pct_change : entry.sim_pct_change,
