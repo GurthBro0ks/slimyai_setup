@@ -17,7 +17,7 @@
     "lint": "eslint . --max-warnings=0 || true",
     "circles": "madge --circular --extensions js,mjs,cjs . || true",
     "depcheck": "depcheck --json || true",
-    "jscpd": "jscpd --silent --format json --reporters json --min-lines 25 --max-lines 200 --threshold 1 --gitignore true || true"
+    "jscpd": "jscpd --silent --format json --reporters json --min-lines 25 --max-lines 200 --threshold 1 --gitignore || true"
   },
   "engines": {
     "node": ">=18"
