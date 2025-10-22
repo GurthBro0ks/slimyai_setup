@@ -158,6 +158,11 @@
 ### Testing
 - ✅ Image intent detection works with API key
 - ✅ Mention handler calls image generation
+
+## 2025-10-22 — QA Suite
+- Scripts: `refresh:commands`, `restart:bot`, `test:slash`, `qa:full`
+- Auto test runner produces `command-test-report.txt`
+- Manual checklist: `manual-tests-1022.txt`
 - ✅ DALL-E 3 size options validated
 
 ---
@@ -237,6 +242,16 @@ m.userId === userId && m.guildId === (guildId || null)
    /export
    # Should only show guild notes, not DM notes
    ```
+
+---
+
+## 2025-02-15 — Club Analytics (Confirm-before-commit)
+
+- New commands: `/club analyze` (with preview/QA/confirm) and `/club stats` (beautiful summary).
+- Vision extraction with confidence + OCR-boost retry flow.
+- Weekly WoW % change (Mon 00:00 UTC).
+- Sheet: "Club Latest" ⇒ Name | SIM Power | Total Power | Change % from last week.
+- Safety: compare against last week, flag missing names and suspicious jumps; manual fix modal; aliases table.
 
 ---
 

@@ -26,12 +26,11 @@ module.exports = {
       error_file: path.join(__dirname, "logs", "slimy-bot.err.log"),
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       env: {
-        NODE_ENV: "development"
+        NODE_ENV: "development",
       },
       env_production: {
-        NODE_ENV: "production"
-      }
-    }
-  ]
+        NODE_ENV: "production",
+      },
+    },
+  ],
 };
-

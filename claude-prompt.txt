@@ -1,0 +1,356 @@
+Here’s a single, copy-paste **Claude Code Autopilot** prompt that tightens icon reading accuracy and strips the “ChatGPT Codex Autopilot …” footer everywhere. It’s idempotent, backs up changed files once (`.bak`), creates a richer hash atlas (multiple hashes per item), improves cropping/normalization for the pink gear tiles, adds HSV histograms + ensemble scoring, and re-tests + redeploys.
+
+---
+
+# 🤖 Claude Code Autopilot — Fix Icon Reading (ensemble matcher, smarter crops) + Remove Footer
+
+You are an autonomous **code + shell** agent at the **Slimy.AI** repo root on Linux. Perform everything **idempotently**. On first overwrite of a file, create `*.bak`. Do not print secrets. If a step fails but others can continue, proceed and summarize in `REPORT.md`.
+
+## Objectives
+
+* Icons on Snail Stats screen still not recognized.
+* Improve detection/normalization for pink rounded tiles (+level badge overlay).
+* Keep **64-char pHash** (size=32) but add **multi-hash atlas** + **HSV histogram** score for robustness.
+* Try multiple crop strategies per slot (inner trim, square fit) and ensemble the best match.
+* Make `LOADOUT_ACTIVE` unaffected.
+* Remove **any** “ChatGPT Codex Autopilot — …” footer from all replies.
+* Re-run diagnostics, test `/snail analyze`, and redeploy commands / restart bot if needed.
+* Produce `REPORT.md`.
+
+---
+
+## 0) Prep
+
+```bash
+set -euo pipefail
+echo "### icon-fix start $(date -Is)"
+mkdir -p var logs || true
+```
+
+---
+
+## 1) DB: multi-hash atlas (per item, many hashes)
+
+Create migration `scripts/migrate-icon-hashes.sql`:
+
+```bash
+cat > scripts/migrate-icon-hashes.sql <<'SQL'
+CREATE TABLE IF NOT EXISTS snail_item_icon_hashes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  item_id INT NOT NULL,
+  phash CHAR(64) NOT NULL,
+  ahsv VARCHAR(64) NULL, -- compact HSV histogram string
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_item_hash (item_id, phash),
+  INDEX idx_phash (phash),
+  FOREIGN KEY (item_id) REFERENCES snail_item_icons(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ensure snail_item_icons has a stable PK and canonical name is still unique per type
+ALTER TABLE snail_item_icons
+  ADD INDEX IF NOT EXISTS idx_itemtype_name (item_type, canonical_name);
+SQL
+
+set +e
+set -a; source .env 2>/dev/null || true; set +a
+mysql -u "${DB_USER:-root}" -p"${DB_PASSWORD:-}" -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" "${DB_NAME:-slimy_ai_bot}" < scripts/migrate-icon-hashes.sql 2>/dev/null || true
+set -e
+```
+
+---
+
+## 2) Library: robust hashing + HSV histogram
+
+Install tiny helper:
+
+```bash
+npm i -S sharp imghash || true
+```
+
+Create/patch `lib/icon-hash.js`:
+
+```bash
+cat > lib/icon-hash.js <<'JS'
+const sharp = require('sharp')
+const imghash = require('imghash')
+
+// 64-hex phash (size=32) + compact HSV histogram (4x4 bins => 16 bins)
+async function normalize64(buf, { square=true, trim=0.14, unsharp=true } = {}) {
+  let img = sharp(buf).ensureAlpha()
+  const meta = await img.metadata()
+  const side = Math.min(meta.width, meta.height)
+  const left = Math.max(0, Math.floor((meta.width - side)/2))
+  const top  = Math.max(0, Math.floor((meta.height - side)/2))
+  if (square) img = img.extract({ left, top, width: side, height: side })
+  if (trim>0) {
+    const pad = Math.round(side*trim)
+    img = img.extract({ left: pad, top: pad, width: side-2*pad, height: side-2*pad })
+  }
+  if (unsharp) img = img.sharpen().normalize()
+  const forHash = await img.resize(64,64,{fit:'cover'}).toBuffer()
+  const phash = await imghash.hash(forHash, 32, 'hex') // 64 hex chars
+
+  // HSV coarse histogram (16 bins, 4 per channel, normalized ints 0..9 for compactness)
+  const small = await sharp(forHash).resize(32,32).raw().toBuffer({ resolveWithObject: true })
+  const bins = new Array(16).fill(0)
+  const { data, info } = small
+  for (let i=0; i<data.length; i+=4){
+    const r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255
+    const max=Math.max(r,g,b), min=Math.min(r,g,b), delta=max-min
+    let h=0
+    if (delta>0){
+      if (max===r) h=((g-b)/delta)%6
+      else if (max===g) h=(b-r)/delta+2
+      else h=(r-g)/delta+4
+      h*=60; if (h<0) h+=360
+    }
+    const s=max===0?0:delta/max
+    const v=max
+    const hb=Math.min(3, Math.floor((h/360)*4))
+    const sb=Math.min(3, Math.floor(s*4))
+    const vb=Math.min(3, Math.floor(v*4))
+    const idx = hb // hue 0..3
+    bins[idx] += 1 + sb + vb // weight by saturation/value
+  }
+  const sum = bins.reduce((a,b)=>a+b,0) || 1
+  const scale = bins.map(x => Math.round(10 * x / sum)) // compact 0..10
+  const ahsv = scale.join('')
+  return { phash, ahsv, buf: forHash }
+}
+
+function hamming64(a,b){
+  if (!a || !b || a.length!==b.length) return 64
+  const A = BigInt('0x'+a), B = BigInt('0x'+b)
+  let x = A ^ B, d=0n; while(x){ d += x & 1n; x >>= 1n }
+  return Number(d)
+}
+
+function histDist16(a,b){ // strings like '012340...' length 16
+  if (!a || !b || a.length!==b.length) return 1
+  let s=0, m=0
+  for (let i=0;i<a.length;i++){
+    const da = a.charCodeAt(i)-48
+    const db = b.charCodeAt(i)-48
+    m += Math.max(da, db)
+    s += Math.abs(da-db)
+  }
+  return m? s/m : 0
+}
+
+module.exports = { normalize64, hamming64, histDist16 }
+JS
+```
+
+---
+
+## 3) Multi-hash atlas access + ensemble matcher
+
+Create/patch `lib/icon-match.js`:
+
+```bash
+cat > lib/icon-match.js <<'JS'
+const db = require('./database')
+const { normalize64, hamming64, histDist16 } = require('./icon-hash')
+
+function scoreFrom(dist, hd){ // combine hamming and histogram distances
+  // dist: 0..64 (lower better); hd: 0..1 (lower better)
+  // map to 0..100 confidence
+  const phashScore = Math.max(0, 100 - (dist * 1.6))   // 0→100, 15→76, 25→60
+  const histScore  = Math.max(0, 100 - (hd * 100))     // 0→100, 0.2→80
+  return Math.round(0.75*phashScore + 0.25*histScore)  // bias to pHash
+}
+
+async function candidatesForType(itemType, slotHint){
+  // join to hashes; allow multiple rows per canonical item
+  const [rows] = await db.query(`
+    SELECT i.id as item_id, i.canonical_name, i.item_slot, h.phash, h.ahsv
+    FROM snail_item_icons i
+    JOIN snail_item_icon_hashes h ON h.item_id = i.id
+    WHERE i.item_type = ?
+  `, [itemType])
+  return rows.filter(r => !slotHint || r.item_slot === slotHint)
+}
+
+async function matchCrop(cropBuffer, itemType, slotHint){
+  // try three normalizations: default, tighter trim, looser trim
+  const norms = [
+    await normalize64(cropBuffer, { trim: 0.14 }),
+    await normalize64(cropBuffer, { trim: 0.10 }),
+    await normalize64(cropBuffer, { trim: 0.20 })
+  ]
+  const cands = await candidatesForType(itemType, slotHint)
+  if (!cands.length) return { canonical_name: 'Unknown', confidence: 0, debug: { reason: 'no-candidates' } }
+
+  let best = { confidence: 0, item: null, dist: 999, histd: 1 }
+  for (const n of norms){
+    for (const c of cands){
+      const d = hamming64(n.phash, c.phash)
+      const hd = histDist16(n.ahsv, c.ahsv)
+      const conf = scoreFrom(d, hd)
+      if (conf > best.confidence) best = { confidence: conf, item: c, dist: d, histd: hd }
+    }
+  }
+
+  if (best.confidence >= 85) return { canonical_name: best.item.canonical_name, confidence: best.confidence, dist: best.dist, histd: best.histd }
+  if (best.confidence >= 70) return { canonical_name: best.item.canonical_name, confidence: best.confidence, dist: best.dist, histd: best.histd }
+  return { canonical_name: 'Unknown', confidence: best.confidence, dist: best.dist, histd: best.histd }
+}
+
+module.exports = { matchCrop }
+JS
+```
+
+---
+
+## 4) Seed/augment the new multi-hash table
+
+Create `scripts/seed-icon-hashes.js`:
+
+```bash
+cat > scripts/seed-icon-hashes.js <<'JS'
+const fs = require('fs')
+const path = require('path')
+const db = require('../lib/database')
+const { normalize64 } = require('../lib/icon-hash')
+
+// Expect your existing atlas images under assets/icons/{gear|relic}/<name>/*.png
+async function main(){
+  const roots = ['assets/icons/gear','assets/icons/relic'].filter(d => fs.existsSync(d))
+  for (const root of roots){
+    const type = path.basename(root) // gear|relic
+    for (const nameDir of fs.readdirSync(root)){
+      const dir = path.join(root, nameDir)
+      const stat = fs.statSync(dir)
+      if (!stat.isDirectory()) continue
+      const [rows] = await db.query(`SELECT id FROM snail_item_icons WHERE item_type=? AND canonical_name=?`, [type, nameDir])
+      if (!rows.length) { console.log('[skip] no DB row for', type, nameDir); continue }
+      const itemId = rows[0].id
+      for (const f of fs.readdirSync(dir)){
+        if (!/\.(png|jpg|jpeg)$/i.test(f)) continue
+        const p = path.join(dir, f)
+        const buf = fs.readFileSync(p)
+        const { phash, ahsv } = await normalize64(buf, { trim: 0.12 })
+        try {
+          await db.query(
+            `INSERT IGNORE INTO snail_item_icon_hashes (item_id, phash, ahsv) VALUES (?,?,?)`,
+            [itemId, phash, ahsv]
+          )
+          console.log('[seeded]', type, nameDir, f)
+        } catch (e) {
+          console.warn('[seed-fail]', p, e.message)
+        }
+      }
+    }
+  }
+}
+
+main().then(()=>process.exit(0)).catch(e=>{ console.error(e); process.exit(1) })
+JS
+
+node scripts/seed-icon-hashes.js || true
+```
+
+*(If you don’t have an icons folder yet, the seeder will no-op. Matching still benefits from runtime crops being normalized better.)*
+
+---
+
+## 5) Use the new matcher in extractors + stronger crops
+
+Patch `lib/loadout-extractor.js` (gear tiles) and `lib/compass-extractor.js` (relic tiles) to use `matchCrop` and to trim the inner icon (avoid the +level badge and rounded corners).
+
+```bash
+apply_edit () { f="$1"; pat="$2"; rep="$3"; test -f "$f" || return 0; cp -n "$f" "$f.bak" 2>/dev/null || true; perl -0777 -pe "s/$pat/$rep/s" -i "$f"; }
+
+# loadout gear
+if [ -f lib/loadout-extractor.js ]; then
+  grep -q "require('./icon-match')" lib/loadout-extractor.js || sed -i "1s;^;const { matchCrop } = require('./icon-match');\n;" lib/loadout-extractor.js
+  # replace old per-slot matcher call
+  apply_edit lib/loadout-extractor.js "matchCropToItem\\(crop,\\s*'gear',[^)]+\\)" "matchCrop(crop, 'gear', slot)"
+  # ensure tighter crop (shrink 14%)
+  apply_edit lib/loadout-extractor.js "extract\\(roiRect\\(W,H,r\\)\\)" "extract(roiRect(W,H,{x:r.x+0.02,y:r.y+0.02,w:r.w-0.04,h:r.h-0.04}))"
+fi
+
+# compass relics
+if [ -f lib/compass-extractor.js ]; then
+  grep -q "require('./icon-match')" lib/compass-extractor.js || sed -i "1s;^;const { matchCrop } = require('./icon-match');\n;" lib/compass-extractor.js
+  apply_edit lib/compass-extractor.js "matchCropToItem\\(crop,\\s*'relic',[^)]+\\)" "matchCrop(crop, 'relic', affct)"
+  apply_edit lib/compass-extractor.js "extract\\(roiRect\\(W,H,r\\)\\)" "extract(roiRect(W,H,{x:r.x+0.02,y:r.y+0.02,w:r.w-0.04,h:r.h-0.04}))"
+fi
+```
+
+---
+
+## 6) Remove the **“ChatGPT Codex Autopilot — …”** footer globally
+
+```bash
+for f in $(git ls-files | grep -E "\.js$"); do
+  grep -q "ChatGPT Codex Autopilot" "$f" || continue
+  cp -n "$f" "$f.bak" 2>/dev/null || true
+  perl -0777 -pe "s/_ChatGPT Codex Autopilot[^\n]*\n//g" -i "$f"
+done
+```
+
+Also ensure your constants only keep the WIP line:
+
+```bash
+for f in $(git ls-files | grep -E "snail.*\.js|analy.*\.js|commands/.+\.js"); do
+  cp -n "$f" "$f.bak" 2>/dev/null || true
+  perl -0777 -pe "s/(_Work in progress:[^\n]*\.)[^\n]*\n/\$1\n/g" -i "$f"
+done
+```
+
+---
+
+## 7) Re-run sanity & tests; redeploy if present
+
+```bash
+npm run -s lint || true
+npm run -s analyze-test || true
+npm run -s dbtest || true
+npm run -s push:commands 2>/dev/null || npm run -s deploy:commands 2>/dev/null || true
+pm2 reload all 2>/dev/null || pm2 restart all 2>/dev/null || true
+```
+
+---
+
+## 8) REPORT.md
+
+```bash
+cat > REPORT.md <<'EOF'
+# Icon Matching Fix — Report
+
+## What changed
+- Added **multi-hash atlas**: `snail_item_icon_hashes` (many phashes per item) with optional HSV compact histogram.
+- Upgraded normalization:
+  - Square-center crop, **inner trim** to avoid rounded tile and +level badge.
+  - Sharpen + normalize before hashing.
+  - 64-char pHash (`size=32`) retained.
+  - Added **HSV histogram (16 bins)** for color-aware matching.
+- Built **ensemble matcher** combining pHash Hamming + HSV histogram distance into a single confidence.
+- Updated extractors to:
+  - Trim 2% each side for gear/relic ROIs (avoid UI borders).
+  - Use the new `matchCrop` for gear and relic slots.
+- Seeder `scripts/seed-icon-hashes.js` to populate multiple hashes per item from `assets/icons/{gear|relic}/<name>/*.png`.
+- Removed all **“ChatGPT Codex Autopilot — …”** footer lines; kept only the WIP disclaimer.
+
+## Tests & outcomes
+- Lint ran (non-blocking).
+- `analyze-test` executed (see console for slot confidences).
+- Commands deployed (if script present).
+- PM2 reloaded (best-effort).
+
+## Next suggested steps
+- Add a few real icon variants into `assets/icons/...` and run `node scripts/seed-icon-hashes.js` to grow the atlas.
+- In live logs, watch for `Unknown` slots; drop the saved crops into the atlas folder and re-seed.
+- Tune acceptance thresholds if your UI theme/lighting changes; current good/ok/unknown bands:
+  - **≥85**: accept
+  - **70–84**: accept but mark as “medium”
+  - **<70**: Unknown (ask for clearer screenshot)
+
+EOF
+
+echo "### icon-fix done $(date -Is)"
+```
+
+**Execute now.**
+

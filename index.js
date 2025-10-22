@@ -1,55 +1,56 @@
 // index.js - PRODUCTION READY v2.1
-require('dotenv').config();
-const db = require('./lib/database');
-const fs = require('fs');
-const path = require('path');
+require("dotenv").config();
+const db = require("./lib/database");
+const fs = require("fs");
+const path = require("path");
 const {
   Client,
   GatewayIntentBits,
   Partials,
   Collection,
   Events,
-  MessageFlags
-} = require('discord.js');
+  MessageFlags,
+} = require("discord.js");
 
 // Import monitoring systems
-const logger = require('./lib/logger');
-const metrics = require('./lib/metrics');
-const alert = require('./lib/alert');
+const logger = require("./lib/logger");
+const metrics = require("./lib/metrics");
+const alert = require("./lib/alert");
+const modeStore = require("./lib/mode-store");
 
 db.initialize();
 
 try {
-  require('./lib/scheduled-sync');
+  require("./lib/scheduled-sync");
 } catch (err) {
-  console.error('[scheduler]', err.message);
+  console.error("[scheduler]", err.message);
 }
 
 // Start health check server
 let healthServer;
 try {
-  healthServer = require('./lib/health-server');
-  logger.info('Health check server started successfully');
+  healthServer = require("./lib/health-server");
+  logger.info("Health check server started successfully");
 } catch (err) {
-  logger.error('Failed to start health server', { error: err.message });
+  logger.error("Failed to start health server", { error: err.message });
 }
 
 // ---- Singleton guard ----
-const LOCK_FILE = path.join(__dirname, '.slimy-singleton.lock');
+const LOCK_FILE = path.join(__dirname, ".slimy-singleton.lock");
 
 function ensureSingleInstance() {
   const cleanup = () => {
     try {
       fs.unlinkSync(LOCK_FILE);
     } catch (err) {
-      if (err?.code !== 'ENOENT') {
-        console.warn('[WARN] Failed to remove singleton lock:', err.message);
+      if (err?.code !== "ENOENT") {
+        console.warn("[WARN] Failed to remove singleton lock:", err.message);
       }
     }
   };
 
   const writeLock = () => {
-    const fd = fs.openSync(LOCK_FILE, 'wx');
+    const fd = fs.openSync(LOCK_FILE, "wx");
     fs.writeSync(fd, String(process.pid));
     fs.closeSync(fd);
   };
@@ -57,20 +58,25 @@ function ensureSingleInstance() {
   try {
     writeLock();
   } catch (err) {
-    if (err?.code === 'EEXIST') {
+    if (err?.code === "EEXIST") {
       try {
-        const existingPid = parseInt(fs.readFileSync(LOCK_FILE, 'utf8'), 10);
+        const existingPid = parseInt(fs.readFileSync(LOCK_FILE, "utf8"), 10);
         if (existingPid && existingPid !== process.pid) {
           try {
             process.kill(existingPid, 0);
-            console.error(`❌ Another slimy-bot instance is already running (pid ${existingPid}). Exiting.`);
+            console.error(
+              `❌ Another slimy-bot instance is already running (pid ${existingPid}). Exiting.`,
+            );
             process.exit(1);
           } catch (killErr) {
-            if (killErr?.code === 'ESRCH') {
+            if (killErr?.code === "ESRCH") {
               fs.unlinkSync(LOCK_FILE);
               return ensureSingleInstance();
             }
-            console.error('[ERROR] Could not verify existing PID:', killErr.message);
+            console.error(
+              "[ERROR] Could not verify existing PID:",
+              killErr.message,
+            );
             process.exit(1);
           }
         } else {
@@ -78,30 +84,36 @@ function ensureSingleInstance() {
           return ensureSingleInstance();
         }
       } catch (readErr) {
-        console.warn('[WARN] Corrupt singleton lock detected, resetting:', readErr.message);
+        console.warn(
+          "[WARN] Corrupt singleton lock detected, resetting:",
+          readErr.message,
+        );
         try {
           fs.unlinkSync(LOCK_FILE);
         } catch (unlinkErr) {
-          console.error('[ERROR] Failed to reset singleton lock:', unlinkErr.message);
+          console.error(
+            "[ERROR] Failed to reset singleton lock:",
+            unlinkErr.message,
+          );
           process.exit(1);
         }
         return ensureSingleInstance();
       }
     } else {
-      console.error('[ERROR] Unable to create singleton lock:', err.message);
+      console.error("[ERROR] Unable to create singleton lock:", err.message);
       process.exit(1);
     }
   }
 
-  process.once('exit', cleanup);
-  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.once("exit", cleanup);
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.once(signal, () => {
       cleanup();
       process.exit(0);
     });
   }
-  process.on('uncaughtException', (err) => {
-    console.error('Uncaught exception:', err);
+  process.on("uncaughtException", (err) => {
+    console.error("Uncaught exception:", err);
     if (global.botStats) recordError(err);
     cleanup();
     process.exit(1);
@@ -116,7 +128,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages
+    GatewayIntentBits.DirectMessages,
   ],
   partials: [Partials.Channel],
 });
@@ -144,10 +156,10 @@ function recordError(err) {
 
 // ---- Command loader ----
 client.commands = new Collection();
-const commandsPath = path.join(__dirname, 'commands');
+const commandsPath = path.join(__dirname, "commands");
 
 if (fs.existsSync(commandsPath)) {
-  const files = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
+  const files = fs.readdirSync(commandsPath).filter((f) => f.endsWith(".js"));
   for (const file of files) {
     const fp = path.join(commandsPath, file);
     try {
@@ -166,13 +178,19 @@ if (fs.existsSync(commandsPath)) {
     }
   }
 } else {
-  console.warn('[WARN] ./commands directory not found');
+  console.warn("[WARN] ./commands directory not found");
 }
 
 // ---- Ready (only fires ONCE) ----
-client.once(Events.ClientReady, (c) => {
+client.once(Events.ClientReady, async (c) => {
   console.log(`✅ Logged in as ${c.user.tag}`);
   console.log(`📡 Connected to ${c.guilds.cache.size} server(s)`);
+  try {
+    await modeStore.loadGuildModesIntoCache(client);
+    console.log("[mode] cache primed from database");
+  } catch (err) {
+    console.warn("[mode] cache not primed:", err?.message || err);
+  }
 });
 
 // ---- Slash command dispatcher with metrics ----
@@ -181,10 +199,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   try {
     if (interaction.isButton()) {
-      const [namespace] = String(interaction.customId || '').split(':');
+      const [namespace] = String(interaction.customId || "").split(":");
       const handler = namespace ? client.commands.get(namespace) : null;
       if (handler?.handleButton) {
         await handler.handleButton(interaction);
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit()) {
+      const [namespace] = String(interaction.customId || "").split(":");
+      const handler = namespace ? client.commands.get(namespace) : null;
+      if (handler?.handleModal) {
+        await handler.handleModal(interaction);
       }
       return;
     }
@@ -193,44 +220,46 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const command = client.commands.get(interaction.commandName);
     if (!command) {
-      metrics.trackCommand('unknown', Date.now() - startTime, false);
-      return interaction.reply({
-        content: '❌ Unknown command.',
-        flags: MessageFlags.Ephemeral
-      }).catch(() => {});
+      metrics.trackCommand("unknown", Date.now() - startTime, false);
+      return interaction
+        .reply({
+          content: "❌ Unknown command.",
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
     }
 
     await command.execute(interaction);
     // Note: Individual commands track their own metrics, this is fallback
   } catch (err) {
-    const commandName = interaction.commandName || 'unknown';
+    const commandName = interaction.commandName || "unknown";
     metrics.trackError(commandName, err.message);
-    logger.error('Command execution failed', {
+    logger.error("Command execution failed", {
       command: commandName,
       userId: interaction.user?.id,
       guildId: interaction.guild?.id,
-      error: err.message
+      error: err.message,
     });
-    console.error('Command error:', err);
+    console.error("Command error:", err);
     recordError(err); // Track error in stats
 
     // Safe error handling
     try {
       if (interaction.deferred) {
-        await interaction.editReply('❌ Command failed.');
+        await interaction.editReply("❌ Command failed.");
       } else if (interaction.replied) {
         await interaction.followUp({
-          content: '❌ Command failed.',
-          flags: MessageFlags.Ephemeral
+          content: "❌ Command failed.",
+          flags: MessageFlags.Ephemeral,
         });
       } else {
         await interaction.reply({
-          content: '❌ Command failed.',
-          flags: MessageFlags.Ephemeral
+          content: "❌ Command failed.",
+          flags: MessageFlags.Ephemeral,
         });
       }
     } catch (innerErr) {
-      console.error('Could not send error message:', innerErr.message);
+      console.error("Could not send error message:", innerErr.message);
       recordError(innerErr);
     }
   }
@@ -238,48 +267,58 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // ---- Mention handler (graceful loading) ----
 try {
-  const mentionHandlerPath = path.join(__dirname, 'handlers', 'mention.js');
+  const mentionHandlerPath = path.join(__dirname, "handlers", "mention.js");
   if (fs.existsSync(mentionHandlerPath)) {
-    const { attachMentionHandler } = require('./handlers/mention');
-    if (typeof attachMentionHandler === 'function') {
+    const { attachMentionHandler } = require("./handlers/mention");
+    if (typeof attachMentionHandler === "function") {
       attachMentionHandler(client);
-      console.log('✅ Mention handler attached');
+      console.log("✅ Mention handler attached");
     }
   }
 } catch (err) {
-  console.warn('[WARN] Mention handler not loaded:', err.message);
+  console.warn("[WARN] Mention handler not loaded:", err.message);
 }
 
 // ---- Snail auto-detect handler (graceful loading) ----
 try {
-  const snailHandlerPath = path.join(__dirname, 'handlers', 'snail-auto-detect.js');
+  const snailHandlerPath = path.join(
+    __dirname,
+    "handlers",
+    "snail-auto-detect.js",
+  );
   if (fs.existsSync(snailHandlerPath)) {
-    const { attachSnailAutoDetect } = require('./handlers/snail-auto-detect');
-    if (typeof attachSnailAutoDetect === 'function') {
+    const { attachSnailAutoDetect } = require("./handlers/snail-auto-detect");
+    if (typeof attachSnailAutoDetect === "function") {
       attachSnailAutoDetect(client);
-      console.log('✅ Snail auto-detect handler attached');
+      console.log("✅ Snail auto-detect handler attached");
     }
   }
 } catch (err) {
-  console.warn('[WARN] Snail auto-detect handler not loaded:', err.message);
+  console.warn("[WARN] Snail auto-detect handler not loaded:", err.message);
 }
 
 // ---- Login (ONLY ONCE) ----
 if (!process.env.DISCORD_TOKEN) {
-  logger.critical('DISCORD_TOKEN not set in environment');
-  console.error('❌ DISCORD_TOKEN not set in environment.');
+  logger.critical("DISCORD_TOKEN not set in environment");
+  console.error("❌ DISCORD_TOKEN not set in environment.");
   process.exit(1);
 }
 
 // Global error handlers
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Promise Rejection', { reason: String(reason), promise: String(promise) });
-  alert.criticalError('Unhandled Promise Rejection', reason);
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error("Unhandled Promise Rejection", {
+    reason: String(reason),
+    promise: String(promise),
+  });
+  alert.criticalError("Unhandled Promise Rejection", reason);
 });
 
-process.on('uncaughtException', (error) => {
-  logger.critical('Uncaught Exception', { error: error.message, stack: error.stack });
-  alert.criticalError('Uncaught Exception', error);
+process.on("uncaughtException", (error) => {
+  logger.critical("Uncaught Exception", {
+    error: error.message,
+    stack: error.stack,
+  });
+  alert.criticalError("Uncaught Exception", error);
   process.exit(1);
 });
 
@@ -291,26 +330,35 @@ const shutdown = async (signal) => {
   if (healthServer) {
     try {
       healthServer.close(() => {
-        logger.info('Health server closed');
+        logger.info("Health server closed");
       });
     } catch (err) {
-      logger.error('Error closing health server', { error: err.message });
+      logger.error("Error closing health server", { error: err.message });
     }
   }
 
   // Close database pool
   try {
     await db.close();
-    logger.info('Database connections closed');
+    logger.info("Database connections closed");
   } catch (err) {
-    logger.error('Error closing database', { error: err.message });
+    logger.error("Error closing database", { error: err.message });
   }
 
   process.exit(0);
 };
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
-logger.info('Starting Slimy.AI bot...');
-client.login(process.env.DISCORD_TOKEN);
+logger.info("Starting Slimy.AI bot...");
+if (!process.env.DISCORD_TOKEN) {
+  logger.warn("DISCORD_TOKEN not set in environment, skipping login.");
+  console.warn(
+    "❌ DISCORD_TOKEN not set in environment. Skipping Discord login.",
+  );
+} else {
+  client.login(process.env.DISCORD_TOKEN).catch((err) => {
+    logger.error("Discord login failed", { error: err.message });
+  });
+}

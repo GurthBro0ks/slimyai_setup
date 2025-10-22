@@ -1,0 +1,28 @@
+Manual QA Checklist — Oct 22
+================================
+
+/club analyze
+- Upload 3–6 real “Manage Members” screenshots (mix of Sim and Total Power views).
+- Verify Preview highlights: missing vs last week, new names, suspicious jumps (±85% default), low-confidence rows flagged.
+- Enable OCR boost and confirm newly extracted rows appear in the preview.
+- Use the Manual Fix modal to correct a name and fill missing values; rerun to ensure alias persists.
+- Approve & Commit and confirm the Google Sheet “Club Latest” tab refreshes and sorts by Total Power.
+- Re-run within the same week and confirm the latest snapshot overwrites without duplicating history.
+
+/club stats
+- Run with `metric=both`, `top=10`, `format=embed`; verify tables render with arrows, % bars, totals, and averages.
+- Run with `format=csv`; open the attachment and confirm all expected columns are present.
+- Run as a non-admin user without the club role and confirm a polite permission denial is returned.
+
+Permissions & Links
+- Click the “Open Sheet” button and confirm admins or the club role can view the sheet.
+- Attempt access as a non-member and confirm visibility is denied.
+
+Edge Cases
+- First-ever week: ensure percent (% ) columns remain blank and no divide-by-zero occurs.
+- Extremely large totals render with thousands separators (no scientific notation).
+- Names containing emojis or tags normalize to the same member record.
+
+Sign-off
+- Tester: ________________________
+- Date & Time: ___________________

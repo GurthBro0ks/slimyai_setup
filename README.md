@@ -34,6 +34,12 @@ A production-ready Discord bot built with Discord.js v14 that provides AI-powere
 - **Auto-Detection**: Automatically processes snail screenshots in configured channels
 - **Confidence Scores**: Shows detection confidence for each stat
 
+### 🏟️ Club Analytics
+- **Commands**: `/club analyze` (preview, manual fixes, confirmation) and `/club stats` (embed or CSV export).
+- **Setup**: configure `OPENAI_API_KEY`, Google service account (`GOOGLE_APPLICATION_CREDENTIALS` or inline JSON), `GOOGLE_SHEETS_SPREADSHEET_ID`, optional `CLUB_ROLE_ID`, and run migration `migrations/2025-10-20-club.sql`.
+- **Workflow**: upload Manage Members screenshots → OCR + QA preview → fix via OCR boost or manual modal → approve to write snapshot + sheet sync (`Club Latest` tab).
+- **Quality Controls**: weekly WoW % (Mon 00:00 UTC), suspicious jump threshold (`CLUB_QA_SUSPICIOUS_JUMP_PCT`), missing-member guard (≥20%), name canonicalization + alias table, and sheet sync backstops.
+
 ### 🎭 Personality Engine
 - **Configurable Modes**: Customize bot personality per channel/category/thread
 - **Multiple Personas**: Mentor, partner, mirror, operator, personality modes
