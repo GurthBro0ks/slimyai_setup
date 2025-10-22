@@ -14,6 +14,8 @@ const db = require("../lib/database");
   } finally {
     try {
       await db.close();
-    } catch {}
+    } catch {
+      // Ignore close errors
+    }
   }
 })();

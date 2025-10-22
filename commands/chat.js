@@ -91,10 +91,10 @@ async function runConversation({
   userId,
   channelId,
   guildId,
-  parentId,
+  parentId: _parentId,
   userMsg,
   reset = false,
-  context = "slash",
+  context: _context = "slash",
   effectiveOverride = null,
 }) {
   const key = `${channelId}:${userId}`;

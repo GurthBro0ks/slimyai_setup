@@ -15,6 +15,7 @@ async function getClients() {
 }
 
 // Safe, idempotent creator; returns spreadsheetId
+// eslint-disable-next-line no-unused-vars
 async function createSnailStatsSheet({ username, userId, guildId, guildName }) {
   const { drive, sheets } = await getClients();
   const parent = process.env.SHEETS_PARENT_FOLDER_ID;

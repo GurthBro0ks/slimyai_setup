@@ -61,7 +61,7 @@ const uniq = (a) => [...new Set(a.filter(Boolean))];
 const ow = (id, allow = [], deny = []) => ({ id, allow, deny });
 
 const norm = (s) =>
-  (s || "").toLowerCase().replace(/[_\-]/g, " ").replace(/\s+/g, " ").trim();
+  (s || "").toLowerCase().replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
 
 function ciFind(arr, nameOrHints) {
   const targets = Array.isArray(nameOrHints) ? nameOrHints : [nameOrHints];
@@ -87,7 +87,8 @@ client.once("ready", async () => {
   const guild = await client.guilds.fetch(process.env.GUILD_ID);
   await guild.channels.fetch();
   await guild.roles.fetch();
-  const me = await guild.members.fetchMe();
+  // eslint-disable-next-line no-unused-vars
+  const _me = await guild.members.fetchMe();
 
   // ---- resolve roles ----
   const ROLES = {};

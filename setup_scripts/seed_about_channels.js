@@ -274,7 +274,7 @@ client.once("ready", async () => {
               typeof m.content === "string" && m.content.startsWith(header),
           );
         }
-      } catch {}
+      } catch { /* Intentionally empty */ }
       if (!exists) {
         const msg = await ch.send(CONTENT[chanName]);
         await sleep(400);

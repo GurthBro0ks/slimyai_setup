@@ -1,12 +1,24 @@
 {
   "statistics": {
-    "detectionDate": "2025-10-22T14:15:03.430Z",
+    "detectionDate": "2025-10-22T14:19:02.994Z",
     "formats": {
       "json": {
         "sources": {
           "/opt/slimy/app/var/personality-adjustments.json": {
             "lines": 25,
             "tokens": 149,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          "/opt/slimy/app/report/jscpd-report.json": {
+            "lines": 95,
+            "tokens": 605,
             "sources": 1,
             "clones": 0,
             "duplicatedLines": 0,
@@ -53,8 +65,8 @@
             "newClones": 0
           },
           "/opt/slimy/app/package.json": {
-            "lines": 58,
-            "tokens": 380,
+            "lines": 59,
+            "tokens": 387,
             "sources": 1,
             "clones": 0,
             "duplicatedLines": 0,
@@ -66,9 +78,9 @@
           }
         },
         "total": {
-          "lines": 483,
-          "tokens": 2885,
-          "sources": 5,
+          "lines": 579,
+          "tokens": 3497,
+          "sources": 6,
           "clones": 0,
           "duplicatedLines": 0,
           "duplicatedTokens": 0,
@@ -80,9 +92,9 @@
       }
     },
     "total": {
-      "lines": 483,
-      "tokens": 2885,
-      "sources": 5,
+      "lines": 579,
+      "tokens": 3497,
+      "sources": 6,
       "clones": 0,
       "duplicatedLines": 0,
       "duplicatedTokens": 0,

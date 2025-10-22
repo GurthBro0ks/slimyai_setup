@@ -8,7 +8,8 @@ const {
   Client,
   GatewayIntentBits,
   ChannelType,
-  PermissionsBitField,
+  // eslint-disable-next-line no-unused-vars
+  PermissionsBitField: _PermissionsBitField,
 } = require("discord.js");
 
 function sleep(ms) {
@@ -340,7 +341,7 @@ client.once("ready", async () => {
 
       try {
         if (ch.topic !== topic) await ch.setTopic(topic);
-      } catch {}
+      } catch { /* Intentionally empty */ }
 
       const body = TEXT_CONTENT[name];
       const header = body.split("\n")[0];
@@ -353,7 +354,7 @@ client.once("ready", async () => {
             typeof m.content === "string" &&
             m.content.startsWith(header),
         );
-      } catch {}
+      } catch { /* Intentionally empty */ }
       if (!exists) {
         const msg = await ch.send(body);
         await sleep(300);

@@ -4,7 +4,9 @@
 // Loads env (.env)
 try {
   require("dotenv").config();
-} catch (_) {}
+} catch (_) {
+  /* Intentionally empty */
+}
 
 const fs = require("fs");
 const path = require("path");

@@ -18,6 +18,7 @@ module.exports = [
         setInterval: "readonly",
         clearTimeout: "readonly",
         clearInterval: "readonly",
+        URL: "readonly",
       },
       ecmaVersion: 2021,
       sourceType: "commonjs",
