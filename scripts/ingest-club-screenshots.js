@@ -292,6 +292,7 @@ async function main() {
         if (entry.metrics.sim?.value) {
           metricsPayload.push({
             memberId,
+            memberKey: canonical,
             metric: "sim",
             value: entry.metrics.sim.value,
           });
@@ -299,6 +300,7 @@ async function main() {
         if (entry.metrics.total?.value) {
           metricsPayload.push({
             memberId,
+            memberKey: canonical,
             metric: "total",
             value: entry.metrics.total.value,
           });
