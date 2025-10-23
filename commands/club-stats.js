@@ -14,6 +14,9 @@ const logger = require("../lib/logger");
 const metrics = TEST ? stubs.metrics : require("../lib/metrics");
 const clubStore = TEST ? stubs.clubStore : require("../lib/club-store");
 const { getAggregates, getTopMovers, getLatestForGuild } = clubStore;
+const guildSettings = TEST
+  ? stubs.guildSettings
+  : require("../lib/guild-settings");
 
 const DEFAULT_TOP = 10;
 const MIN_TOP = 3;
@@ -39,10 +42,26 @@ function toNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
-function formatNumber(value) {
+function formatNumber(value, options = {}) {
   const num = toNumber(value);
   if (num === null) return "—";
-  return num.toLocaleString();
+  const {
+    maximumFractionDigits = 0,
+    minimumFractionDigits = 0,
+    notation,
+    compactDisplay,
+  } = options;
+  const localeOptions = {
+    maximumFractionDigits,
+    minimumFractionDigits,
+  };
+  if (notation) {
+    localeOptions.notation = notation;
+  }
+  if (compactDisplay) {
+    localeOptions.compactDisplay = compactDisplay;
+  }
+  return num.toLocaleString("en-US", localeOptions);
 }
 
 function formatDelta(current, previous) {
@@ -219,18 +238,48 @@ module.exports = {
 
       await interaction.deferReply({ ephemeral: false });
 
-      const [aggregates, latest, totalMovers, simMovers, cohorts] =
-        await Promise.all([
-          getAggregates(interaction.guildId),
-          getLatestForGuild(interaction.guildId),
-          metric === "sim"
-            ? null
-            : getTopMovers(interaction.guildId, "total", safeTop),
-          metric === "total"
-            ? null
-            : getTopMovers(interaction.guildId, "sim", safeTop),
-          computeCohorts(latest),
-        ]);
+      const [aggregates, latest, sheetConfig] = await Promise.all([
+        getAggregates(interaction.guildId),
+        getLatestForGuild(interaction.guildId),
+        guildSettings.getSheetConfig(interaction.guildId),
+      ]);
+
+      if (!latest.length) {
+        await interaction.editReply({
+          content: "No club stats available yet. Run /club analyze to generate data.",
+        });
+        metrics.trackCommand("club-stats", 0, true);
+        return;
+      }
+
+      const [totalMovers, simMovers] = await Promise.all([
+        metric === "sim"
+          ? Promise.resolve(null)
+          : getTopMovers(interaction.guildId, "total", safeTop),
+        metric === "total"
+          ? Promise.resolve(null)
+          : getTopMovers(interaction.guildId, "sim", safeTop),
+      ]);
+
+      const cohorts = await computeCohorts(latest);
+
+      logger.debug("[club-stats] Aggregates resolved", {
+        guildId: interaction.guildId,
+        totalPower: aggregates.totalPower,
+        simPower: aggregates.totalSimPower,
+        members: aggregates.members,
+        membersWithTotals: aggregates.membersWithTotals,
+        membersWithSim: aggregates.membersWithSim,
+        averagePower: aggregates.averagePower,
+      });
+
+      logger.debug("[club-stats] Aggregates resolved", {
+        guildId: interaction.guildId,
+        totalPower: aggregates.totalPower,
+        members: aggregates.members,
+        membersWithTotals: aggregates.membersWithTotals,
+        averagePower: aggregates.averagePower,
+      });
 
       if (format === "csv") {
         const csv = buildCsv(latest);
@@ -247,14 +296,27 @@ module.exports = {
         return;
       }
 
+      const totalPowerDisplay = aggregates.totalPower === null
+        ? "—"
+        : formatNumber(aggregates.totalPower, {
+            notation: "compact",
+            maximumFractionDigits: 2,
+          });
+      const averagePowerDisplay =
+        aggregates.averagePower === null
+          ? "—"
+          : Number(aggregates.averagePower).toLocaleString("en-US", {
+              maximumFractionDigits: 0,
+            });
+
       const embed = new EmbedBuilder()
         .setTitle("Club Weekly Stats")
         .setColor(0x6366f1)
         .setDescription(
           [
             `**Members:** ${aggregates.members} (${cohorts.newCount} new, ${cohorts.veteranCount} returning)`,
-            `**Total Power:** ${formatNumber(aggregates.totalPower)}`,
-            `**Average Power:** ${formatNumber(aggregates.averagePower)}`,
+            `**Total Power:** ${totalPowerDisplay}`,
+            `**Average Power:** ${averagePowerDisplay}`,
           ].join("\n"),
         );
 
@@ -289,27 +351,26 @@ module.exports = {
         });
       }
 
-      const sheetId =
-        process.env.GOOGLE_SHEETS_SPREADSHEET_ID ||
-        process.env.SHEETS_SPREADSHEET_ID;
       const weeklyBoundary =
         process.env.CLUB_WEEKLY_BOUNDARY || "FRI_00:00_America/Detroit";
       const boundaryDisplay = weeklyBoundary.replace(/_/g, " ");
 
       const components = [];
-      if (sheetId) {
+      if (sheetConfig.url) {
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setLabel("Open Sheet")
             .setStyle(ButtonStyle.Link)
-            .setURL(`https://docs.google.com/spreadsheets/d/${sheetId}`),
+            .setURL(sheetConfig.url),
         );
         components.push(row);
         embed.setFooter({
           text: `Weekly window: ${boundaryDisplay} • Open Sheet → button below`,
         });
       } else {
-        embed.setFooter({ text: `Weekly window: ${boundaryDisplay}` });
+        embed.setFooter({
+          text: `Weekly window: ${boundaryDisplay} • Sheet link not configured`,
+        });
       }
 
       await interaction.editReply({
