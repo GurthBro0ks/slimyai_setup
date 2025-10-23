@@ -1,5 +1,17 @@
 # SLIMY.AI BOT - UPDATE LOG
 
+## 2025-10-23 — Sheets sync + totals fixed
+**Date:** 2025-10-23
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
+
+### Summary
+- Club stats now sum `club_latest.total_power` only, treat nulls safely, and format totals/averages with compact output (≈10.1B expectation).
+- `/club analyze` embeds report Google Sheets sync status; failures surface to callers and keep logs concise.
+- Google Sheets push honours per-guild IDs, auto-creates the `Club Latest` tab, and throws actionable errors when the service account lacks access.
+- Added QA helpers: `scripts/verify-club-stats.js` regression snapshot + warnings, harnessed test-mode stubs, and “No prior week yet” message for empty movers.
+
+
 ## 2025-10-22 — Bulletproof club analytics + admin console + SLOs
 **Date:** 2025-10-22
 **Status:** ✅ COMPLETED
