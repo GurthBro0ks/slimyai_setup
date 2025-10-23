@@ -239,6 +239,31 @@ async function main() {
     process.exit(1);
   }
 
+  // Member-cap sanity check (placeholder for future OCR-based cap detection)
+  // TODO: Extract cap from "Manage Members NN/NN" header using OCR
+  const capHint = args["cap-hint"] ? Number(args["cap-hint"]) : null;
+  const forceCommit = toBoolean(args["force-commit"]);
+
+  if (capHint !== null && uniqueMembers > capHint + 1 && !forceCommit) {
+    console.error(
+      `\n[ingest] ❌ Member-cap guard: Parsed ${uniqueMembers} members > cap ${capHint} + 1.`,
+    );
+    console.error(
+      `[ingest] Likely duplicates/aliases detected. Commit blocked.`,
+    );
+    console.error(`[ingest] Use --force-commit to override this check.\n`);
+
+    // Show preview of parsed members
+    const memberList = Array.from(metricsMap.keys())
+      .sort()
+      .slice(0, 100)
+      .join(", ");
+    console.error(`[ingest] Preview of parsed members (first 100):`);
+    console.error(`[ingest] ${memberList}`);
+
+    process.exit(1);
+  }
+
   let totalPowerSum = 0;
   let membersWithTotals = 0;
 
