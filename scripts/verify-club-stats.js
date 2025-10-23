@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * Verify club_latest aggregates for each guild.
+ * Verify club_latest aggregates for a guild.
  *
- * Prints a summary of members, total power, and sim power,
- * and warns if totals look suspicious. Persists the previous
- * run in var/verify-club-stats.json for ±30% regression checks.
+ * Usage:
+ * node scripts/verify-club-stats.js --guild <GUILD_ID>
  */
 
 const fs = require("fs");
@@ -14,118 +13,162 @@ const path = require("path");
 require("dotenv").config({ path: path.join(process.cwd(), ".env") });
 
 const database = require("../lib/database");
+const { getWarnThresholds, formatCompact, formatNumber } = require("../lib/thresholds");
 
-const OUTPUT_DIR = path.join(__dirname, "..", "var");
-const SNAPSHOT_PATH = path.join(OUTPUT_DIR, "verify-club-stats.json");
-const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
+const OUTPUT_DIR = path.join(process.cwd(), "out");
 
-function formatNumber(value) {
-  if (value == null) return "0";
-  return NUMBER_FORMAT.format(Math.round(value));
-}
-
-async function loadPreviousSnapshot() {
-  if (!fs.existsSync(SNAPSHOT_PATH)) return {};
-  try {
-    const raw = fs.readFileSync(SNAPSHOT_PATH, "utf8");
-    return JSON.parse(raw);
-  } catch (err) {
-    console.warn(
-      `[verify-club-stats] Failed to read previous snapshot: ${err.message}`,
-    );
-    return {};
+function parseArgs(argv) {
+  const args = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (!token.startsWith("--")) continue;
+    const key = token.slice(2);
+    const next = argv[i + 1];
+    if (!next || next.startsWith("--")) {
+      args[key] = true;
+      continue;
+    }
+    args[key] = next;
+    i += 1;
   }
+  return args;
 }
 
-async function saveSnapshot(snapshot) {
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-  fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(snapshot, null, 2));
-  console.log(`[verify-club-stats] Wrote snapshot → ${SNAPSHOT_PATH}`);
+function parseNumber(value) {
+  if (value === undefined || value === null) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
 }
+
 
 async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const guildId = args.guild;
+  const strict = args.strict === true;
+  const warnLowOverride = parseNumber(args["warn-low"]);
+  const warnHighOverride = parseNumber(args["warn-high"]);
+
+  if (!guildId) {
+    console.error("[verify] Missing required --guild <GUILD_ID>");
+    process.exit(1);
+  }
+
   if (!database.isConfigured()) {
     console.error(
-      "[verify-club-stats] Database is not configured. Set DB_* env vars first.",
+      "[verify] Database is not configured. Set DB_* environment variables first.",
     );
     process.exit(1);
   }
 
   await database.initialize();
 
+  // Get thresholds
+  const thresholds = await getWarnThresholds(guildId);
+  const warnLow = warnLowOverride !== null ? warnLowOverride : thresholds.low;
+  const warnHigh = warnHighOverride !== null ? warnHighOverride : thresholds.high;
+
+  // Fetch data (MySQL doesn't support NULLS LAST, use IFNULL to sort nulls to end)
   const rows = await database.query(
-    `SELECT guild_id,
-            COUNT(*) AS members,
-            SUM(COALESCE(total_power, 0)) AS total_power,
-            SUM(COALESCE(sim_power, 0)) AS sim_power
+    `SELECT member_id, name_display, total_power, sim_power
        FROM club_latest
-   GROUP BY guild_id
-   ORDER BY guild_id`,
+      WHERE guild_id = ?
+      ORDER BY IFNULL(total_power, 0) DESC`,
+    [guildId],
   );
 
   if (!rows.length) {
-    console.log("[verify-club-stats] No data available in club_latest.");
+    console.error(`[verify] No rows found in club_latest for guild ${guildId}.`);
     await database.close();
-    process.exit(0);
+    process.exit(1);
   }
 
-  const previous = await loadPreviousSnapshot();
-  const snapshot = {
-    generatedAt: new Date().toISOString(),
-    guilds: {},
-  };
+  // Compute aggregates
+  let totalPowerSum = 0;
+  let simPowerSum = 0;
+  let membersWithTotals = 0;
+  let membersWithSim = 0;
 
-  console.log("=== Club Stats Verification ===");
   for (const row of rows) {
-    const guildId = row.guild_id;
-    const members = Number(row.members || 0);
-    const totalPower = Number(row.total_power || 0);
-    const simPower = Number(row.sim_power || 0);
-
-    const warnings = [];
-
-    if (totalPower < simPower) {
-      warnings.push(
-        "total_power < sim_power (did we ingest totals before sim?)",
-      );
+    if (row.total_power !== null && typeof row.total_power !== "undefined") {
+      totalPowerSum += Number(row.total_power);
+      membersWithTotals += 1;
     }
-
-    const previousEntry = previous?.guilds?.[guildId];
-    if (previousEntry?.totalPower) {
-      const delta =
-        (totalPower - previousEntry.totalPower) / previousEntry.totalPower;
-      if (Math.abs(delta) > 0.3) {
-        const pct = (delta * 100).toFixed(1);
-        warnings.push(`total_power changed ${pct}% vs previous snapshot`);
-      }
+    if (row.sim_power !== null && typeof row.sim_power !== "undefined") {
+      simPowerSum += Number(row.sim_power);
+      membersWithSim += 1;
     }
-
-    const lineParts = [
-      `Guild ${guildId}`,
-      `members=${members}`,
-      `total=${formatNumber(totalPower)}`,
-      `sim=${formatNumber(simPower)}`,
-    ];
-    if (warnings.length) {
-      lineParts.push(`WARN → ${warnings.join("; ")}`);
-    } else {
-      lineParts.push("OK");
-    }
-    console.log(lineParts.join(" | "));
-
-    snapshot.guilds[guildId] = {
-      members,
-      totalPower,
-      simPower,
-      recordedAt: snapshot.generatedAt,
-    };
   }
 
-  await saveSnapshot(snapshot);
+  const memberCount = rows.length;
+  const averagePower =
+    membersWithTotals > 0 ? totalPowerSum / membersWithTotals : 0;
+
+  // Build output
+  const lines = [];
+  lines.push(`Guild: ${guildId}`);
+  lines.push(`Members: ${memberCount}`);
+  lines.push(`Sum(total_power): ${formatNumber(totalPowerSum)} (${formatCompact(totalPowerSum)})`);
+  lines.push(`Sum(sim_power): ${formatNumber(simPowerSum)} (${formatCompact(simPowerSum)})`);
+  lines.push(`Average(total_power): ${formatNumber(averagePower)} (${formatCompact(averagePower)})`);
+  lines.push(`Members with total_power: ${membersWithTotals}`);
+  lines.push(`Members with sim_power: ${membersWithSim}`);
+  lines.push(`Range: ≥${formatCompact(warnLow)} and ≤${formatCompact(warnHigh)}`);
+
+  // Top 5 members
+  const top5 = rows.slice(0, 5);
+  if (top5.length > 0) {
+    lines.push("\nTop 5 Members:");
+    top5.forEach((row, index) => {
+      const total = row.total_power !== null ? formatCompact(row.total_power) : "—";
+      const sim = row.sim_power !== null ? formatCompact(row.sim_power) : "—";
+      lines.push(`  ${index + 1}. ${row.name_display}: Total ${total}, Sim ${sim}`);
+    });
+  }
+
+  // Warnings
+  const warnings = [];
+  if (totalPowerSum < warnLow || totalPowerSum > warnHigh) {
+    warnings.push(
+      `Total power ${formatCompact(totalPowerSum)} outside expected range (${formatCompact(warnLow)}–${formatCompact(warnHigh)})`,
+    );
+  }
+  if (simPowerSum > 0 && totalPowerSum < simPowerSum) {
+    warnings.push(
+      `Total power ${formatCompact(totalPowerSum)} < sim power ${formatCompact(simPowerSum)}`,
+    );
+  }
+
+  if (warnings.length) {
+    lines.push("\nWarnings:");
+    warnings.forEach((warning) => lines.push(`  ⚠️  ${warning}`));
+  } else {
+    lines.push("\n✅ Status: OK");
+  }
+
+  // Output
+  const outputText = `${lines.join("\n")}\n`;
+  console.log(outputText.trim());
+
+  // Write to file
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .split(".")[0]
+    .slice(0, 15);
+  const outPath = path.join(OUTPUT_DIR, `verify-${stamp}.txt`);
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  fs.writeFileSync(outPath, outputText);
+  console.log(`\n[verify] Report written to ${outPath}`);
+
   await database.close();
+
+  // Exit code: only fail if strict mode AND warnings
+  if (strict && warnings.length) {
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {
-  console.error("[verify-club-stats] Unexpected failure:", err);
+  console.error("[verify] Unexpected failure:", err);
   process.exit(1);
 });
