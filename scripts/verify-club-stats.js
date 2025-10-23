@@ -14,6 +14,7 @@ require("dotenv").config({ path: path.join(process.cwd(), ".env") });
 
 const database = require("../lib/database");
 const { getWarnThresholds, formatCompact, formatNumber } = require("../lib/thresholds");
+const { getWeekId } = require("../lib/week-anchor");
 
 const OUTPUT_DIR = path.join(process.cwd(), "out");
 
@@ -69,7 +70,7 @@ async function main() {
 
   // Fetch data (MySQL doesn't support NULLS LAST, use IFNULL to sort nulls to end)
   const rows = await database.query(
-    `SELECT member_id, name_display, total_power, sim_power
+    `SELECT member_id, member_key, name_display, total_power, sim_power, latest_at
        FROM club_latest
       WHERE guild_id = ?
       ORDER BY IFNULL(total_power, 0) DESC`,
@@ -81,6 +82,20 @@ async function main() {
     await database.close();
     process.exit(1);
   }
+
+  // Check distinct week_ids (based on latest_at timestamps)
+  const distinctWeekIds = new Set();
+  for (const row of rows) {
+    if (row.latest_at) {
+      const weekId = getWeekId(new Date(row.latest_at));
+      distinctWeekIds.add(weekId);
+    }
+  }
+
+  // Check for distinct member_keys
+  const distinctMemberKeys = new Set(
+    rows.map((row) => row.member_key).filter(Boolean)
+  );
 
   // Compute aggregates
   let totalPowerSum = 0;
@@ -106,12 +121,15 @@ async function main() {
   // Build output
   const lines = [];
   lines.push(`Guild: ${guildId}`);
-  lines.push(`Members: ${memberCount}`);
+  lines.push(`Week IDs: ${Array.from(distinctWeekIds).join(", ")} (count: ${distinctWeekIds.size})`);
+  lines.push(`Members (total rows): ${memberCount}`);
+  lines.push(`Distinct member_keys: ${distinctMemberKeys.size}`);
   lines.push(`Sum(total_power): ${formatNumber(totalPowerSum)} (${formatCompact(totalPowerSum)})`);
   lines.push(`Sum(sim_power): ${formatNumber(simPowerSum)} (${formatCompact(simPowerSum)})`);
   lines.push(`Average(total_power): ${formatNumber(averagePower)} (${formatCompact(averagePower)})`);
   lines.push(`Members with total_power: ${membersWithTotals}`);
   lines.push(`Members with sim_power: ${membersWithSim}`);
+  lines.push(`Members with null sim_power: ${memberCount - membersWithSim}`);
   lines.push(`Range: ≥${formatCompact(warnLow)} and ≤${formatCompact(warnHigh)}`);
 
   // Top 5 members
@@ -127,6 +145,11 @@ async function main() {
 
   // Warnings
   const warnings = [];
+  if (distinctWeekIds.size > 1) {
+    warnings.push(
+      `Multiple week IDs detected (${distinctWeekIds.size}): ${Array.from(distinctWeekIds).join(", ")}`
+    );
+  }
   if (totalPowerSum < warnLow || totalPowerSum > warnHigh) {
     warnings.push(
       `Total power ${formatCompact(totalPowerSum)} outside expected range (${formatCompact(warnLow)}–${formatCompact(warnHigh)})`,
