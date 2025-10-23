@@ -8,6 +8,7 @@ const {
   TextInputBuilder,
   TextInputStyle,
   PermissionFlagsBits,
+  PermissionsBitField,
 } = require("discord.js");
 const { v4: uuidv4 } = require("uuid");
 const TEST = process.env.TEST_MODE === "1";
@@ -30,6 +31,9 @@ const {
   findLikelyMemberId,
 } = clubStore;
 const { pushLatest } = TEST ? stubs.clubSheets : require("../lib/club-sheets");
+const guildSettings = TEST
+  ? stubs.guildSettings
+  : require("../lib/guild-settings");
 
 const LOW_CONFIDENCE_THRESHOLD = 0.7;
 const MIN_ROWS_FOR_COMMIT = 3;
@@ -43,6 +47,233 @@ const BUTTON_PREFIX = "club-analyze";
 const USE_ENSEMBLE = process.env.CLUB_USE_ENSEMBLE === "1";
 
 const sessions = new Map();
+const ATTACHMENT_OPTION_NAMES = [
+  "images",
+  "image_2",
+  "image_3",
+  "image_4",
+  "image_5",
+  "image_6",
+  "image_7",
+  "image_8",
+  "image_9",
+  "image_10",
+];
+
+function createInteractionResponder(interaction) {
+  return {
+    type: "interaction",
+    interaction,
+    get isDeferred() {
+      return interaction.deferred;
+    },
+    get isReplied() {
+      return interaction.replied;
+    },
+    async defer(options) {
+      if (!interaction.deferred) {
+        await interaction.deferReply(options);
+      }
+    },
+    async edit(payload) {
+      return interaction.editReply(payload);
+    },
+    async reply(payload) {
+      return interaction.reply(payload);
+    },
+    async followUp(payload) {
+      return interaction.followUp(payload);
+    },
+  };
+}
+
+function createMessageResponder(message) {
+  const state = {
+    baseMessage: null,
+    deferred: false,
+  };
+
+  const withDefaultMentions = (payload = {}) => ({
+    ...payload,
+    allowedMentions: {
+      repliedUser: false,
+      ...(payload.allowedMentions || {}),
+    },
+  });
+
+  return {
+    type: "message",
+    get isDeferred() {
+      return state.deferred;
+    },
+    get isReplied() {
+      return Boolean(state.baseMessage);
+    },
+    async defer(options = {}) {
+      if (state.deferred) return;
+      const content =
+        options.loadingMessage ||
+        "📸 Processing club screenshots… hang tight.";
+      state.baseMessage = await message.reply(
+        withDefaultMentions({ content }),
+      );
+      state.deferred = true;
+    },
+    async edit(payload) {
+      if (!state.baseMessage) {
+        state.baseMessage = await message.reply(
+          withDefaultMentions(payload),
+        );
+        return state.baseMessage;
+      }
+      await state.baseMessage.edit(withDefaultMentions(payload));
+      return state.baseMessage;
+    },
+    async reply(payload) {
+      return message.reply(withDefaultMentions(payload));
+    },
+    async followUp(payload) {
+      const target = state.baseMessage || message;
+      return target.reply(withDefaultMentions(payload));
+    },
+  };
+}
+
+function collectAttachmentsFromInteraction(interaction) {
+  const attachmentSet = new Map();
+
+  const resolvedAttachments = interaction.options?.resolved?.attachments;
+  if (resolvedAttachments?.size) {
+    for (const attachment of resolvedAttachments.values()) {
+      attachmentSet.set(attachment.id, attachment);
+    }
+  }
+
+  const hoisted = interaction.options?.data || [];
+  for (const option of hoisted) {
+    if (option?.attachment) {
+      attachmentSet.set(option.attachment.id, option.attachment);
+    }
+  }
+
+  for (const optionName of ATTACHMENT_OPTION_NAMES) {
+    const attachment = interaction.options.getAttachment(optionName);
+    if (attachment) {
+      attachmentSet.set(attachment.id, attachment);
+    }
+  }
+
+  return Array.from(attachmentSet.values()).map((attachment) => ({
+    id: attachment.id,
+    name: attachment.name,
+    url: attachment.url,
+    size: attachment.size,
+    contentType: attachment.contentType,
+  }));
+}
+
+function collectAttachmentsFromMessage(message) {
+  if (!message?.attachments?.size) return [];
+  return Array.from(message.attachments.values()).map((attachment) => ({
+    id: attachment.id,
+    name: attachment.name,
+    url: attachment.url,
+    size: attachment.size,
+    contentType: attachment.contentType,
+  }));
+}
+
+function normalizeTypeOption(raw) {
+  if (!raw) return "both";
+  const value = String(raw).toLowerCase();
+  if (value === "sim" || value === "sim_power" || value === "simpower") {
+    return "sim";
+  }
+  if (
+    value === "total" ||
+    value === "power" ||
+    value === "total_power" ||
+    value === "totalpower"
+  ) {
+    return "power";
+  }
+  return "both";
+}
+
+function parseMessageOptions(rawText) {
+  const tokens = String(rawText || "")
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  const typeTokens = new Set(["sim", "sim_power", "simpower", "total", "power", "total_power", "totalpower", "both"]);
+  let type = "both";
+  let forceCommit = false;
+
+  for (const token of tokens) {
+    const lower = token.toLowerCase();
+    if (lower.includes("force")) {
+      forceCommit = true;
+      continue;
+    }
+    if (typeTokens.has(lower)) {
+      type = normalizeTypeOption(lower);
+      continue;
+    }
+    if (lower.startsWith("type=")) {
+      type = normalizeTypeOption(lower.split("=")[1]);
+      continue;
+    }
+    if (lower.startsWith("metric=")) {
+      type = normalizeTypeOption(lower.split("=")[1]);
+      continue;
+    }
+  }
+
+  return { type, forceCommit };
+}
+
+function buildInteractionContext(interaction) {
+  const responder = createInteractionResponder(interaction);
+  const attachments = collectAttachmentsFromInteraction(interaction);
+  return {
+    mode: "interaction",
+    responder,
+    attachments,
+    type: normalizeTypeOption(interaction.options.getString("type") || "both"),
+    forceCommit: interaction.options.getBoolean("force_commit") || false,
+    memberPermissions:
+      interaction.memberPermissions ||
+      interaction.member?.permissions ||
+      new PermissionsBitField(),
+    guildId: interaction.guildId,
+    channelId: interaction.channelId,
+    user: interaction.user,
+    userId: interaction.user.id,
+    locale: interaction.locale || "en-US",
+    interaction,
+  };
+}
+
+function buildMessageContext(message, parsed) {
+  const responder = createMessageResponder(message);
+  const attachments = collectAttachmentsFromMessage(message);
+  return {
+    mode: "message",
+    responder,
+    attachments,
+    type: normalizeTypeOption(parsed?.type || "both"),
+    forceCommit: Boolean(parsed?.forceCommit),
+    memberPermissions: message.member?.permissions || new PermissionsBitField(),
+    guildId: message.guildId,
+    channelId: message.channelId,
+    user: message.author,
+    userId: message.author.id,
+    locale: message.locale || "en-US",
+    message,
+  };
+}
 
 function ensureDatabase() {
   if (!database.isConfigured()) {
@@ -95,20 +326,23 @@ function formatDigitDiff(oldValue, newValue) {
   return null;
 }
 
-function createSession(interaction, type, attachments, forceCommit) {
+function createSession(context, type, attachments, forceCommit) {
   const id = uuidv4();
   const session = {
     id,
-    guildId: interaction.guildId,
-    channelId: interaction.channelId,
-    userId: interaction.user.id,
+    guildId: context.guildId,
+    channelId: context.channelId,
+    userId: context.userId,
     type,
     forceCommit,
     attachments,
+    responder: context.responder,
+    mode: context.mode,
     metrics: {
       sim: new Map(),
       total: new Map(),
     },
+    sheetConfig: null,
     aliases: new Map(),
     createdAt: Date.now(),
     threshold: SUSPICIOUS_THRESHOLD,
@@ -117,7 +351,6 @@ function createSession(interaction, type, attachments, forceCommit) {
     qa: null,
     replyMessageId: null,
     strictRuns: 0,
-    initialInteraction: interaction,
     useEnsemble: USE_ENSEMBLE,
     ensembleMetadata: null,
     approvals: new Set(), // Track user IDs who have approved
@@ -196,6 +429,36 @@ function getDisplayForCanonical(session, canonical) {
   const prev = session.previousByCanonical.get(canonical);
   if (prev?.display) return prev.display;
   return canonical;
+}
+
+function getCurrentMetrics(session, canonical) {
+  const totalRow = session.metrics.total.get(canonical);
+  const simRow = session.metrics.sim.get(canonical);
+  return {
+    total: toNumber(totalRow?.value),
+    sim: toNumber(simRow?.value),
+  };
+}
+
+function getPreviousMetrics(session, canonical) {
+  const prev = session.previousByCanonical.get(canonical);
+  return {
+    total: toNumber(prev?.totalPower),
+    sim: toNumber(prev?.simPower),
+  };
+}
+
+function formatMetricSummary(metrics, prefix = null) {
+  const parts = [];
+  if (metrics.total !== null && metrics.total !== undefined) {
+    parts.push(`Total ${formatNumber(metrics.total)}`);
+  }
+  if (metrics.sim !== null && metrics.sim !== undefined) {
+    parts.push(`Sim ${formatNumber(metrics.sim)}`);
+  }
+  if (!parts.length) return null;
+  const body = parts.join(" • ");
+  return prefix ? `${prefix}: ${body}` : body;
 }
 
 function recomputeQA(session) {
@@ -341,12 +604,7 @@ function buildPreviewEmbed(session) {
     session.type === "both" &&
     (!session.qa.metricsPresent.sim || !session.qa.metricsPresent.total);
 
-  const sheetId =
-    process.env.GOOGLE_SHEETS_SPREADSHEET_ID ||
-    process.env.SHEETS_SPREADSHEET_ID;
-  const sheetLink = sheetId
-    ? `https://docs.google.com/spreadsheets/d/${sheetId}`
-    : null;
+  const sheetLink = session.sheetConfig?.url || null;
 
   const description = [
     `• Parsed **${totalSim + totalTotal}** rows`,
@@ -378,7 +636,14 @@ function buildPreviewEmbed(session) {
   if (session.qa.missing.length) {
     const sample = session.qa.missing
       .slice(0, 10)
-      .map((canonical) => `• ${getDisplayForCanonical(session, canonical)}`);
+      .map((canonical) => {
+        const display = getDisplayForCanonical(session, canonical);
+        const lastMetrics = formatMetricSummary(
+          getPreviousMetrics(session, canonical),
+          "Last",
+        );
+        return lastMetrics ? `• ${display} — ${lastMetrics}` : `• ${display}`;
+      });
     if (session.qa.missing.length > 10) {
       sample.push(`…+${session.qa.missing.length - 10} more`);
     }
@@ -391,7 +656,13 @@ function buildPreviewEmbed(session) {
   if (session.qa.newNames.length) {
     const sample = session.qa.newNames
       .slice(0, 10)
-      .map((canonical) => `• ${getDisplayForCanonical(session, canonical)}`);
+      .map((canonical) => {
+        const display = getDisplayForCanonical(session, canonical);
+        const currentMetrics = formatMetricSummary(
+          getCurrentMetrics(session, canonical),
+        );
+        return currentMetrics ? `• ${display} — ${currentMetrics}` : `• ${display}`;
+      });
     if (session.qa.newNames.length > 10) {
       sample.push(`…+${session.qa.newNames.length - 10} more`);
     }
@@ -710,7 +981,7 @@ function parseManualInput(input) {
   return { updates, errors };
 }
 
-async function commitSession(session, interaction, source) {
+async function commitSession(session, source) {
   if (session.qa.totalRows < MIN_ROWS_FOR_COMMIT) {
     throw new Error(
       `Need at least ${MIN_ROWS_FOR_COMMIT} rows to commit (currently ${session.qa.totalRows}).`,
@@ -807,10 +1078,36 @@ async function commitSession(session, interaction, source) {
 
   await recomputeLatestForGuild(session.guildId, snapshotAt);
 
+  let sheetSync = null;
   try {
-    await pushLatest(session.guildId);
+    sheetSync = await pushLatest(session.guildId);
   } catch (err) {
-    logger.warn("[club-analyze] pushLatest failed", { error: err.message });
+    const errorMessage = err?.message || "Unknown Sheets error";
+    let fallbackSheetUrl = session.sheetConfig?.url || null;
+    if (!fallbackSheetUrl && session.guildId) {
+      try {
+        const cfg = await guildSettings.getSheetConfig(session.guildId);
+        if (cfg?.sheetId) {
+          fallbackSheetUrl = `https://docs.google.com/spreadsheets/d/${cfg.sheetId}`;
+        }
+      } catch (lookupErr) {
+        logger.warn("[club-analyze] Failed to load sheet config for fallback", {
+          guildId: session.guildId,
+          error: lookupErr.message,
+        });
+      }
+    }
+    sheetSync = {
+      ok: false,
+      error: errorMessage,
+      code: err?.code || err?.cause?.code || err?.cause?.response?.status || null,
+      sheetUrl: fallbackSheetUrl,
+    };
+    logger.warn("[club-analyze] pushLatest failed", {
+      guildId: session.guildId,
+      error: errorMessage,
+      code: sheetSync.code,
+    });
   }
 
   sessions.delete(session.id);
@@ -825,6 +1122,7 @@ async function commitSession(session, interaction, source) {
     snapshotId,
     rows: metricsPayload.length,
     snapshotAt,
+    sheetSync,
   };
 }
 
@@ -836,6 +1134,32 @@ function buildSuccessEmbed(session, commitSummary) {
       `Snapshot \`#${commitSummary.snapshotId}\` saved with ${commitSummary.rows} metric rows.`,
     )
     .setTimestamp(commitSummary.snapshotAt);
+
+  if (commitSummary.sheetSync) {
+    const sync = commitSummary.sheetSync;
+    const sheetLink =
+      sync.sheetUrl ||
+      session.sheetConfig?.url ||
+      (sync.spreadsheetId
+        ? `https://docs.google.com/spreadsheets/d/${sync.spreadsheetId}`
+        : null);
+    if (sync.ok) {
+      const rowLabel = sync.rowCount === 1 ? "row" : "rows";
+      const linkLabel = sync.sheetName || "Club Latest";
+      const linkText = sheetLink ? `[${linkLabel}](${sheetLink})` : linkLabel;
+      embed.addFields({
+        name: "Sheet Sync",
+        value: `✅ Synced ${sync.rowCount} ${rowLabel} to ${linkText}.`,
+      });
+    } else {
+      const details = sync.error || "Failed to update Google Sheet.";
+      const hint = sheetLink ? `\n${sheetLink}` : "";
+      embed.addFields({
+        name: "Sheet Sync",
+        value: `⚠️ ${details}${hint}`,
+      });
+    }
+  }
 
   if (session.qa.newNames.length) {
     embed.addFields({
@@ -860,33 +1184,16 @@ function buildSuccessEmbed(session, commitSummary) {
   return embed;
 }
 
-async function handleInitialRun(interaction) {
+async function startClubAnalyze(context) {
   ensureDatabase();
 
-  const type = interaction.options.getString("type") || "both";
-  const attachmentSet = new Map();
+  const { type, forceCommit, attachments, responder } = context;
 
-  const resolvedAttachments = interaction.options?.resolved?.attachments;
-  if (resolvedAttachments?.size) {
-    for (const attachment of resolvedAttachments.values()) {
-      attachmentSet.set(attachment.id, attachment);
-    }
-  }
-
-  const hoisted = interaction.options?.data || [];
-  for (const option of hoisted) {
-    if (option?.attachment) {
-      attachmentSet.set(option.attachment.id, option.attachment);
-    }
-  }
-
-  const primary = interaction.options.getAttachment("images");
-  if (primary) {
-    attachmentSet.set(primary.id, primary);
-  }
-
-  const attachments = Array.from(attachmentSet.values());
-  const forceCommit = interaction.options.getBoolean("force_commit") || false;
+  logger.info("[club-analyze] start", {
+    mode: context.mode,
+    guildId: context.guildId,
+    userId: context.userId,
+  });
 
   if (!attachments.length) {
     throw new Error("Please attach between 1 and 10 screenshots.");
@@ -897,44 +1204,81 @@ async function handleInitialRun(interaction) {
 
   if (
     forceCommit &&
-    !interaction.memberPermissions.has(PermissionFlagsBits.Administrator)
+    !context.memberPermissions?.has(PermissionFlagsBits.Administrator)
   ) {
     throw new Error("Only administrators can force commit.");
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  const start = Date.now();
+  if (context.mode === "interaction") {
+    await responder.defer({ ephemeral: true });
+  } else {
+    await responder.defer({
+      loadingMessage:
+        "📸 Processing club screenshots… generating preview (this can take ~30s).",
+    });
+  }
+
+  logger.info("[club-analyze] defer resolved", {
+    elapsedMs: Date.now() - start,
+  });
 
   const normalizedAttachments = attachments.map((attachment) => ({
     id: attachment.id,
     name: attachment.name,
     url: attachment.url,
     size: attachment.size,
+    contentType: attachment.contentType,
   }));
 
   const session = createSession(
-    interaction,
+    context,
     type,
     normalizedAttachments,
     forceCommit,
   );
+  try {
+    session.sheetConfig = await guildSettings.getSheetConfig(context.guildId);
+  } catch (err) {
+    logger.warn("[club-analyze] Failed to load sheet config", {
+      guildId: context.guildId,
+      error: err.message,
+    });
+    session.sheetConfig = { url: null, sheetId: null };
+  }
+  logger.info("[club-analyze] session created", {
+    sessionId: session.id,
+    attachmentCount: normalizedAttachments.length,
+  });
 
   await loadPreviousState(session);
   await parseAttachments(session, false);
   recomputeQA(session);
 
   if (forceCommit) {
-    const commitSummary = await commitSession(session, interaction, "force");
+    const commitSummary = await commitSession(session, "force");
     const embed = buildSuccessEmbed(session, commitSummary);
-    await interaction.editReply({
+    await responder.edit({
       content: "Force commit complete.",
       embeds: [embed],
       components: [],
     });
-    await interaction.followUp({
+    await responder.followUp({
       content: null,
       embeds: [embed],
       ephemeral: false,
     });
+    if (commitSummary.sheetSync && !commitSummary.sheetSync.ok) {
+      const followMessage = [
+        "⚠️ Google Sheets sync failed:",
+        commitSummary.sheetSync.error ||
+          "Share the sheet with the service account listed in your credentials.",
+      ].join(" ");
+      await responder.followUp({
+        content: followMessage,
+        ephemeral: true,
+      });
+    }
     metrics.trackCommand("club-analyze", 0, true);
     return;
   }
@@ -942,14 +1286,62 @@ async function handleInitialRun(interaction) {
   const embed = buildPreviewEmbed(session);
   const components = buildPreviewComponents(session);
 
-  const replyMessage = await interaction.editReply({
+  const replyMessage = await responder.edit({
     content:
       "Review the parsed data below. Approve to commit or refine with OCR/manual fixes.",
     embeds: [embed],
     components,
   });
 
-  session.replyMessageId = replyMessage.id;
+  session.replyMessageId = replyMessage?.id || null;
+}
+
+async function handleMentionCommand(message, commandText) {
+  const remainder = String(commandText || "")
+    .replace(/^club\s+analyze\s*/i, "")
+    .trim();
+  const parsed = parseMessageOptions(remainder);
+  const context = buildMessageContext(message, parsed);
+
+  if (!context.guildId) {
+    return message.reply({
+      content: "❌ Club analytics is only available inside servers.",
+      allowedMentions: { repliedUser: false },
+    });
+  }
+
+  try {
+    await startClubAnalyze(context);
+  } catch (err) {
+    const userFacingMessages = new Set([
+      "Please attach between 1 and 10 screenshots.",
+      "Attach up to 10 screenshots per run.",
+      "Need at least 3 rows to commit (currently 0).",
+      "Only administrators can force commit.",
+      "Missing guard is active. Resolve missing members or run with force commit.",
+      "Database is not configured. Club analytics require MySQL.",
+    ]);
+    const logMethod = userFacingMessages.has(err.message) ? "warn" : "error";
+    logger[logMethod]("[club-analyze] Mention run failed", {
+      error: err.message,
+    });
+
+    if (context.responder.isDeferred) {
+      await context.responder.edit({
+        content: `❌ ${err.message}`,
+        embeds: [],
+        components: [],
+      });
+    } else if (context.responder.isReplied) {
+      await context.responder.followUp({
+        content: `❌ ${err.message}`,
+      });
+    } else {
+      await context.responder.reply({
+        content: `❌ ${err.message}`,
+      });
+    }
+  }
 }
 
 async function handleApprove(interaction, session) {
@@ -998,7 +1390,7 @@ async function handleApprove(interaction, session) {
     recomputeQA(session);
     const embed = buildPreviewEmbed(session);
     const components = buildPreviewComponents(session);
-    await session.initialInteraction.editReply({
+    await session.responder.edit({
       content: `<@${userId}> approved (1/2). Awaiting second admin approval.`,
       embeds: [embed],
       components,
@@ -1012,7 +1404,6 @@ async function handleApprove(interaction, session) {
   try {
     const commitSummary = await commitSession(
       session,
-      interaction,
       session.forceCommit ? "force" : "normal",
     );
     const embed = buildSuccessEmbed(session, commitSummary);
@@ -1030,7 +1421,7 @@ async function handleApprove(interaction, session) {
       });
     }
 
-    await session.initialInteraction.editReply({
+    await session.responder.edit({
       content: "✅ Snapshot committed.",
       embeds: [],
       components: [],
@@ -1039,11 +1430,25 @@ async function handleApprove(interaction, session) {
       content: "Commit successful.",
       embeds: [embed],
     });
-    await session.initialInteraction.followUp({
+    await session.responder.followUp({
       content: null,
       embeds: [embed],
       ephemeral: false,
     });
+    if (commitSummary.sheetSync && !commitSummary.sheetSync.ok) {
+      const warningLines = [
+        "⚠️ Google Sheets sync failed:",
+        commitSummary.sheetSync.error ||
+          "Share the sheet with the service account email configured for the bot.",
+      ];
+      if (commitSummary.sheetSync.sheetUrl) {
+        warningLines.push(commitSummary.sheetSync.sheetUrl);
+      }
+      await interaction.followUp({
+        content: warningLines.join(" "),
+        ephemeral: true,
+      });
+    }
     metrics.trackCommand("club-analyze", 0, true);
   } catch (err) {
     await interaction.editReply({
@@ -1109,7 +1514,7 @@ async function handleOcr(interaction, session) {
 
     const embed = buildPreviewEmbed(session);
     const components = buildPreviewComponents(session);
-    await session.initialInteraction.editReply({
+    await session.responder.edit({
       content: "Updated preview after OCR boost.",
       embeds: [embed],
       components,
@@ -1160,7 +1565,7 @@ async function handleCancel(interaction, session) {
     ephemeral: true,
     content: "Session cancelled. No data was written.",
   });
-  await session.initialInteraction.editReply({
+  await session.responder.edit({
     content: "Session cancelled.",
     embeds: [],
     components: [],
@@ -1185,7 +1590,7 @@ async function processManualModal(interaction, session) {
     recomputeQA(session);
     const embed = buildPreviewEmbed(session);
     const components = buildPreviewComponents(session);
-    await session.initialInteraction.editReply({
+    await session.responder.edit({
       content: "Preview updated after manual fixes.",
       embeds: [embed],
       components,
@@ -1210,18 +1615,28 @@ async function processManualModal(interaction, session) {
 }
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("club-analyze")
-    .setDescription(
-      "Parse Manage Members screenshots with QA and confirmation before commit.",
-    )
-    .addAttachmentOption((option) =>
-      option
-        .setName("images")
-        .setDescription("Manage Members screenshots (1-10 attachments)")
-        .setRequired(true),
-    )
-    .addStringOption((option) =>
+  data: (() => {
+    const builder = new SlashCommandBuilder()
+      .setName("club-analyze")
+      .setDescription(
+        "Parse up to 10 Manage Members screenshots with QA and confirmation before commit.",
+      );
+
+    ATTACHMENT_OPTION_NAMES.forEach((name, idx) => {
+      const label = idx === 0 ? "images" : `images (${idx + 1})`;
+      builder.addAttachmentOption((option) =>
+        option
+          .setName(name)
+          .setDescription(
+            idx === 0
+              ? "Manage Members screenshot (attach up to 10 via additional slots)"
+              : "Optional extra screenshot",
+          )
+          .setRequired(idx === 0 ? false : false),
+      );
+    });
+
+    builder.addStringOption((option) =>
       option
         .setName("type")
         .setDescription("Which metric(s) the screenshots contain")
@@ -1237,10 +1652,14 @@ module.exports = {
         .setName("force_commit")
         .setDescription("Admins: skip preview and commit immediately")
         .setRequired(false),
-    ),
+    );
+
+    return builder;
+  })(),
   async execute(interaction) {
+    const context = buildInteractionContext(interaction);
     try {
-      await handleInitialRun(interaction);
+      await startClubAnalyze(context);
     } catch (err) {
       const userFacingMessages = new Set([
         "Please attach between 1 and 10 screenshots.",
@@ -1254,12 +1673,17 @@ module.exports = {
       logger[logMethod]("[club-analyze] Initial run failed", {
         error: err.message,
       });
-      if (interaction.deferred) {
-        await interaction.editReply({
+      if (context.responder.isDeferred) {
+        await context.responder.edit({
           content: `❌ ${err.message}`,
         });
+      } else if (context.responder.isReplied) {
+        await context.responder.followUp({
+          content: `❌ ${err.message}`,
+          ephemeral: true,
+        });
       } else {
-        await interaction.reply({
+        await context.responder.reply({
           content: `❌ ${err.message}`,
           ephemeral: true,
         });
@@ -1312,5 +1736,8 @@ module.exports = {
       });
     }
     await processManualModal(interaction, session);
+  },
+  async handleMention(message, cleanText) {
+    return handleMentionCommand(message, cleanText);
   },
 };

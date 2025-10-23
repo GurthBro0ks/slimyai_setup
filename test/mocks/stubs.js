@@ -3,6 +3,7 @@ const { AttachmentBuilder } = require("discord.js");
 const memoryStore = new Map();
 const consentStore = new Map();
 const aliasStore = new Map();
+const guildSettingStore = new Map();
 
 function memoryKey(userId, guildId) {
   return `${userId || "global"}:${guildId || "global"}`;
@@ -62,6 +63,10 @@ const database = {
   async getMemories(userId, guildId, limit = 25) {
     const records = fixtureMemories(userId, guildId);
     return records.slice(-limit).reverse();
+  },
+
+  async ensureGuildRecord() {
+    return true;
   },
 
   async deleteAllMemories(userId, guildId) {
@@ -177,6 +182,57 @@ const metrics = {
       },
       commands,
     };
+  },
+};
+
+function stubNormalizeSheetInput(input) {
+  const trimmed = String(input || "").trim();
+  if (!trimmed) return { sheetId: null, url: null };
+  const urlMatch = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/i);
+  let sheetId = urlMatch?.[1] || null;
+  if (!sheetId && /^[a-zA-Z0-9-_]{20,}$/.test(trimmed)) {
+    sheetId = trimmed;
+  }
+  let url = null;
+  if (/^https?:\/\//i.test(trimmed)) {
+    url = trimmed;
+  } else if (sheetId) {
+    url = `https://docs.google.com/spreadsheets/d/${sheetId}`;
+  }
+  if (!sheetId && url) {
+    const extracted = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/i);
+    sheetId = extracted?.[1] || null;
+  }
+  return { sheetId, url };
+}
+
+const guildSettings = {
+  normalizeSheetInput: stubNormalizeSheetInput,
+  async getSheetConfig(guildId) {
+    const stored = guildSettingStore.get(guildId) || {};
+    return {
+      url: stored.url || null,
+      sheetId: stored.sheetId || null,
+    };
+  },
+  async setSheetConfig(guildId, config) {
+    guildSettingStore.set(guildId, {
+      url: config.url || null,
+      sheetId: config.sheetId || null,
+    });
+  },
+  async clearSheetConfig(guildId) {
+    guildSettingStore.delete(guildId);
+  },
+  async setGuildSetting(guildId, key, value) {
+    const existing = guildSettingStore.get(guildId) || {};
+    existing[key] = value;
+    guildSettingStore.set(guildId, existing);
+  },
+  async clearGuildSetting(guildId, key) {
+    const existing = guildSettingStore.get(guildId) || {};
+    delete existing[key];
+    guildSettingStore.set(guildId, existing);
   },
 };
 
@@ -315,7 +371,14 @@ const clubVision = {
 
 const clubSheets = {
   async pushLatest() {
-    return { success: true, sheetUrl: "https://example.com/sheets/mock" };
+    return {
+      ok: true,
+      rowCount: 55,
+      sheetName: "Club Latest",
+      spreadsheetId: "mock-spreadsheet",
+      sheetTabId: 0,
+      sheetUrl: "https://example.com/sheets/mock",
+    };
   },
 };
 
@@ -478,6 +541,7 @@ module.exports = {
   clubStore,
   clubVision,
   clubSheets,
+  guildSettings,
   persona,
   autoImage,
   images,
