@@ -313,10 +313,12 @@ const clubStore = {
   },
 
   async getAggregates() {
+    const members = clubStoreState.latest.length;
     return {
-      totals: { sim_power: 340000, total_power: 650000 },
-      averages: { sim_power: 113333, total_power: 216666 },
-      members: clubStoreState.latest.length,
+      members,
+      membersWithTotals: members,
+      totalPower: 10120000000,
+      averagePower: members > 0 ? 184000000 : null,
     };
   },
 
