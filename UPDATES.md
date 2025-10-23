@@ -1,5 +1,86 @@
 # SLIMY.AI BOT - UPDATE LOG
 
+## 2025-10-23 — Usage costs + TPM budget + week anchor (Fri 04:30 PT)
+**Date:** 2025-10-23
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
+
+### Summary
+Implemented admin `/usage` command with OpenAI cost tracking, raised TPM budget to 2M with improved 429 backoff, and introduced week anchor utilities (Fri 04:30 PT) for consistent club analytics boundaries.
+
+### Features Delivered
+
+1. ✅ **`/usage` Command (Admin Only)** — OpenAI usage & cost tracking
+   - Time windows: today, 7d, 30d, this_month, custom ranges
+   - Fetches data from OpenAI `/v1/usage` API with graceful fallback
+   - **Cost calculation**:
+     - gpt-4o-mini: $0.15/M input + $0.60/M output tokens
+     - DALL-E 3: $0.04 standard, $0.08 HD per image
+   - Displays model breakdown, token counts, image counts, costs, and grand total
+   - Pricing env-overridable via `PRICE_4OMINI_IN/OUT`, `PRICE_DALLE3_STANDARD/HD`
+
+2. ✅ **DALL-E 3 Instrumentation** — Quality tracking for accurate costs
+   - Added `quality` and `model` columns to `image_generation_log` table
+   - Updated `generateImage()` to accept quality parameter (standard/hd)
+   - Logs all image generations with quality tier for cost breakdowns
+   - **Migration needed**: `ALTER TABLE image_generation_log ADD COLUMN quality VARCHAR(20) DEFAULT 'standard'; ADD COLUMN model VARCHAR(50) DEFAULT 'dall-e-3';`
+
+3. ✅ **OpenAI TPM Budget** — 2,000,000 TPM with improved 429 backoff
+   - Configurable via `OPENAI_TPM_BUDGET` env variable (default: 2M)
+   - Tracks token usage in sliding 1-minute window
+   - Respects `Retry-After` header from 429 responses
+   - Exponential backoff: 1.5x multiplier, capped at 60s
+   - Logs throttle warnings max once per minute
+   - Wraps all OpenAI client methods with automatic retry logic
+
+4. ✅ **Week Anchor Utilities** — Fri 04:30 PT for club analytics
+   - New `lib/week-anchor.js` with luxon-based datetime handling
+   - Default anchor: **Friday 04:30 America/Los_Angeles** (UTC-7)
+   - Env overrides: `CLUB_WEEK_ANCHOR_DAY`, `CLUB_WEEK_ANCHOR_TIME`, `CLUB_WEEK_ANCHOR_TZ`
+   - Functions: `getAnchor()`, `getLastAnchor()`, `getNextAnchor()`, `getWeekId()`, `formatAnchorDisplay()`
+   - Week ID format: `YYYY-Www` (e.g., "2025-W43")
+   - Integrated into `/club-stats` footer with timezone conversions (PT/Detroit/UTC)
+
+### Environment Variables Added
+```bash
+# OpenAI Usage & Cost Tracking
+OPENAI_TPM_BUDGET=2000000  # Tokens per minute budget
+PRICE_4OMINI_IN=0.15       # gpt-4o-mini input cost per 1M tokens
+PRICE_4OMINI_OUT=0.6       # gpt-4o-mini output cost per 1M tokens
+PRICE_DALLE3_STANDARD=0.04 # DALL-E 3 standard quality per image
+PRICE_DALLE3_HD=0.08       # DALL-E 3 HD quality per image
+
+# Week Anchor (replaces CLUB_WEEKLY_BOUNDARY)
+CLUB_WEEK_ANCHOR_DAY=FRI
+CLUB_WEEK_ANCHOR_TIME=04:30
+CLUB_WEEK_ANCHOR_TZ=America/Los_Angeles
+```
+
+### Commits (3 total)
+```
+8b4a5d9 - feat(usage): admin /usage with cost math (4o-mini tokens + DALL-E 3 per-image)
+f37d504 - chore(openai): raise TPM to 2,000,000 via OPENAI_TPM_BUDGET + improved 429 backoff
+7c6aae7 - feat(week): anchor utils + Fri 04:30 PT integration in stats/analyze
+```
+
+### Database Migrations Needed
+```sql
+-- Add quality and model tracking to image generation logs
+ALTER TABLE image_generation_log
+  ADD COLUMN quality VARCHAR(20) DEFAULT 'standard',
+  ADD COLUMN model VARCHAR(50) DEFAULT 'dall-e-3',
+  ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  ADD INDEX idx_image_created (created_at);
+```
+
+### What's Next
+- Multi-upload support for `/club analyze` (attachment collector + from_recent:N)
+- Message context command "Analyze Screenshots"
+- Per-guild week anchor overrides via `/club-admin`
+- Week ID integration into club_snapshots table
+
+---
+
 ## 2025-10-23 — Sheets sync + totals fixed
 **Date:** 2025-10-23
 **Status:** ✅ COMPLETED
@@ -10,6 +91,17 @@
 - `/club analyze` embeds report Google Sheets sync status; failures surface to callers and keep logs concise.
 - Google Sheets push honours per-guild IDs, auto-creates the `Club Latest` tab, and throws actionable errors when the service account lacks access.
 - Added QA helpers: `scripts/verify-club-stats.js` regression snapshot + warnings, harnessed test-mode stubs, and “No prior week yet” message for empty movers.
+
+## 2025-10-23 — Headless ingest + verifier
+**Date:** 2025-10-23
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
+
+### Summary
+- Added CLI pipeline `scripts/ingest-club-screenshots.js` to mirror `/club analyze` for automated runs (snapshot commit + Sheet sync).
+- Split reusable embed builder into `lib/club-stats-service.js` and introduced `scripts/post-stats-to-channel.js` for dev spot-checks.
+- Replaced stats verifier with guild-scoped tool that writes `out/verify-*.txt` and warns when totals fall outside the expected band (~1–30 B).
+- Wired npm helpers (`ingest:test`, `verify:stats`, `spotcheck:stats`) and ingested the latest `/opt/slimy/app/screenshots/test` batch via CLI.
 
 
 ## 2025-10-22 — Bulletproof club analytics + admin console + SLOs
