@@ -1,5 +1,138 @@
 # SLIMY.AI BOT - UPDATE LOG
 
+## 2025-10-23 — Club Analytics Hardening: Anti-Inflation + SIM/Total + Recompute
+**Date:** 2025-10-23
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
+
+### Summary
+Comprehensive club analytics overhaul addressing OCR inflation bugs, SIM vs Total Power separation, one-row-per-member aggregation, and recompute-from-snapshot capability (no OCR re-run). Includes anti-inflation number parser, member-cap guard, enhanced verifier, and headless operations for production workflows.
+
+### Features Delivered
+
+1. ✅ **Robust Number Parser** (`lib/numparse.js`) — Anti-inflation heuristics
+   - Normalizes OCR confusions: O→0, l/I→1, unicode separators
+   - Parses suffix notation: 10.1B, 325M, 1.5K
+   - Parses grouped numbers: 218,010,208
+   - **Anti-inflation heuristics**:
+     - Trailing extra digit detection (×10 lookalike): `2180102088` → `218010208`
+     - Bad grouping fix: `1,234,5678` → `1,234,567`
+     - Outlier detection with page median threshold (8x)
+   - Returns `{ value, corrected?, reason? }` for transparency
+   - Comprehensive test suite (59 tests, all passing)
+
+2. ✅ **SIM vs TOTAL Page Classification** — Distinguish power types
+   - New `classifyPage()` function in `lib/club-vision.js`
+   - Detects "Sim Power" vs "Power" (total) from screenshots
+   - Filename hint support: `sim-*` or `sim_*` forces sim classification
+   - Low-detail vision API call for fast classification
+   - Integrated `parsePower()` for all number parsing with correction metadata
+
+3. ✅ **Member-Key Aggregation** — One row per member
+   - **Database migration** (`migrations/2025-10-23-club-member-key.sql`):
+     - Add `member_key VARCHAR(120)` to `club_metrics` and `club_latest`
+     - Replace `club_latest` primary key with `unique(guild_id, member_key)`
+     - Add `unique(snapshot_id, member_key, metric)` to `club_metrics`
+     - Backfill `member_key` from `club_members.name_canonical`
+   - **Metric emission** with UPSERT: `ON DUPLICATE KEY UPDATE value = GREATEST(existing, new)`
+   - **Aggregation**: Query by `member_key` to get union of all members (sim OR total)
+   - **One row per member** in `club_latest` with both `sim_power` and `total_power`
+   - **Week-over-week** comparison joins on `member_key` (not `member_id`)
+
+4. ✅ **Sheet Writer** — SIM + Total columns intact
+   - Already correct: writes **Name | SIM Power | Total Power | Change %**
+   - Sources from `club_latest.{sim_power, total_power}`
+   - Leaves SIM blank if null; sorts by Total Power desc
+
+5. ✅ **Member-Cap Guard** — Prevent noisy commits
+   - CLI flag: `--cap-hint <N>` to specify expected member count
+   - Blocks commits if `COUNT(DISTINCT member_key) > cap_hint + 1`
+   - Shows preview of parsed members when blocked
+   - Override: `--force-commit` flag for admins
+   - Exits with error code 1 when blocked (non-strict mode)
+
+6. ✅ **Enhanced Verifier** — Week IDs + member counts
+   - Displays distinct week_ids with count (expect 1 for consistency)
+   - Shows distinct `member_key` count vs total rows
+   - Reports members with null `sim_power`
+   - Warns if multiple week_ids detected (data inconsistency)
+   - Keeps existing thresholds system: `--warn-low`, `--warn-high`, `--strict`
+   - Non-strict mode: warns but exits 0; strict mode fails on warnings (exits 1)
+
+7. ✅ **Recompute Tool** — Rebuild without OCR
+   - **Library** (`lib/recompute-latest.js`):
+     - Accept `{guildId, snapshotId?, weekId?, force?, capHint?, logger?}`
+     - Resolve week ID via anchor (Fri 04:30 PT)
+     - Choose latest snapshot for resolved week if not specified
+     - Aggregate from `club_metrics` using `member_key` (union/MAX logic)
+     - Enforce member-cap unless `force:true`
+     - Compute WoW % by comparing to previous week's snapshot
+     - Replace `club_latest` in transaction
+     - Return summary: `{weekId, snapshotId, members, sumTotal, sumSim, replacedRows, warnings}`
+   - **CLI** (`scripts/recompute-from-snapshot.js`):
+     - Flags: `--guild`, `--snapshot`/`--latest`, `--week`, `--rebuild-wow`, `--push-sheet`, `--force`, `--dry`, `--cap-hint`, `--json`
+     - Dry run: preview without writing
+     - Push sheet: sync to Google Sheets after recompute
+     - JSON output: write summary to file
+   - **NPM scripts**:
+     - `npm run recompute:latest -- --dry`
+     - `npm run recompute:push`
+
+8. ✅ **Headless Operations** — Production-ready workflows
+   ```bash
+   export GUILD_ID="1176605506912141444"
+
+   # Ingest screenshots (dry-run + commit)
+   node scripts/ingest-club-screenshots.js \
+     --guild "$GUILD_ID" \
+     --dir "/opt/slimy/app/screenshots/test" \
+     --type both --dry --debug
+
+   node scripts/ingest-club-screenshots.js \
+     --guild "$GUILD_ID" \
+     --dir "/opt/slimy/app/screenshots/test" \
+     --type both --commit
+
+   # Verify aggregates
+   npm run verify:stats
+
+   # Recompute from snapshot
+   npm run recompute:latest -- --dry
+   npm run recompute:push
+   ```
+
+### Database Migrations Required
+```bash
+# Run migration script
+node scripts/run-migration.js migrations/2025-10-23-club-member-key.sql
+```
+
+### Dependencies Added
+```bash
+npm install luxon  # For week anchor calculations
+```
+
+### Commits (7 total)
+```
+6566449 - feat(numparse): robust power parser with anti-inflation heuristics + tests
+442df4e - feat(vision): page classifier + integrate parsePower with corrections
+d16f7d4 - feat(aggregate): one row/member with member_key + upsert metrics
+36fb380 - feat(guard): member-cap sanity check with force-commit override
+4030be1 - chore(verify): add week_id, distinct members, null sim count, CLI flags
+aade2a5 - feat(recompute): rebuild club_latest from snapshot without OCR
+[docs]  - docs: SIM/Total columns, anchor reminder, ingest/verify/recompute usage
+```
+
+### What Works Now
+- ✅ No more inflated power values (trailing digits fixed)
+- ✅ SIM and Total Power properly separated in database and sheets
+- ✅ One row per member with both metrics (union aggregation)
+- ✅ Member-cap guard prevents duplicate/alias noise
+- ✅ Recompute without re-running expensive OCR
+- ✅ Headless workflows for cron jobs/automation
+
+---
+
 ## 2025-10-23 — Usage costs + TPM budget + week anchor (Fri 04:30 PT)
 **Date:** 2025-10-23
 **Status:** ✅ COMPLETED
