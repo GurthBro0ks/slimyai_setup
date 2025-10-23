@@ -123,11 +123,17 @@ function formatTableSide(rows, metricLabel, direction) {
 }
 
 function buildMoversSection(movers, metricLabel) {
+  const gainers = Array.isArray(movers?.gainers) ? movers.gainers : [];
+  const losers = Array.isArray(movers?.losers) ? movers.losers : [];
+  if (!gainers.length && !losers.length) {
+    return "No prior week yet.";
+  }
+
   const parts = [];
   parts.push("```");
-  parts.push(formatTableSide(movers.gainers, metricLabel, "up"));
+  parts.push(formatTableSide(gainers, metricLabel, "up"));
   parts.push("");
-  parts.push(formatTableSide(movers.losers, metricLabel, "down"));
+  parts.push(formatTableSide(losers, metricLabel, "down"));
   parts.push("```");
   return parts.join("\n");
 }
