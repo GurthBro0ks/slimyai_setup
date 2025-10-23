@@ -21,6 +21,7 @@ A production-ready Discord bot built with Discord.js v14 that provides AI-powere
 - **Conversation History**: Maintains recent conversation context (16 messages)
 - **Mention Support**: Chat by @mentioning the bot
 - **Rate Limited**: Prevents abuse with per-user cooldowns
+- **TPM Budget**: Tracks tokens per minute (default: 2,000,000 TPM via `OPENAI_TPM_BUDGET`) with automatic throttling and 429 backoff (respects Retry-After header, exponential backoff 1.5x, cap 60s)
 
 ### 🎨 Image Generation
 - **DALL-E Integration**: Generate images from text prompts
@@ -35,10 +36,18 @@ A production-ready Discord bot built with Discord.js v14 that provides AI-powere
 - **Confidence Scores**: Shows detection confidence for each stat
 
 ### 🏟️ Club Analytics
-- **Commands**: `/club analyze` (preview, manual fixes, confirmation) and `/club stats` (embed or CSV export).
-- **Setup**: configure `OPENAI_API_KEY`, Google service account (`GOOGLE_APPLICATION_CREDENTIALS` or inline JSON), `GOOGLE_SHEETS_SPREADSHEET_ID`, optional `CLUB_ROLE_ID`, and run migration `migrations/2025-10-20-club.sql`.
-- **Workflow**: upload Manage Members screenshots → OCR + QA preview → fix via OCR boost or manual modal → approve to write snapshot + sheet sync (`Club Latest` tab).
-- **Quality Controls**: weekly WoW % (Mon 00:00 UTC), suspicious jump threshold (`CLUB_QA_SUSPICIOUS_JUMP_PCT`), missing-member guard (≥20%), name canonicalization + alias table, and sheet sync backstops.
+- **Commands**: `/club analyze` (preview, manual fixes, confirmation), `/club stats` (embed or CSV export), and `/club-admin` tools for aliases, snapshots, sheet configuration, rollback, and CSV.
+- **Setup**: configure `OPENAI_API_KEY`, Google service account (`GOOGLE_APPLICATION_CREDENTIALS` or inline JSON), optional `CLUB_ROLE_ID`, and run migration `migrations/2025-10-20-club.sql`. Sheet links can now be stored per-guild via `/club-admin stats url:<link>` or environment variables.
+- **Workflow**: upload up to 10 Manage Members screenshots → OCR + QA preview → fix via OCR boost/manual modal or mention trigger → approve to write snapshot + sheet sync (`Club Latest` tab).
+- **Quality Controls**: Weekly WoW % anchored to **Friday 04:30 America/Los_Angeles** (configurable via `CLUB_WEEK_ANCHOR_DAY/TIME/TZ`), suspicious jump threshold (`CLUB_QA_SUSPICIOUS_JUMP_PCT`), missing-member guard (≥20%), name canonicalization + alias table, ensemble OCR retries, and sheet sync backstops.
+- **Week Anchor**: Default **Fri 04:30 PT** (shows conversions to Detroit/UTC in `/club-stats` footer); WoW calculations use this boundary for consistent week-over-week comparisons.
+
+### 🛠️ Operational Updates (Oct 2025)
+- **Per-Guild Slash Registration**: Set `DEV_GUILD_IDS` and keep `DEPLOY_GLOBAL_COMMANDS=0`, then run `node scripts/refresh-commands.js` for instant guild sync (global commands disabled to avoid propagation lag).
+- **Database Host**: The app now targets the local bridge at `DB_HOST=127.0.0.1` (Docker maps MySQL on localhost).
+- **Schema Migration**: Run `mysql -h 127.0.0.1 -u root -pPAw5zMUt slimy_ai_bot < migrations/2025-10-20-club.sql` after provisioning to create the club analytics tables.
+- **Process Supervisor**: The bot runs under PM2 (`pm2 start index.js --name slimy-bot`, `pm2 save`, `pm2 startup`) — the old `slimy-bot` Docker container should remain stopped/disabled.
+- **Command Deployment**: Replace `npm run deploy` with `node scripts/refresh-commands.js` so required options are auto-normalized before hitting the Discord API.
 
 ### 🎭 Personality Engine
 - **Configurable Modes**: Customize bot personality per channel/category/thread
@@ -111,21 +120,31 @@ A production-ready Discord bot built with Discord.js v14 that provides AI-powere
    docker network create slimy-net
    ```
 
-6. **Deploy slash commands:**
+6. **Deploy slash commands (guild scoped):**
    ```bash
-   npm run deploy
+   # .env
+   DEV_GUILD_IDS=1176605506912141444
+   DEPLOY_GLOBAL_COMMANDS=0
+
+   node scripts/refresh-commands.js
    ```
 
-7. **Start the bot:**
+7. **Run the club analytics migration + new guild settings table (once per environment):**
    ```bash
-   # Development (local)
-   npm start
-
-   # Production (Docker)
-   docker compose up -d
+   mysql -h 127.0.0.1 -u root -pPAw5zMUt slimy_ai_bot < migrations/2025-10-20-club.sql
    ```
 
-8. **Verify health:**
+   > The automatic table bootstrap now also provisions `guild_settings`; rerun `npm start` or `pm2 restart slimy-bot` if you skip the manual migration step.
+
+8. **Start the bot under PM2 (dependencies stay in Docker):**
+   ```bash
+   npm install -g pm2
+   pm2 start index.js --name slimy-bot
+   pm2 save
+   pm2 startup systemd  # follow the printed instructions
+   ```
+
+9. **Verify health:**
    ```bash
    curl http://localhost:3000/health
    ```
@@ -160,11 +179,25 @@ A production-ready Discord bot built with Discord.js v14 that provides AI-powere
 - `/snail sheet-setup` - Setup Google Sheets integration
 - Auto-detection in configured channels
 
+### Club Admin Utilities
+- `/club-admin snapshots [limit]` - Share the latest commits in-channel (no admin needed).
+- `/club-admin stats` - Broadcast the stored spreadsheet link; admins can add/change it with `url:` or clear it.
+- `/club-admin aliases` - Review member canonical names and known aliases.
+- `/club-admin export` - Download current club metrics as CSV (admin only).
+- `/club-admin rollback` - Restore the previous snapshot (admin only).
+
 ### Image Generation
 - `/dream <prompt> [style] [rating]` - Generate images via DALL-E
 
 ### Personality Configuration
 - `/personality-config reload` - Reload bot personality from `bot-personality.md`
+
+### Admin Commands
+- `/usage [window] [start] [end]` - View OpenAI API usage and costs (admin only)
+  - Windows: today, 7d, 30d, this_month, custom
+  - Displays token usage for gpt-4o-mini and DALL-E 3 image generation
+  - **Pricing**: gpt-4o-mini = $0.15/M input + $0.60/M output; DALL-E 3 = $0.04 standard, $0.08 HD per image (env-overridable via `PRICE_4OMINI_IN/OUT`, `PRICE_DALLE3_STANDARD/HD`)
+  - Shows cost breakdown by model and grand total
 
 ### Diagnostics
 - `/diag` - Comprehensive bot health check (uptime, memory, database, metrics)
