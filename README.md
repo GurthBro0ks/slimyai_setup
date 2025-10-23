@@ -37,10 +37,35 @@ A production-ready Discord bot built with Discord.js v14 that provides AI-powere
 
 ### 🏟️ Club Analytics
 - **Commands**: `/club analyze` (preview, manual fixes, confirmation), `/club stats` (embed or CSV export), and `/club-admin` tools for aliases, snapshots, sheet configuration, rollback, and CSV.
-- **Setup**: configure `OPENAI_API_KEY`, Google service account (`GOOGLE_APPLICATION_CREDENTIALS` or inline JSON), optional `CLUB_ROLE_ID`, and run migration `migrations/2025-10-20-club.sql`. Sheet links can now be stored per-guild via `/club-admin stats url:<link>` or environment variables.
-- **Workflow**: upload up to 10 Manage Members screenshots → OCR + QA preview → fix via OCR boost/manual modal or mention trigger → approve to write snapshot + sheet sync (`Club Latest` tab).
-- **Quality Controls**: Weekly WoW % anchored to **Friday 04:30 America/Los_Angeles** (configurable via `CLUB_WEEK_ANCHOR_DAY/TIME/TZ`), suspicious jump threshold (`CLUB_QA_SUSPICIOUS_JUMP_PCT`), missing-member guard (≥20%), name canonicalization + alias table, ensemble OCR retries, and sheet sync backstops.
+- **Setup**: configure `OPENAI_API_KEY`, Google service account (`GOOGLE_APPLICATION_CREDENTIALS` or inline JSON), optional `CLUB_ROLE_ID`, and run migrations `migrations/2025-10-20-club.sql` and `migrations/2025-10-23-club-member-key.sql`. Sheet links can now be stored per-guild via `/club-admin stats url:<link>` or environment variables.
+- **Workflow**: upload up to 10 Manage Members screenshots → OCR + QA preview → fix via OCR boost/manual modal or mention trigger → approve to write snapshot + sheet sync (`Club Latest` tab with **SIM Power**, **Total Power**, and **Change %** columns).
+- **Quality Controls**: Weekly WoW % anchored to **Friday 04:30 America/Los_Angeles** (configurable via `CLUB_WEEK_ANCHOR_DAY/TIME/TZ`), suspicious jump threshold (`CLUB_QA_SUSPICIOUS_JUMP_PCT`), missing-member guard (≥20%), name canonicalization + alias table, ensemble OCR retries, anti-inflation number parser, and sheet sync backstops.
 - **Week Anchor**: Default **Fri 04:30 PT** (shows conversions to Detroit/UTC in `/club-stats` footer); WoW calculations use this boundary for consistent week-over-week comparisons.
+- **Headless Operations**: Ingest, verify, and recompute without Discord commands:
+  ```bash
+  export GUILD_ID="1176605506912141444"
+
+  # Ingest screenshots (dry-run first)
+  node scripts/ingest-club-screenshots.js \
+    --guild "$GUILD_ID" \
+    --dir "/opt/slimy/app/screenshots/test" \
+    --type both \
+    --dry --debug
+
+  # Commit to database
+  node scripts/ingest-club-screenshots.js \
+    --guild "$GUILD_ID" \
+    --dir "/opt/slimy/app/screenshots/test" \
+    --type both \
+    --commit
+
+  # Verify aggregates (non-strict: warns but exits 0)
+  npm run verify:stats
+
+  # Recompute from existing snapshot (no OCR re-run)
+  npm run recompute:latest -- --dry         # Preview without writing
+  npm run recompute:push                    # Rebuild + sync sheet
+  ```
 
 ### 🛠️ Operational Updates (Oct 2025)
 - **Per-Guild Slash Registration**: Set `DEV_GUILD_IDS` and keep `DEPLOY_GLOBAL_COMMANDS=0`, then run `node scripts/refresh-commands.js` for instant guild sync (global commands disabled to avoid propagation lag).
@@ -129,9 +154,13 @@ A production-ready Discord bot built with Discord.js v14 that provides AI-powere
    node scripts/refresh-commands.js
    ```
 
-7. **Run the club analytics migration + new guild settings table (once per environment):**
+7. **Run the club analytics migrations (once per environment):**
    ```bash
-   mysql -h 127.0.0.1 -u root -pPAw5zMUt slimy_ai_bot < migrations/2025-10-20-club.sql
+   # Initial club analytics tables
+   node scripts/run-migration.js migrations/2025-10-20-club.sql
+
+   # Member-key support for one-row-per-member aggregation
+   node scripts/run-migration.js migrations/2025-10-23-club-member-key.sql
    ```
 
    > The automatic table bootstrap now also provisions `guild_settings`; rerun `npm start` or `pm2 restart slimy-bot` if you skip the manual migration step.
