@@ -3,6 +3,9 @@ const {
   EmbedBuilder,
   PermissionFlagsBits,
   AttachmentBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } = require("discord.js");
 
 const TEST = process.env.TEST_MODE === "1";
@@ -10,11 +13,19 @@ const stubs = TEST ? require("../test/mocks/stubs") : null;
 const database = TEST ? stubs.database : require("../lib/database");
 const logger = require("../lib/logger");
 const metrics = TEST ? stubs.metrics : require("../lib/metrics");
+const guildSettings = TEST
+  ? stubs.guildSettings
+  : require("../lib/guild-settings");
 const clubStore = TEST ? stubs.clubStore : require("../lib/club-store");
 const {
   getLatestForGuild,
   recomputeLatestForGuild,
 } = clubStore;
+const clubCorrections = require("../lib/club-corrections");
+const clubSheets = require("../lib/club-sheets");
+const { parseManageMembersImage } = require("../lib/club-vision");
+const { canonicalize } = require("../lib/club-store");
+const { getWeekId } = require("../lib/week-anchor");
 
 function ensureDatabase() {
   if (!database.isConfigured()) {
@@ -37,9 +48,14 @@ async function handleAliases(interaction) {
 
   if (action === "view") {
     const aliases = await database.query(
-      `SELECT ca.alias_canonical, cm.name_display, cm.name_canonical
+      `SELECT ca.alias_canonical,
+              cm.name_display,
+              cm.name_canonical,
+              cl.total_power,
+              cl.sim_power
        FROM club_aliases ca
        JOIN club_members cm ON cm.id = ca.member_id
+       LEFT JOIN club_latest cl ON cl.member_id = ca.member_id AND cl.guild_id = ca.guild_id
        WHERE ca.guild_id = ?
        ORDER BY cm.name_display, ca.alias_canonical`,
       [interaction.guildId],
@@ -52,38 +68,71 @@ async function handleAliases(interaction) {
       });
     }
 
+    const formatAlias = (alias) =>
+      alias
+        .split(" ")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+
     const embed = new EmbedBuilder()
       .setTitle("Club Member Aliases")
       .setColor(0x6366f1)
-      .setDescription(`Found ${aliases.length} alias(es)`);
+      .setDescription(`Found ${aliases.length} alias${aliases.length === 1 ? "" : "es"}`);
 
     // Group by canonical name
     const grouped = new Map();
     for (const alias of aliases) {
-      if (!grouped.has(alias.name_canonical)) {
-        grouped.set(alias.name_canonical, {
+      const key = alias.name_canonical;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
           display: alias.name_display,
           aliases: [],
+          totalPower: alias.total_power,
+          simPower: alias.sim_power,
         });
       }
-      grouped.get(alias.name_canonical).aliases.push(alias.alias_canonical);
+      grouped.get(key).aliases.push(alias.alias_canonical);
     }
 
-    const lines = [];
-    for (const [canonical, data] of grouped.entries()) {
-      lines.push(`**${data.display}** (${canonical})`);
-      lines.push(
-        ...data.aliases.map((alias) => `  • \`${alias}\``),
-      );
-    }
+    const entries = Array.from(grouped.entries()).sort((a, b) =>
+      a[1].display.localeCompare(b[1].display),
+    );
 
-    embed.addFields({
-      name: "Aliases",
-      value: lines.slice(0, 20).join("\n") || "None",
+    const formatMetricLine = (entry) => {
+      const parts = [];
+      if (entry.totalPower !== null && entry.totalPower !== undefined) {
+        parts.push(`Total ${Number(entry.totalPower).toLocaleString()}`);
+      }
+      if (entry.simPower !== null && entry.simPower !== undefined) {
+        parts.push(`Sim ${Number(entry.simPower).toLocaleString()}`);
+      }
+      return parts.join(" • ");
+    };
+
+    const fields = entries.slice(0, 10).map(([canonical, data]) => {
+      const metrics = formatMetricLine(data);
+      const aliasLines = data.aliases
+        .slice(0, 10)
+        .map((alias) => `• ${formatAlias(alias)} (\`${alias}\`)`);
+      if (data.aliases.length > aliasLines.length) {
+        aliasLines.push(`… +${data.aliases.length - aliasLines.length} more`);
+      }
+      const headerParts = [`${data.display} (${canonical})`];
+      if (metrics) headerParts.push(metrics);
+      return {
+        name: headerParts.join(" — "),
+        value: aliasLines.join("\n") || "`(no aliases recorded)`",
+      };
     });
 
-    if (lines.length > 20) {
-      embed.setFooter({ text: `... and ${lines.length - 20} more` });
+    for (const field of fields) {
+      embed.addFields(field);
+    }
+
+    if (entries.length > fields.length) {
+      embed.setFooter({
+        text: `Showing ${fields.length} of ${entries.length} members with aliases`,
+      });
     }
 
     return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -98,10 +147,8 @@ async function handleAliases(interaction) {
 async function handleSnapshots(interaction) {
   ensureDatabase();
 
-  const limit = Math.min(
-    Math.max(interaction.options.getInteger("limit") || 10, 1),
-    50,
-  );
+  const limitInput = interaction.options.getInteger("limit");
+  const safeLimit = Math.min(Math.max(limitInput || 10, 1), 50);
 
   const snapshots = await database.query(
     `SELECT s.id, s.snapshot_at, s.created_by, s.notes,
@@ -111,14 +158,13 @@ async function handleSnapshots(interaction) {
      WHERE s.guild_id = ?
      GROUP BY s.id, s.snapshot_at, s.created_by, s.notes
      ORDER BY s.snapshot_at DESC
-     LIMIT ?`,
-    [interaction.guildId, limit],
+     LIMIT ${safeLimit}`,
+    [interaction.guildId],
   );
 
   if (!snapshots.length) {
     return interaction.reply({
       content: "No snapshots found for this guild.",
-      ephemeral: true,
     });
   }
 
@@ -133,14 +179,112 @@ async function handleSnapshots(interaction) {
       .toISOString()
       .split("T")[1]
       .slice(0, 5);
-    lines.push(
-      `**#${snap.id}** • ${date} ${time} • <@${snap.created_by}> • ${snap.metric_count} metrics`,
-    );
+    const base = `**#${snap.id}** • ${date} ${time} • <@${snap.created_by}> • ${snap.metric_count} metrics`;
+    if (snap.notes) {
+      lines.push(`${base} — ${snap.notes}`);
+    } else {
+      lines.push(base);
+    }
   }
 
   embed.setDescription(lines.join("\n"));
 
-  return interaction.reply({ embeds: [embed], ephemeral: true });
+  return interaction.reply({ embeds: [embed] });
+}
+
+async function handleStats(interaction) {
+  ensureDatabase();
+
+  const urlOption = interaction.options.getString("url");
+  const clearOption = interaction.options.getBoolean("clear") || false;
+  const hasManagePermission = checkPermissions(interaction.member);
+
+  if ((urlOption || clearOption) && !hasManagePermission) {
+    return interaction.reply({
+      content:
+        "Only administrators or the configured club role can update the spreadsheet link.",
+      ephemeral: true,
+    });
+  }
+
+  if (clearOption) {
+    await guildSettings.clearSheetConfig(interaction.guildId);
+    return interaction.reply({
+      content: "🧹 Cleared the stored spreadsheet link.",
+      ephemeral: true,
+    });
+  }
+
+  if (urlOption) {
+    const normalized = guildSettings.normalizeSheetInput(urlOption);
+    if (!normalized.sheetId && !normalized.url) {
+      return interaction.reply({
+        content:
+          "❌ Could not recognise that as a Google Sheets URL or ID. Paste the full link from your browser or supply the spreadsheet ID.",
+        ephemeral: true,
+      });
+    }
+
+    await database.ensureGuildRecord(
+      interaction.guildId,
+      interaction.guild?.name,
+    );
+    await guildSettings.setSheetConfig(interaction.guildId, normalized);
+
+    return interaction.reply({
+      content: "✅ Updated the club spreadsheet link for this server.",
+      ephemeral: true,
+    });
+  }
+
+  const { url: sheetUrl } = await guildSettings.getSheetConfig(
+    interaction.guildId,
+  );
+
+  const weeklyBoundary =
+    process.env.CLUB_WEEKLY_BOUNDARY || "FRI_00:00_America/Detroit";
+  const boundaryDisplay = weeklyBoundary.replace(/_/g, " ");
+
+  if (!sheetUrl) {
+    const embed = new EmbedBuilder()
+      .setTitle("Club Analytics Spreadsheet Not Configured")
+      .setColor(0xf97316)
+      .setDescription(
+        [
+          "No spreadsheet link is configured yet.",
+          "Use `/club-admin stats url:<link>` to store the Google Sheets link for this guild, or set `GOOGLE_SHEETS_SPREADSHEET_ID` in `.env`.",
+          "After updating the environment or command settings, restart the bot so sync jobs can push data.",
+        ].join("\n\n"),
+      )
+      .setFooter({ text: `Weekly window: ${boundaryDisplay}` });
+
+    return interaction.reply({
+      embeds: [embed],
+    });
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle("Club Analytics Spreadsheet")
+    .setColor(0x3b82f6)
+    .setDescription(
+      [
+        "Latest snapshots sync here automatically after `/club analyze` commits.",
+        `[Open Club Latest tab](${sheetUrl})`,
+      ].join("\n\n"),
+    )
+    .setFooter({ text: `Weekly window: ${boundaryDisplay}` });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel("Open Spreadsheet")
+      .setStyle(ButtonStyle.Link)
+      .setURL(sheetUrl),
+  );
+
+  return interaction.reply({
+    embeds: [embed],
+    components: [row],
+  });
 }
 
 async function handleRollback(interaction) {
@@ -245,11 +389,365 @@ async function handleExport(interaction) {
   });
 }
 
+async function handleCorrect(interaction) {
+  ensureDatabase();
+
+  const memberInput = interaction.options.getString("member", true);
+  const metric = interaction.options.getString("metric", true);
+  const valueInput = interaction.options.getString("value", true);
+  const weekInput = interaction.options.getString("week") || "auto";
+  const reason = interaction.options.getString("reason");
+
+  await interaction.deferReply({ ephemeral: true });
+
+  // Resolve week ID
+  const weekId = weekInput === "auto" ? getWeekId() : weekInput;
+
+  // Resolve member key - try to find in database first
+  let memberKey = null;
+  let displayName = memberInput;
+
+  // If it's a mention, extract the ID and look up the user
+  const mentionMatch = memberInput.match(/^<@!?(\d+)>$/);
+  if (mentionMatch) {
+    try {
+      const user = await interaction.client.users.fetch(mentionMatch[1]);
+      displayName = user.username;
+      memberKey = canonicalize(displayName);
+    } catch (err) {
+      // Couldn't fetch user, use input as-is
+      memberKey = canonicalize(memberInput);
+    }
+  } else {
+    // Regular name input
+    memberKey = canonicalize(memberInput);
+    displayName = memberInput;
+  }
+
+  if (!memberKey) {
+    return interaction.editReply({
+      content: `❌ Could not normalize member name: ${memberInput}`,
+    });
+  }
+
+  // Add the correction
+  try {
+    const result = await clubCorrections.addCorrection({
+      guildId: interaction.guildId,
+      weekId,
+      memberKey,
+      displayName,
+      metric,
+      value: valueInput,
+      reason,
+      source: 'command',
+      createdBy: interaction.user.id,
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle("✅ Correction Added")
+      .setColor(0x22c55e)
+      .addFields(
+        { name: "Member", value: displayName, inline: true },
+        { name: "Metric", value: metric, inline: true },
+        { name: "Week", value: weekId, inline: true },
+        { name: "Value", value: result.replaced ? `${valueInput} (updated)` : valueInput },
+      );
+
+    if (reason) {
+      embed.addFields({ name: "Reason", value: reason });
+    }
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`recompute_${interaction.guildId}`)
+        .setLabel("Recompute & Push Sheet")
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji("🔄"),
+    );
+
+    await interaction.editReply({
+      embeds: [embed],
+      components: [row],
+    });
+  } catch (err) {
+    await interaction.editReply({
+      content: `❌ Failed to add correction: ${err.message}`,
+    });
+  }
+}
+
+async function handleCorrectionsList(interaction) {
+  ensureDatabase();
+
+  const weekInput = interaction.options.getString("week") || "auto";
+  const weekId = weekInput === "auto" ? getWeekId() : weekInput;
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const corrections = await clubCorrections.listCorrections(
+    interaction.guildId,
+    weekId,
+  );
+
+  if (!corrections.length) {
+    return interaction.editReply({
+      content: `No corrections found for week ${weekId}`,
+    });
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle(`Corrections for Week ${weekId}`)
+    .setColor(0x6366f1)
+    .setDescription(`Found ${corrections.length} correction${corrections.length === 1 ? "" : "s"}`);
+
+  // Group by metric
+  const byMetric = { total: [], sim: [] };
+  for (const corr of corrections) {
+    byMetric[corr.metric].push(corr);
+  }
+
+  for (const metric of ['total', 'sim']) {
+    if (byMetric[metric].length > 0) {
+      const lines = byMetric[metric]
+        .map((c) => {
+          const parts = [
+            `**${c.display_name}**: ${Number(c.value).toLocaleString()}`,
+          ];
+          if (c.reason) {
+            parts.push(`_(${c.reason})_`);
+          }
+          parts.push(`[${c.source}]`);
+          return parts.join(" ");
+        })
+        .join("\n");
+
+      embed.addFields({
+        name: `${metric.charAt(0).toUpperCase() + metric.slice(1)} Power`,
+        value: lines.length > 1024 ? lines.substring(0, 1021) + "..." : lines,
+      });
+    }
+  }
+
+  await interaction.editReply({ embeds: [embed] });
+}
+
+async function handleCorrectionsRemove(interaction) {
+  ensureDatabase();
+
+  const memberInput = interaction.options.getString("member", true);
+  const metric = interaction.options.getString("metric", true);
+  const weekInput = interaction.options.getString("week") || "auto";
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const weekId = weekInput === "auto" ? getWeekId() : weekInput;
+
+  // Resolve member key
+  let memberKey = null;
+  const mentionMatch = memberInput.match(/^<@!?(\d+)>$/);
+  if (mentionMatch) {
+    try {
+      const user = await interaction.client.users.fetch(mentionMatch[1]);
+      memberKey = canonicalize(user.username);
+    } catch (err) {
+      memberKey = canonicalize(memberInput);
+    }
+  } else {
+    memberKey = canonicalize(memberInput);
+  }
+
+  if (!memberKey) {
+    return interaction.editReply({
+      content: `❌ Could not normalize member name: ${memberInput}`,
+    });
+  }
+
+  const deleted = await clubCorrections.removeCorrection(
+    interaction.guildId,
+    weekId,
+    memberKey,
+    metric,
+  );
+
+  if (deleted) {
+    await interaction.editReply({
+      content: `✅ Removed correction for **${memberInput}** (${metric}) in week ${weekId}`,
+    });
+  } else {
+    await interaction.editReply({
+      content: `❌ No correction found for **${memberInput}** (${metric}) in week ${weekId}`,
+    });
+  }
+}
+
+async function handleCorrectionsSync(interaction) {
+  ensureDatabase();
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    // Ensure Corrections tab exists
+    const { spreadsheetId, sheetName } = await clubSheets.ensureCorrectionsTab(
+      interaction.guildId,
+    );
+
+    // Sync corrections from sheet
+    const result = await clubSheets.syncCorrectionsFromSheet(interaction.guildId);
+
+    const lines = [
+      `✅ Synced corrections from **${sheetName}** tab`,
+      `• Added: ${result.added}`,
+      `• Updated: ${result.updated}`,
+      `• Skipped: ${result.skipped}`,
+    ];
+
+    if (result.errors.length > 0) {
+      lines.push(`\n⚠️ Errors (${result.errors.length}):`);
+      for (const error of result.errors.slice(0, 10)) {
+        lines.push(`• ${error}`);
+      }
+      if (result.errors.length > 10) {
+        lines.push(`• ... and ${result.errors.length - 10} more errors`);
+      }
+    }
+
+    await interaction.editReply({ content: lines.join("\n") });
+  } catch (err) {
+    logger.error("[club-admin] Failed to sync corrections", {
+      guildId: interaction.guildId,
+      error: err.message,
+    });
+    await interaction.editReply({
+      content: `❌ Failed to sync corrections: ${err.message}`,
+    });
+  }
+}
+
+async function handleRescanUser(interaction) {
+  ensureDatabase();
+
+  const memberInput = interaction.options.getString("member", true);
+  const attachment = interaction.options.getAttachment("image", true);
+  const metricInput = interaction.options.getString("metric") || "auto";
+  const weekInput = interaction.options.getString("week") || "auto";
+  const reason = `rescan from ${attachment.name}`;
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const weekId = weekInput === "auto" ? getWeekId() : weekInput;
+
+  // Validate attachment
+  if (!attachment.contentType || !attachment.contentType.startsWith("image/")) {
+    return interaction.editReply({
+      content: "❌ Please provide a valid image file",
+    });
+  }
+
+  // Resolve member key
+  let memberKey = null;
+  let displayName = memberInput;
+
+  const mentionMatch = memberInput.match(/^<@!?(\d+)>$/);
+  if (mentionMatch) {
+    try {
+      const user = await interaction.client.users.fetch(mentionMatch[1]);
+      displayName = user.username;
+      memberKey = canonicalize(displayName);
+    } catch (err) {
+      memberKey = canonicalize(memberInput);
+    }
+  } else {
+    memberKey = canonicalize(memberInput);
+    displayName = memberInput;
+  }
+
+  if (!memberKey) {
+    return interaction.editReply({
+      content: `❌ Could not normalize member name: ${memberInput}`,
+    });
+  }
+
+  try {
+    // Run OCR on the image
+    const forcedMetric = metricInput === "auto" ? null : metricInput;
+    const ocrResult = await parseManageMembersImage(attachment.url, forcedMetric);
+
+    // Find the member in the OCR results
+    const memberRow = ocrResult.rows.find((row) => row.canonical === memberKey);
+
+    if (!memberRow) {
+      // Show what was found to help debugging
+      const foundMembers = ocrResult.rows
+        .map((r) => r.canonical)
+        .slice(0, 10)
+        .join(", ");
+
+      return interaction.editReply({
+        content:
+          `❌ Could not find member **${displayName}** (key: ${memberKey}) in the screenshot.\n\n` +
+          `Found members: ${foundMembers}${ocrResult.rows.length > 10 ? "..." : ""}`,
+      });
+    }
+
+    // Add correction with the scanned value
+    const result = await clubCorrections.addCorrection({
+      guildId: interaction.guildId,
+      weekId,
+      memberKey,
+      displayName: memberRow.display || displayName,
+      metric: ocrResult.metric,
+      value: memberRow.value,
+      reason,
+      source: 'rescan',
+      createdBy: interaction.user.id,
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle("✅ Member Rescanned")
+      .setColor(0x22c55e)
+      .addFields(
+        { name: "Member", value: memberRow.display || displayName, inline: true },
+        { name: "Metric", value: ocrResult.metric, inline: true },
+        { name: "Week", value: weekId, inline: true },
+        {
+          name: "Scanned Value",
+          value: Number(memberRow.value).toLocaleString(),
+        },
+        { name: "Confidence", value: `${Math.round(memberRow.confidence * 100)}%` },
+      );
+
+    if (memberRow.corrected) {
+      embed.addFields({
+        name: "⚠️ Auto-corrected",
+        value: `Parser applied correction: ${memberRow.parseReason || "unknown"}`,
+      });
+    }
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`recompute_${interaction.guildId}`)
+        .setLabel("Recompute & Push Sheet")
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji("🔄"),
+    );
+
+    await interaction.editReply({
+      embeds: [embed],
+      components: [row],
+    });
+  } catch (err) {
+    logger.error("[club-admin rescan-user] Failed", { error: err.message });
+    await interaction.editReply({
+      content: `❌ Failed to rescan: ${err.message}`,
+    });
+  }
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("club-admin")
     .setDescription("Admin tools for club analytics")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand((subcommand) =>
       subcommand
         .setName("aliases")
@@ -284,20 +782,175 @@ module.exports = {
       subcommand
         .setName("export")
         .setDescription("Export full club data to CSV"),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("stats")
+        .setDescription("Share or update the Google Sheets analytics link")
+        .addStringOption((option) =>
+          option
+            .setName("url")
+            .setDescription("Set or replace the spreadsheet URL or ID")
+            .setRequired(false),
+        )
+        .addBooleanOption((option) =>
+          option
+            .setName("clear")
+            .setDescription("Remove the stored spreadsheet link")
+            .setRequired(false),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("correct")
+        .setDescription("Add or update a manual correction for a member")
+        .addStringOption((option) =>
+          option
+            .setName("member")
+            .setDescription("Member name or @mention")
+            .setRequired(true),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("metric")
+            .setDescription("Metric type")
+            .setRequired(true)
+            .addChoices(
+              { name: "Total Power", value: "total" },
+              { name: "SIM Power", value: "sim" },
+            ),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("value")
+            .setDescription("Power value (accepts K/M/B notation)")
+            .setRequired(true),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("week")
+            .setDescription("Week ID (e.g., 2025-W43) or 'auto' for current week")
+            .setRequired(false),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("reason")
+            .setDescription("Reason for correction")
+            .setRequired(false),
+        ),
+    )
+    .addSubcommandGroup((group) =>
+      group
+        .setName("corrections")
+        .setDescription("Manage corrections")
+        .addSubcommand((subcommand) =>
+          subcommand
+            .setName("list")
+            .setDescription("List active corrections for the current week")
+            .addStringOption((option) =>
+              option
+                .setName("week")
+                .setDescription("Week ID or 'auto' for current week")
+                .setRequired(false),
+            ),
+        )
+        .addSubcommand((subcommand) =>
+          subcommand
+            .setName("remove")
+            .setDescription("Remove a correction")
+            .addStringOption((option) =>
+              option
+                .setName("member")
+                .setDescription("Member name or @mention")
+                .setRequired(true),
+            )
+            .addStringOption((option) =>
+              option
+                .setName("metric")
+                .setDescription("Metric type")
+                .setRequired(true)
+                .addChoices(
+                  { name: "Total Power", value: "total" },
+                  { name: "SIM Power", value: "sim" },
+                ),
+            )
+            .addStringOption((option) =>
+              option
+                .setName("week")
+                .setDescription("Week ID or 'auto' for current week")
+                .setRequired(false),
+            ),
+        )
+        .addSubcommand((subcommand) =>
+          subcommand
+            .setName("sync")
+            .setDescription(
+              "Sync corrections from the Corrections sheet tab to the database",
+            ),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("rescan-user")
+        .setDescription("Re-scan a single member from an uploaded image")
+        .addStringOption((option) =>
+          option
+            .setName("member")
+            .setDescription("Member name or @mention")
+            .setRequired(true),
+        )
+        .addAttachmentOption((option) =>
+          option
+            .setName("image")
+            .setDescription("Screenshot to analyze")
+            .setRequired(true),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("metric")
+            .setDescription("Metric type (auto-detect if not specified)")
+            .setRequired(false)
+            .addChoices(
+              { name: "Auto-detect", value: "auto" },
+              { name: "Total Power", value: "total" },
+              { name: "SIM Power", value: "sim" },
+            ),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("week")
+            .setDescription("Week ID or 'auto' for current week")
+            .setRequired(false),
+        ),
     ),
   async execute(interaction) {
     try {
       ensureDatabase();
 
-      if (!checkPermissions(interaction.member)) {
+      const subcommand = interaction.options.getSubcommand();
+      const subcommandGroup = interaction.options.getSubcommandGroup(false);
+      const urlOption = interaction.options.getString("url");
+      const clearOption = interaction.options.getBoolean("clear") || false;
+
+      const adminOnly = new Set([
+        "aliases",
+        "rollback",
+        "export",
+        "correct",
+        "rescan-user",
+      ]);
+      let requiresElevated = adminOnly.has(subcommand) || subcommandGroup === "corrections";
+      if (subcommand === "stats" && (urlOption || clearOption)) {
+        requiresElevated = true;
+      }
+
+      if (requiresElevated && !checkPermissions(interaction.member)) {
         return interaction.reply({
           content:
-            "You need administrator permissions or the configured club role to use this command.",
+            "You need administrator permissions or the configured club role to run that action.",
           ephemeral: true,
         });
       }
-
-      const subcommand = interaction.options.getSubcommand();
 
       if (subcommand === "aliases") {
         await handleAliases(interaction);
@@ -307,6 +960,18 @@ module.exports = {
         await handleRollback(interaction);
       } else if (subcommand === "export") {
         await handleExport(interaction);
+      } else if (subcommand === "stats") {
+        await handleStats(interaction);
+      } else if (subcommand === "correct") {
+        await handleCorrect(interaction);
+      } else if (subcommandGroup === "corrections" && subcommand === "list") {
+        await handleCorrectionsList(interaction);
+      } else if (subcommandGroup === "corrections" && subcommand === "remove") {
+        await handleCorrectionsRemove(interaction);
+      } else if (subcommandGroup === "corrections" && subcommand === "sync") {
+        await handleCorrectionsSync(interaction);
+      } else if (subcommand === "rescan-user") {
+        await handleRescanUser(interaction);
       } else {
         await interaction.reply({
           content: `Unknown subcommand: ${subcommand}`,

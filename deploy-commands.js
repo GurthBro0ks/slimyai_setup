@@ -1,8 +1,10 @@
 // deploy-commands.js - ROBUST VERSION WITH ERROR LOGGING
-require("dotenv").config();
 const fs = require("node:fs");
 const path = require("node:path");
 const { REST, Routes } = require("discord.js");
+const dotenv = require("dotenv");
+
+dotenv.config({ path: path.resolve(__dirname, ".env"), override: true });
 
 const commands = [];
 const cmdsPath = path.join(__dirname, "commands");
@@ -50,9 +52,14 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
       console.log(
         `\n🚀 Deploying ${commands.length} command(s) to guild ${guildId}...`,
       );
-      await rest.put(Routes.applicationGuildCommands(appId, guildId), {
-        body: commands,
-      });
+      const response = await rest.put(
+        Routes.applicationGuildCommands(appId, guildId),
+        {
+          body: commands,
+        },
+      );
+      console.log("Guild deploy response status: 200");
+      console.log(JSON.stringify(response, null, 2));
       console.log("✅ Slash commands registered to guild successfully.");
     } else {
       // Global deployment

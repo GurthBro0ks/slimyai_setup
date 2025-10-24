@@ -50,6 +50,15 @@ function attachMentionHandler(client) {
         });
       }
 
+      const lowerClean = clean.toLowerCase();
+      if (lowerClean.startsWith("club analyze")) {
+        const command = client.commands?.get("club-analyze");
+        if (command?.handleMention) {
+          await command.handleMention(message, clean);
+          return;
+        }
+      }
+
       const key = `${message.guildId || "dm"}:${message.author.id}`;
       const now = Date.now();
       const last = mentionCooldown.get(key) || 0;

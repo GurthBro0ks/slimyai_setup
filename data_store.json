@@ -1,5 +1,34 @@
 {
-  "prefs": [],
-  "memos": [],
-  "channelModes": []
+  "channelModes": [
+    {
+      "guildId": "1176605506912141444",
+      "targetId": "1430584866545864724",
+      "targetType": "thread",
+      "modes": {
+        "admin": false,
+        "chat": false,
+        "personality": true,
+        "no_personality": false,
+        "super_snail": true,
+        "rating_unrated": true,
+        "rating_pg13": false
+      },
+      "updatedAt": 1761259602168
+    },
+    {
+      "guildId": "1176605506912141444",
+      "targetId": "1424143671724343388",
+      "targetType": "channel",
+      "modes": {
+        "admin": false,
+        "chat": true,
+        "personality": true,
+        "no_personality": false,
+        "super_snail": false,
+        "rating_unrated": true,
+        "rating_pg13": false
+      },
+      "updatedAt": 1761259685367
+    }
+  ]
 }

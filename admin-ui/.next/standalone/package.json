@@ -1,0 +1,18 @@
+{
+  "name": "slimyai_setup",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "index.js",
+  "workspaces": ["admin-ui","admin-api"],
+  "scripts": {
+    "start": "node index.js",
+    "refresh:commands": "node scripts/refresh-commands.js",
+    "restart:bot": "node scripts/restart-bot.js",
+    "test:slash": "node scripts/run-slash-tests.js",
+    "qa:full": "npm run refresh:commands && npm run restart:bot && node scripts/run-slash-tests.js",
+    "admin:ui:build": "npm --workspace admin-ui run build",
+    "admin:ui:start": "npm --workspace admin-ui run start",
+    "admin:bootstrap": "bash ./scripts/bootstrap-admin.sh"
+  }
+}

@@ -1,0 +1,17 @@
+Guild: 1176605506912141444
+Members: 57
+Sum(total_power): 36,242,661,232 (36.24B)
+Sum(sim_power): 0 (0)
+Average(total_power): 635,836,162 (635.84M)
+Members with total_power: 57
+Members with sim_power: 0
+Range: ≥1.00B and ≤50.00B
+
+Top 5 Members:
+  1. DavoGato: Total 2.10B, Sim —
+  2. Ollmoll: Total 1.97B, Sim —
+  3. SnailiusMaximus: Total 1.95B, Sim —
+  4. StankAButt: Total 1.88B, Sim —
+  5. Unknown: Total 1.78B, Sim —
+
+✅ Status: OK

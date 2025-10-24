@@ -1,0 +1,7 @@
+Guild: 1176605506912141444
+Members: 58
+Sum(total_power): 37,911,103,632
+Sum(sim_power): 32,262,620
+Average(total_power): 665,107,081
+Warnings:
+- Total power 37,911,103,632 outside expected range (1,000,000,000 - 30,000,000,000).

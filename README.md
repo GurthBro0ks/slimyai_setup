@@ -36,9 +36,10 @@ A production-ready Discord bot built with Discord.js v14 that provides AI-powere
 - **Confidence Scores**: Shows detection confidence for each stat
 
 ### 🏟️ Club Analytics
-- **Commands**: `/club analyze` (preview, manual fixes, confirmation), `/club stats` (embed or CSV export), and `/club-admin` tools for aliases, snapshots, sheet configuration, rollback, and CSV.
-- **Setup**: configure `OPENAI_API_KEY`, Google service account (`GOOGLE_APPLICATION_CREDENTIALS` or inline JSON), optional `CLUB_ROLE_ID`, and run migrations `migrations/2025-10-20-club.sql` and `migrations/2025-10-23-club-member-key.sql`. Sheet links can now be stored per-guild via `/club-admin stats url:<link>` or environment variables.
-- **Workflow**: upload up to 10 Manage Members screenshots → OCR + QA preview → fix via OCR boost/manual modal or mention trigger → approve to write snapshot + sheet sync (`Club Latest` tab with **SIM Power**, **Total Power**, and **Change %** columns).
+- **Commands**: `/club analyze` (preview, manual fixes, confirmation), `/club stats` (embed or CSV export), and `/club-admin` tools for aliases, snapshots, sheet configuration, rollback, corrections, and CSV.
+- **Setup**: configure `OPENAI_API_KEY`, Google service account (`GOOGLE_APPLICATION_CREDENTIALS` or inline JSON), optional `CLUB_ROLE_ID`, and run migrations `migrations/2025-10-20-club.sql`, `migrations/2025-10-23-club-member-key.sql`, `migrations/2025-10-23-club-corrections.sql`, and `migrations/2025-10-23-club-corrections-flags.sql`. Sheet links can now be stored per-guild via `/club-admin stats url:<link>` or environment variables.
+- **Workflow**: upload up to 10 Manage Members screenshots → OCR + QA preview → fix via OCR boost/manual modal or mention trigger → approve to write snapshot + sheet sync (`Club Latest` tab with **SIM Power**, **Total Power**, and **Change %** columns). Corrected values are badged with asterisks (*).
+- **Corrections**: Admins can override bad OCR values via `/club-admin correct` command or by editing the "Corrections" tab in Google Sheets. Corrections are automatically applied during recompute and are tracked with reasons for audit trail.
 - **Quality Controls**: Weekly WoW % anchored to **Friday 04:30 America/Los_Angeles** (configurable via `CLUB_WEEK_ANCHOR_DAY/TIME/TZ`), suspicious jump threshold (`CLUB_QA_SUSPICIOUS_JUMP_PCT`), missing-member guard (≥20%), name canonicalization + alias table, ensemble OCR retries, anti-inflation number parser, and sheet sync backstops.
 - **Week Anchor**: Default **Fri 04:30 PT** (shows conversions to Detroit/UTC in `/club-stats` footer); WoW calculations use this boundary for consistent week-over-week comparisons.
 - **Headless Operations**: Ingest, verify, and recompute without Discord commands:
@@ -52,11 +53,12 @@ A production-ready Discord bot built with Discord.js v14 that provides AI-powere
     --type both \
     --dry --debug
 
-  # Commit to database
+  # Commit to database (with corrections sync)
   node scripts/ingest-club-screenshots.js \
     --guild "$GUILD_ID" \
     --dir "/opt/slimy/app/screenshots/test" \
     --type both \
+    --apply-corrections \
     --commit
 
   # Verify aggregates (non-strict: warns but exits 0)
@@ -214,6 +216,31 @@ A production-ready Discord bot built with Discord.js v14 that provides AI-powere
 - `/club-admin aliases` - Review member canonical names and known aliases.
 - `/club-admin export` - Download current club metrics as CSV (admin only).
 - `/club-admin rollback` - Restore the previous snapshot (admin only).
+- `/club-admin correct <member> <metric> <value> [week] [reason]` - Manually override bad OCR value (admin only).
+  - Supports K/M/B notation (e.g., "2.5M")
+  - Accepts @mentions or plain text member names
+  - Shows "Recompute & Push" button for immediate application
+- `/club-admin corrections list [week]` - View active corrections for a week (admin only).
+- `/club-admin corrections remove <member> <metric> [week]` - Delete a correction (admin only).
+- `/club-admin corrections sync` - Import corrections from Google Sheets "Corrections" tab (admin only).
+- `/club-admin rescan-user <member> <image> [metric]` - Re-run OCR on single member (admin only).
+  - Useful for fixing bad OCR without full re-ingest
+  - Auto-creates correction from freshly scanned value
+
+### Admin Panel
+
+The web-based Admin Panel ships with the bot repository and exposes dashboarding, settings, exports, and backup controls.
+
+| Service | Port | Purpose |
+| ------- | ---- | ------- |
+| `admin-api` | `127.0.0.1:3080` | Express API (Discord OAuth, RBAC, corrections, tasks, backups) |
+| `admin-ui`  | `127.0.0.1:3081` | Next.js UI (login, guild picker, dashboard, settings, usage, exports) |
+
+- **Local development:** `npm run admin:dev` (loads `.env.admin.example`, enables CORS for `http://localhost:3081`).
+- **Production:** copy `admin-api/.env.admin.production.example` → `.env.admin.production`, populate secrets, and run behind Caddy or nginx using the manifests in `deploy/`. Cookies are secure, same-origin only, and tied to `admin.slimyai.xyz`.
+- **Exports:** Settings → “Exports” provides corrections (CSV/JSON) and personality JSON downloads using authenticated API endpoints.
+- **Backups:** Owners can trigger a MySQL dump + data export from the UI. Results stream live via SSE and land under `/var/backups/slimy`. Automated backups are handled by `scripts/backup.sh` and the sample cron entry in `deploy/cron/backup` (14‑day retention).
+- See [DEPLOY.md](./DEPLOY.md) for the full runbook (DNS, reverse proxy, systemd/PM2, TLS, restores).
 
 ### Image Generation
 - `/dream <prompt> [style] [rating]` - Generate images via DALL-E
