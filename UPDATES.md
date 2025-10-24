@@ -1,5 +1,183 @@
 # SLIMY.AI BOT - UPDATE LOG
 
+## 2025-10-28 — Admin Panel Phase C (Production Hardening)
+**Status:** ✅ COMPLETED
+
+### Summary
+Production hardening for the Admin Panel: secure cookies & headers, same-origin API policy, reverse proxy manifests (Caddy/nginx) with TLS + SSE, backup/export endpoints, automated backup script, and owner-facing UI for triggering MySQL dumps with live logs.
+
+### Highlights
+1. 🔐 **Security & Env**
+   - Cookies now honour `secure`, `SameSite=Lax`, and `admin.slimyai.xyz` domain.
+   - CORS defaults to same-origin; Helmet enables HSTS, frame/CTO/referrer/permissions policies.
+   - `.env.admin.production.example` documents production knobs (HSTS, trusted proxy, cookie flags).
+2. 🌐 **Proxy & Services**
+   - Added `deploy/Caddyfile`, `deploy/nginx-admin.conf`, and provisioning script (`setup-nginx-admin.sh`).
+   - systemd/PM2 manifests run `admin-api` & `admin-ui` with automatic restarts.
+3. 💾 **Backups & Exports**
+   - API endpoints for corrections/personality downloads (CSV/JSON) plus `POST /api/backup/mysql-dump`.
+   - `scripts/backup.sh` + `deploy/cron/backup` generate daily MySQL dumps and guild data exports with 14-day rotation.
+4. 🖥️ **UI Enhancements**
+   - Settings page hosts export buttons, owner-only backup trigger with SSE logs, and recent backup listings.
+5. 📚 **Docs**
+   - New `DEPLOY.md` runbook covering DNS, TLS, services, OAuth, backup/restore flow.
+
+## 2025-10-23 — Club Analytics: Admin Corrections + Sheet Bidirectional Sync
+**Date:** 2025-10-23
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
+
+### Summary
+Comprehensive admin corrections system enabling manual overrides for bad OCR values via Discord commands and Google Sheets. Includes bidirectional sync between Corrections sheet tab and database, automatic application during recompute, visual badging of corrected values, and single-user rescan capability.
+
+### Features Delivered
+
+1. ✅ **Corrections Database** (`club_corrections` table)
+   - Stores admin overrides by `{guild_id, week_id, member_key, metric}`
+   - Fields: `value BIGINT`, `reason VARCHAR(255)`, `source ENUM('sheet','command','rescan')`
+   - Audit trail: `created_by`, `created_at`
+   - Unique constraint prevents duplicate corrections
+   - Supports both `total` and `sim` metrics
+
+2. ✅ **Admin Commands** (`/club-admin`)
+   - `/club-admin correct <member> <metric> <value> [week] [reason]`
+     - Manual correction entry via Discord
+     - Supports K/M/B notation (e.g., "2.5M")
+     - Accepts @mentions or plain text member names
+     - Shows "Recompute & Push" button for immediate application
+   - `/club-admin corrections list [week]`
+     - View all active corrections for a week
+     - Groups by metric type
+     - Shows reasons and timestamps
+   - `/club-admin corrections remove <member> <metric> [week]`
+     - Delete a specific correction
+   - `/club-admin corrections sync`
+     - Import corrections from Google Sheets "Corrections" tab
+     - Shows added/updated/skipped counts
+   - `/club-admin rescan-user <member> <image> [metric]`
+     - Re-run OCR on single member from screenshot
+     - Auto-detects metric type or accepts override
+     - Creates correction from freshly scanned value
+
+3. ✅ **Recompute Pipeline Integration**
+   - Corrections automatically applied during `recomputeLatest()`
+   - Fetches corrections map after OCR aggregation
+   - Overrides OCR values where corrections exist
+   - Tracks corrected metrics with flags: `sim_corrected`, `total_corrected`
+   - Stores correction reasons: `sim_correction_reason`, `total_correction_reason`
+   - Logs corrections applied count
+
+4. ✅ **Google Sheets Bidirectional Sync**
+   - **Corrections Tab** (`ensureCorrectionsTab()`)
+     - Auto-creates "Corrections" sheet tab if missing
+     - Headers: Week ID | Member Name | Metric | Value | Reason | Updated By | Status
+     - Formatted with bold header and gray background
+   - **Sheet → Database** (`syncCorrectionsFromSheet()`)
+     - Reads corrections from sheet (skips header)
+     - Only syncs rows with `Status = "Active"` (case-insensitive)
+     - Validates member names via `canonicalize()`
+     - Parses values via `parsePower()` (supports K/M/B)
+     - Returns summary: `{added, updated, skipped, errors}`
+   - **CLI Integration** (`--apply-corrections`)
+     - Flag for `ingest-club-screenshots.js`
+     - Syncs corrections from sheet before ingesting
+     - Skipped in dry-run mode
+
+5. ✅ **Sheet UX Improvements**
+   - **Corrected Value Badging**
+     - Asterisk (*) appended to corrected values in Club Latest tab
+     - Applied to both SIM and Total columns
+     - Only shown when value is non-empty
+   - **Bot-Managed Warning**
+     - Header row in Club Latest tab: "⚠️ BOT-MANAGED: This tab is auto-updated..."
+     - Directs users to Corrections tab for manual edits
+     - Empty spacing row for visual separation
+
+6. ✅ **Single-User Rescan** (`handleRescanUser()`)
+   - Upload screenshot + specify member name
+   - Re-run OCR using `parseManageMembersImage()`
+   - Find specific member in parsed results
+   - Auto-create correction with `source='rescan'`
+   - Shows "Recompute & Push" button
+   - Useful for fixing bad OCR without full re-ingest
+
+### Technical Details
+
+**Database Schema:**
+```sql
+CREATE TABLE club_corrections (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  guild_id VARCHAR(32) NOT NULL,
+  week_id VARCHAR(16) NOT NULL,
+  member_key VARCHAR(120) NOT NULL,
+  display_name VARCHAR(120) NOT NULL,
+  metric ENUM('total','sim') NOT NULL,
+  value BIGINT NOT NULL,
+  reason VARCHAR(255) NULL,
+  source ENUM('sheet','command','rescan') NOT NULL DEFAULT 'command',
+  created_by VARCHAR(64) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_corr (guild_id, week_id, member_key, metric)
+);
+
+ALTER TABLE club_latest
+  ADD COLUMN sim_corrected BOOLEAN DEFAULT FALSE,
+  ADD COLUMN total_corrected BOOLEAN DEFAULT FALSE,
+  ADD COLUMN sim_correction_reason VARCHAR(255) NULL,
+  ADD COLUMN total_correction_reason VARCHAR(255) NULL;
+```
+
+**Correction Flow:**
+1. Admin enters correction via `/club-admin correct` or edits Corrections sheet
+2. Correction stored in `club_corrections` table
+3. During recompute, corrections fetched via `getCorrectionsMap()`
+4. OCR values overridden where corrections exist
+5. Corrected flags set in `club_latest`
+6. Sheet writer badges corrected values with asterisk
+
+**Files Modified:**
+- `migrations/2025-10-23-club-corrections.sql` (new)
+- `migrations/2025-10-23-club-corrections-flags.sql` (new)
+- `lib/club-corrections.js` (new)
+- `lib/recompute-latest.js` (corrections integration)
+- `lib/club-sheets.js` (Corrections tab + sync + badging + warning)
+- `commands/club-admin.js` (new commands)
+- `scripts/ingest-club-screenshots.js` (--apply-corrections flag)
+
+### Usage Examples
+
+**Command-Based Correction:**
+```
+/club-admin correct member:Alice metric:Total value:2.5M reason:OCR read 25M incorrectly
+→ ✅ Added correction for Alice (total) = 2,500,000
+→ Shows "Recompute & Push" button
+```
+
+**Sheet-Based Correction:**
+1. Open Google Sheets → "Corrections" tab
+2. Add row: `2025-W43 | Bob | sim | 1.8M | Bad OCR | admin@example.com | Active`
+3. Run: `/club-admin corrections sync`
+4. Run: `/club-admin rollback recompute:y push:y`
+
+**Single-User Rescan:**
+```
+/club-admin rescan-user member:Carol image:<screenshot.png>
+→ OCR finds Carol with total=3.2M
+→ ✅ Correction created from rescan
+→ Shows "Recompute & Push" button
+```
+
+**Headless Ingest with Corrections:**
+```bash
+node scripts/ingest-club-screenshots.js \
+  --guild 1234567890 \
+  --dir screenshots/2025-10-23 \
+  --apply-corrections \
+  --commit
+```
+
+---
+
 ## 2025-10-23 — Club Analytics Hardening: Anti-Inflation + SIM/Total + Recompute
 **Date:** 2025-10-23
 **Status:** ✅ COMPLETED

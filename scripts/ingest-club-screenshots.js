@@ -9,7 +9,11 @@
  *   --dir "/opt/slimy/app/screenshots/test" \
  *   --type both \
  *   --commit \
- *   [--dry] [--limit 10] [--log out/ingest-run-YYYYMMDD.md]
+ *   [--dry] [--limit 10] [--log out/ingest-run-YYYYMMDD.md] \
+ *   [--apply-corrections] [--cap-hint <N>] [--force-commit]
+ *
+ * Flags:
+ *   --apply-corrections: Sync corrections from Google Sheet before ingesting
  */
 
 const fs = require("fs");
@@ -28,7 +32,7 @@ const {
   recomputeLatestForGuild,
   getAggregates,
 } = require("../lib/club-store");
-const { pushLatest } = require("../lib/club-sheets");
+const { pushLatest, syncCorrectionsFromSheet } = require("../lib/club-sheets");
 const {
   parseManageMembersImage,
   parseManageMembersImageEnsemble,
@@ -157,6 +161,7 @@ async function main() {
   const limit = args.limit ? Number(args.limit) : DEFAULT_LIMIT;
   const logPath = args.log ? path.resolve(args.log) : null;
   const useEnsemble = process.env.CLUB_USE_ENSEMBLE === "1";
+  const applyCorrections = toBoolean(args["apply-corrections"]);
 
   if (dryRun && commitFlag) {
     console.warn(
@@ -192,6 +197,36 @@ async function main() {
   }
 
   await database.initialize();
+
+  // Sync corrections from Google Sheet if requested
+  if (applyCorrections && !dryRun) {
+    try {
+      console.log("[ingest] Syncing corrections from Google Sheet...");
+      const syncResult = await syncCorrectionsFromSheet(guildId);
+      console.log(
+        `[ingest] Corrections synced: added=${syncResult.added}, updated=${syncResult.updated}, skipped=${syncResult.skipped}`,
+      );
+      if (syncResult.errors.length > 0) {
+        console.warn(
+          `[ingest] Corrections sync had ${syncResult.errors.length} errors:`,
+        );
+        for (const error of syncResult.errors.slice(0, 5)) {
+          console.warn(`  - ${error}`);
+        }
+        if (syncResult.errors.length > 5) {
+          console.warn(
+            `  ... and ${syncResult.errors.length - 5} more errors`,
+          );
+        }
+      }
+    } catch (err) {
+      console.error(
+        `[ingest] Failed to sync corrections: ${err.message}. Continuing with ingest...`,
+      );
+    }
+  } else if (applyCorrections && dryRun) {
+    console.log("[ingest] --apply-corrections ignored in dry run mode");
+  }
 
   const metricsMap = new Map();
   let simPages = 0;

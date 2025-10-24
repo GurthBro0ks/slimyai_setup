@@ -1,5 +1,5 @@
 // index.js - PRODUCTION READY v2.1
-require("dotenv").config();
+require("dotenv").config({ override: true });
 const db = require("./lib/database");
 const fs = require("fs");
 const path = require("path");
@@ -218,9 +218,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (!interaction.isChatInputCommand()) return;
 
+    logger.info("Slash command invoked", {
+      commandName: interaction.commandName,
+      commandsLoaded: Array.from(client.commands.keys()),
+    });
     const command = client.commands.get(interaction.commandName);
     if (!command) {
       metrics.trackCommand("unknown", Date.now() - startTime, false);
+      logger.warn("Slash command lookup failed", {
+        commandName: interaction.commandName,
+        knownCommands: Array.from(client.commands.keys()),
+      });
       return interaction
         .reply({
           content: "❌ Unknown command.",

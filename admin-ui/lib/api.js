@@ -3,23 +3,7 @@
 import { useCallback } from "react";
 import { useSession } from "./session";
 
-const API_BASE = process.env.NEXT_PUBLIC_ADMIN_API_BASE || "";
-
-export function fmtDuration(value) {
-  const seconds = Number.isFinite(value)
-    ? Math.max(0, Math.floor(value))
-    : Math.max(0, Math.floor(Number(value) || 0));
-
-  const days = Math.floor(seconds / 86_400);
-  const hours = Math.floor((seconds % 86_400) / 3_600);
-  const minutes = Math.floor((seconds % 3_600) / 60);
-  const secs = seconds % 60;
-
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m`;
-  return `${secs}s`;
-}
+const API_BASE = process.env.NEXT_PUBLIC_ADMIN_API_BASE || "http://localhost:3080";
 
 export async function apiFetch(path, { method = "GET", body, csrfToken } = {}) {
   const headers = new Headers();

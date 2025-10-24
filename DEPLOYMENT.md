@@ -1,6 +1,6 @@
 # Deployment Guide - Slimy.AI Bot v2.1
 
-This guide covers deploying Slimy.AI to production using Docker Compose with MySQL backend.
+This guide covers deploying Slimy.AI to production using Docker Compose for dependencies (MySQL/Redis/Adminer) and PM2 for the Discord bot runtime.
 
 ## Table of Contents
 
@@ -27,8 +27,9 @@ Before deploying to production, verify:
 - [ ] Database user credentials (`DB_USER`, `DB_PASSWORD`)
 
 ### Infrastructure
-- [ ] Docker Engine 20.10+ installed
+- [ ] Docker Engine 20.10+ installed (database + Adminer only)
 - [ ] Docker Compose v2+ installed
+- [ ] PM2 installed globally (`npm install -g pm2`)
 - [ ] External network `slimy-net` created: `docker network create slimy-net`
 - [ ] Persistent directories created:
   - `/opt/slimy/ops/mysql` - Database files
@@ -44,7 +45,12 @@ Before deploying to production, verify:
 ### Configuration
 - [ ] `.env` file created from `.env.example`
 - [ ] `.env.db` file created with MySQL root password
-- [ ] Discord slash commands registered: `npm run deploy`
+- [ ] `.env` includes:
+  - `DB_HOST=127.0.0.1`
+  - `DEV_GUILD_IDS=your_guild_id`
+  - `DEPLOY_GLOBAL_COMMANDS=0`
+- [ ] (Optional) Pre-seed `CLUB_SHEET_URL` or `GOOGLE_SHEETS_SPREADSHEET_ID` if you want the club analytics sheet link available immediately.
+- [ ] Slash commands registered via `node scripts/refresh-commands.js`
 - [ ] Bot has necessary Discord permissions:
   - Send Messages
   - Read Message History
@@ -100,34 +106,51 @@ Before deploying to production, verify:
    docker network create slimy-net
    ```
 
-5. **Deploy Slash Commands to Discord**
+5. **Launch supporting services (database + Adminer; add Redis if needed)**
    ```bash
-   npm run deploy
+   docker compose up -d db adminer
    ```
 
-   **Note:** Global commands take ~1 hour to propagate. For instant testing, set `DISCORD_GUILD_ID` in `.env` to deploy to a specific server.
-
-6. **Start Services**
+6. **Run required database migrations**
    ```bash
-   docker compose up -d
+   mysql -h 127.0.0.1 -u root -pPAw5zMUt slimy_ai_bot < migrations/2025-10-20-club.sql
+   ```
+   The application will also create supporting tables (e.g., `guild_settings`) on first boot if they are missing.
+
+7. **Deploy guild-scoped slash commands**
+   ```bash
+   export DEV_GUILD_IDS=1176605506912141444   # or your guild
+   export DEPLOY_GLOBAL_COMMANDS=0
+   node scripts/refresh-commands.js
    ```
 
-7. **Verify Deployment**
+8. **Start the bot under PM2**
    ```bash
-   # Check container status
+   pm2 start index.js --name slimy-bot
+   pm2 save
+   pm2 startup systemd
+   ```
+
+9. **Verify Deployment**
+   ```bash
+   # Containers
    docker compose ps
 
-   # Check logs
-   docker compose logs -f bot
+   # PM2 status
+   pm2 list
 
-   # Test health endpoint
+   # Health endpoint
    curl http://localhost:3000/health
-
-   # Test metrics endpoint
-   curl http://localhost:3000/metrics
    ```
 
-8. **Create Initial Database Backup**
+10. **Configure Club Spreadsheet (optional)**
+    ```bash
+    # Run inside Discord as an administrator once the bot is online
+    /club-admin stats url:https://docs.google.com/spreadsheets/d/your_sheet_id
+    ```
+    > This stores the sheet ID in the new `guild_settings` table for the current guild. You can repeat it for each production server.
+
+11. **Create Initial Database Backup**
    ```bash
    ./scripts/backup-database.sh
    ```
@@ -156,13 +179,20 @@ Before deploying to production, verify:
 
 5. **Update Slash Commands (if commands changed)**
    ```bash
-   npm run deploy
+   node scripts/refresh-commands.js
    ```
 
-6. **Verify Health**
+6. **Restart the bot**
+   ```bash
+   pm2 restart slimy-bot --update-env
+   pm2 save
+   ```
+
+7. **Verify Health**
    ```bash
    curl http://localhost:3000/health
-   docker compose logs -f bot | head -n 50
+   pm2 logs slimy-bot --lines 50
+   docker compose logs db --tail 20
    ```
 
 ---
@@ -177,7 +207,7 @@ DISCORD_TOKEN=your_token_here
 DISCORD_CLIENT_ID=your_client_id
 
 # Database (Required for production)
-DB_HOST=db
+DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_USER=slimy_bot_user
 DB_PASSWORD=secure_password_here
@@ -584,3 +614,6 @@ docker compose logs bot > bot.log
 ---
 
 **Last Updated:** 2025-10-15 (v2.1)
+# Slash command deployment
+DEV_GUILD_IDS=1176605506912141444
+DEPLOY_GLOBAL_COMMANDS=0

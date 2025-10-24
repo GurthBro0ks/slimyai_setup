@@ -1,11 +1,78 @@
 #!/usr/bin/env node
 
-require("dotenv/config");
-const fs = require("node:fs");
 const path = require("node:path");
+const dotenv = require("dotenv");
+dotenv.config({ path: path.resolve(__dirname, "..", ".env"), override: true });
+
+const fs = require("node:fs");
 const { REST, Routes } = require("discord.js");
 const logger = require("../lib/logger");
 const TEST = process.env.TEST_MODE === "1";
+
+function cloneCommandData(command) {
+  if (!command) return null;
+  if (typeof command.toJSON === "function") {
+    return command.toJSON();
+  }
+  if (typeof command === "object") {
+    try {
+      return JSON.parse(JSON.stringify(command));
+    } catch (error) {
+      logger.error("[refresh] Failed to serialize command", { error });
+      return null;
+    }
+  }
+  return null;
+}
+
+function partitionOptions(options) {
+  if (!Array.isArray(options) || options.length === 0) {
+    return { reordered: false, options };
+  }
+
+  const required = [];
+  const optional = [];
+  let reordered = false;
+
+  options.forEach((option, index) => {
+    if (option?.required) {
+      if (optional.length > 0 && !reordered) {
+        reordered = true;
+      }
+      required.push(option);
+    } else {
+      optional.push(option);
+    }
+  });
+
+  const normalized = required.concat(optional);
+  if (!reordered) {
+    reordered = normalized.some((option, idx) => option !== options[idx]);
+  }
+
+  return { reordered, options: normalized };
+}
+
+function reorderOptionsInPlace(node, modulePath, context = "root") {
+  if (!node || typeof node !== "object") return;
+  if (!Array.isArray(node.options) || node.options.length === 0) return;
+
+  const originalNames = node.options.map((opt) => opt?.name).filter(Boolean);
+  const { reordered, options } = partitionOptions(node.options);
+  node.options = options;
+
+  if (reordered) {
+    logger.warn("[refresh] Reordered command options for Discord compatibility", {
+      modulePath,
+      context,
+      options: originalNames.join(", "),
+    });
+  }
+
+  node.options.forEach((child) => {
+    reorderOptionsInPlace(child, modulePath, `${context}.${child?.name || "?"}`);
+  });
+}
 
 function requireCommand(modulePath) {
   try {
@@ -64,8 +131,10 @@ function loadCommands() {
 
     const modulePath = path.join(commandsDir, entry.name);
     const mod = requireCommand(modulePath);
-    const data = extractCommandData(mod, modulePath);
+    const raw = extractCommandData(mod, modulePath);
+    const data = cloneCommandData(raw);
     if (data?.name) {
+      reorderOptionsInPlace(data, modulePath, data.name);
       commands.push(data);
     }
   });
@@ -92,11 +161,19 @@ async function registerCommands(rest, clientId, commands, guildIds) {
     logger.info(`[refresh] Registered guild commands for ${guildId}`);
   }
 
-  logger.info(
-    "[refresh] Registering commands globally (can take up to 1 hour to propagate)",
-  );
-  await rest.put(Routes.applicationCommands(clientId), { body: commands });
-  logger.info("[refresh] Registered commands globally");
+  const deployGlobal = process.env.DEPLOY_GLOBAL_COMMANDS === "1";
+
+  if (deployGlobal) {
+    logger.info(
+      "[refresh] Registering commands globally (can take up to 1 hour to propagate)",
+    );
+    await rest.put(Routes.applicationCommands(clientId), { body: commands });
+    logger.info("[refresh] Registered commands globally");
+  } else {
+    logger.info(
+      "[refresh] DEPLOY_GLOBAL_COMMANDS disabled — skipping global registration.",
+    );
+  }
 }
 
 async function main() {

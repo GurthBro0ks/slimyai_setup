@@ -1,0 +1,15 @@
+{
+  "apps": [
+    {
+      "name": "admin-ui",
+      "cwd": "/opt/slimy/app",
+      "script": "node_modules/.bin/next",
+      "args": "start -p 3081 -r admin-ui",
+      "interpreter": "node",
+      "env": {
+        "NODE_ENV": "production",
+        "ENV_FILE": "/opt/slimy/app/admin-api/.env.admin.production"
+      }
+    }
+  ]
+}
