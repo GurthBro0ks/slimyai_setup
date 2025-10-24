@@ -1,0 +1,19 @@
+[Unit]
+Description=Slimy Admin UI (Next.js)
+After=network.target admin-api.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/slimy/app
+EnvironmentFile=/opt/slimy/app/admin-api/.env.admin.production
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm --workspace admin-ui run start
+Restart=always
+RestartSec=5
+User=slimy
+Group=slimy
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
