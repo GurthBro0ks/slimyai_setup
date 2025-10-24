@@ -1,0 +1,14 @@
+{
+  "name": "slimy-admin-ui",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3081",
+    "build": "next build",
+    "start": "next start -p 3081"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  }
+}
