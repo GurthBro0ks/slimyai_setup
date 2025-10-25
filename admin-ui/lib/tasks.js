@@ -1,7 +1,7 @@
 "use client";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_ADMIN_API_BASE || "http://localhost:3080";
+  process.env.NEXT_PUBLIC_ADMIN_API_BASE ?? "http://localhost:3080";
 
 function safeParse(data) {
   if (typeof data !== "string") return data;
