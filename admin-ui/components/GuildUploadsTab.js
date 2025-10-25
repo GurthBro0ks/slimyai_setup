@@ -62,7 +62,6 @@ export default function GuildUploadsTab({ guildId }) {
         type="file"
         accept="image/png,image/jpeg,image/webp"
         multiple
-        capture="environment"
         style={{ display: "none" }}
         onChange={onInputChange}
       />
@@ -104,9 +103,12 @@ export default function GuildUploadsTab({ guildId }) {
         </div>
       ) : (
         <div
-          className="card uploads-grid"
+          className="card"
           style={{
             padding: 16,
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
           }}
         >
           {items.map((item) => (
@@ -136,14 +138,7 @@ export default function GuildUploadsTab({ guildId }) {
                 }}
               />
               <div style={{ fontSize: 12, opacity: 0.8 }}>
-                {item.uploadedBy && (
-                  <div style={{ fontWeight: 600, marginBottom: 2 }}>
-                    Uploaded by {item.uploadedBy}
-                  </div>
-                )}
-                <div style={{ opacity: 0.7 }}>
-                  {new Date(item.uploadedAt).toLocaleString()}
-                </div>
+                {new Date(item.uploadedAt).toLocaleString()}
               </div>
             </a>
           ))}
