@@ -8,6 +8,7 @@ const multer = require("multer");
 const sharp = require("sharp");
 const mime = require("mime-types");
 const { requireAuth } = require("../middleware/auth");
+const withUploader = require("../middleware/withUploader");
 const {
   UPLOADS_DIR,
   listGuildUploads,
@@ -119,6 +120,7 @@ router.get("/:guildId", requireAuth, async (req, res) => {
 router.post(
   "/:guildId",
   requireAuth,
+  withUploader,
   (req, res, next) => {
     upload.array("files", MAX_FILES)(req, res, (err) => {
       if (err) {
@@ -138,10 +140,23 @@ router.post(
       const processed = [];
       for (const file of req.files || []) {
         const variants = await buildVariants(file.path);
+
+        // Save metadata alongside the file
+        const parsed = path.parse(variants.original);
+        const metaPath = path.join(parsed.dir, `${parsed.name}.meta.json`);
+        const metadata = {
+          uploadedBy: req.uploader || "unknown",
+          uploadedAt: new Date().toISOString(),
+          originalName: file.originalname,
+        };
+        await fsp.writeFile(metaPath, JSON.stringify(metadata, null, 2));
+
         processed.push({
           original: toPublicUrl(variants.original),
           large: toPublicUrl(variants.large),
           thumb: toPublicUrl(variants.thumb),
+          uploadedBy: metadata.uploadedBy,
+          uploadedAt: metadata.uploadedAt,
         });
       }
 

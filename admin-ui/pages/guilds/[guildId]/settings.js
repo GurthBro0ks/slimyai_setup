@@ -1,288 +1,137 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import useSWR from "swr";
-
+import { useEffect, useState } from "react";
 import Layout from "../../../components/Layout";
-import { apiFetch, useApi } from "../../../lib/api";
-import { useSession } from "../../../lib/session";
-import { subscribeTask } from "../../../lib/tasks";
+import { apiFetch } from "../../../lib/api";
 
-const fetcher = (path) => apiFetch(path);
-
-export default function GuildSettingsPage() {
+export default function GuildSettingsPage(){
   const router = useRouter();
-  const { guildId } = router.query;
-  const api = useApi();
-  const { user } = useSession();
-  const { data, mutate } = useSWR(
-    guildId ? `/api/guilds/${guildId}/settings` : null,
-    fetcher,
-  );
-  const { data: backupInfo, mutate: refreshBackups } = useSWR(
-    user?.role === "owner" ? "/api/backup/list" : null,
-    apiFetch,
-  );
-
-  const [sheetUrl, setSheetUrl] = useState("");
-  const [weekWindow, setWeekWindow] = useState("");
-  const [warnLow, setWarnLow] = useState("");
-  const [warnHigh, setWarnHigh] = useState("");
-  const [tpm, setTpm] = useState("");
-  const [status, setStatus] = useState(null);
-  const [backupStatus, setBackupStatus] = useState(null);
-  const [backupLogs, setBackupLogs] = useState([]);
-  const [backupRunning, setBackupRunning] = useState(false);
-
-  if (!data) {
-    return (
-      <Layout guildId={guildId} title="Club Settings">
-        <p>Loading settings…</p>
-      </Layout>
-    );
-  }
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setStatus("Saving…");
-    try {
-      const payload = {
-        sheetUrl: sheetUrl || data.sheetUrl || null,
-        weekWindowDays: weekWindow ? Number(weekWindow) : null,
-        thresholds: {
-          warnLow: warnLow ? Number(warnLow) : null,
-          warnHigh: warnHigh ? Number(warnHigh) : null,
-        },
-        tokensPerMinute: tpm ? Number(tpm) : null,
-        testSheet: true,
-      };
-
-      const updated = await api(`/api/guilds/${guildId}/settings`, {
-        method: "PUT",
-        body: payload,
-      });
-
-      await mutate(updated, { revalidate: false });
-      setStatus("Saved");
-    } catch (err) {
-      setStatus(`Error: ${err.message}`);
-    }
-  };
-
-  const apiBase = useMemo(
-    () => process.env.NEXT_PUBLIC_ADMIN_API_BASE || "http://localhost:3080",
-    [],
-  );
-
-  const exportBase = guildId
-    ? `${apiBase}/api/guilds/${guildId}/export`
-    : null;
-
-  const isAdminOrOwner = user && (user.role === "admin" || user.role === "owner");
-  const isOwner = user?.role === "owner";
-
-  const triggerBackup = async () => {
-    if (!isOwner || backupRunning) return;
-
-    try {
-      setBackupRunning(true);
-      setBackupLogs([]);
-      setBackupStatus("Starting MySQL dump…");
-
-      const response = await api("/api/backup/mysql-dump", {
-        method: "POST",
-        body: {},
-      });
-
-      setBackupStatus(`Backup started (${response.filename})`);
-
-      await subscribeTask(response.taskId, {
-        onEvent: (event) => {
-          if (event.event === "log") {
-            const stream = event.data.stream || "log";
-            setBackupLogs((prev) => [...prev, `${stream}: ${event.data.line}`]);
-          }
-          if (event.event === "error") {
-            const message = event.data?.message || "Backup error";
-            setBackupLogs((prev) => [...prev, `stderr: ${message}`]);
-            setBackupStatus(`Backup error: ${message}`);
-          }
-          if (event.event === "end") {
-            const statusResult = event.data?.status || "completed";
-            setBackupStatus(
-              statusResult === "completed"
-                ? "Backup completed"
-                : "Backup ended with errors",
-            );
-          }
-        },
-      });
-
-      await refreshBackups?.();
-    } catch (err) {
-      setBackupStatus(`Backup failed: ${err.message}`);
-      setBackupLogs((prev) => [...prev, `stderr: ${err.message}`]);
-    } finally {
-      setBackupRunning(false);
-    }
-  };
+  const guildId = router.query.guildId?.toString() || "";
+  const [state, setState] = useState({ loading: true, error: null, settings: null, saving: false });
 
   useEffect(() => {
-    if (isOwner) {
-      refreshBackups?.();
-    }
-  }, [isOwner, refreshBackups]);
+    if (!guildId) return;
+    (async () => {
+      try {
+        const res = await apiFetch(`/api/guilds/${guildId}/settings`);
+        setState({ loading: false, error: null, settings: res.settings, saving: false });
+      } catch (e) {
+        setState({ loading: false, error: e.message || "failed", settings: null, saving: false });
+      }
+    })();
+  }, [guildId]);
 
-  const renderBackupList = (label, files = []) => (
-    <div>
-      <h4 style={{ marginBottom: 8 }}>{label}</h4>
-      {files.length === 0 ? (
-        <p style={{ opacity: 0.7 }}>No files found.</p>
-      ) : (
-        <ul style={{ paddingLeft: 18 }}>
-          {files.slice(0, 5).map((file) => (
-            <li key={file.path} style={{ marginBottom: 4 }}>
-              <code>{file.name}</code>
-              <span style={{ opacity: 0.7, marginLeft: 8 }}>
-                {new Date(file.mtime).toLocaleString()}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+  const s = state.settings || {};
+
+  async function save(patch){
+    setState(x => ({ ...x, saving: true }));
+    try {
+      const res = await apiFetch(`/api/guilds/${guildId}/settings`, {
+        method: "PUT",
+        body: JSON.stringify(patch),
+      });
+      setState({ loading: false, error: null, settings: res.settings, saving: false });
+    } catch(e) {
+      setState(x => ({ ...x, saving: false, error: e.message || "save_failed" }));
+    }
+  }
 
   return (
     <Layout guildId={guildId} title="Club Settings">
-      <form onSubmit={handleSubmit} className="card" style={{ maxWidth: 520 }}>
-        <label>Sheet URL</label>
-        <input
-          className="input"
-          placeholder="https://docs.google.com/spreadsheets/d/..."
-          defaultValue={data.sheetUrl || ""}
-          onChange={(event) => setSheetUrl(event.target.value)}
-        />
+      <div className="card" style={{ marginBottom: "1rem" }}>
+        <div style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "1rem" }}>Guild Settings</div>
+        {state.loading && <div>Loading…</div>}
+        {state.error && <div style={{ color:"#f88", marginBottom: "1rem" }}>Error: {state.error}</div>}
 
-        <label style={{ marginTop: 18 }}>Week Window (days)</label>
-        <input
-          className="input"
-          type="number"
-          min="1"
-          max="14"
-          placeholder="7"
-          defaultValue={data.weekWindowDays || ""}
-          onChange={(event) => setWeekWindow(event.target.value)}
-        />
+        {!state.loading && !state.error && (
+          <>
+            <div className="grid cols-2">
+              <div className="form-row">
+                <label>Sheet ID</label>
+                <input
+                  type="text"
+                  defaultValue={s.sheet_id || ""}
+                  onBlur={(e)=> save({ sheet_id: e.target.value })}
+                />
+              </div>
 
-        <div style={{ display: "flex", gap: 12, marginTop: 18 }}>
-          <div style={{ flex: 1 }}>
-            <label>Warn Low</label>
-            <input
-              className="input"
-              type="number"
-              defaultValue={data.thresholds?.warnLow || ""}
-              onChange={(event) => setWarnLow(event.target.value)}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label>Warn High</label>
-            <input
-              className="input"
-              type="number"
-              defaultValue={data.thresholds?.warnHigh || ""}
-              onChange={(event) => setWarnHigh(event.target.value)}
-            />
-          </div>
-        </div>
+              <div className="form-row">
+                <label>Default Tab (e.g., Baseline (10-24-25))</label>
+                <input
+                  type="text"
+                  defaultValue={s.sheet_tab || ""}
+                  onBlur={(e)=> save({ sheet_tab: e.target.value })}
+                />
+              </div>
 
-        <label style={{ marginTop: 18 }}>OpenAI TPM</label>
-        <input
-          className="input"
-          type="number"
-          placeholder="60000"
-          defaultValue={data.tokensPerMinute || ""}
-          onChange={(event) => setTpm(event.target.value)}
-        />
+              <div className="form-row">
+                <label>Default View</label>
+                <select
+                  defaultValue={s.view_mode || "baseline"}
+                  onChange={(e)=> save({ view_mode: e.target.value })}
+                >
+                  <option value="baseline">Baseline</option>
+                  <option value="latest">Latest</option>
+                </select>
+              </div>
 
-        <button type="submit" className="btn" style={{ marginTop: 24 }}>
-          Save Settings
-        </button>
-
-        {status && <p style={{ marginTop: 12 }}>{status}</p>}
-
-        {data.sheetTest && (
-          <p style={{ marginTop: 12, opacity: 0.8 }}>
-            Sheet Test: {data.sheetTest.ok ? `OK (${data.sheetTest.title})` : data.sheetTest.error}
-          </p>
-        )}
-      </form>
-
-      {isAdminOrOwner && exportBase && (
-        <div className="card" style={{ marginTop: 24 }}>
-          <h3 style={{ marginTop: 0 }}>Exports</h3>
-          <p style={{ opacity: 0.7 }}>
-            Download corrections or personality snapshots for offline review.
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-            <a className="btn outline" href={`${exportBase}/corrections.csv`}>
-              Corrections CSV
-            </a>
-            <a className="btn outline" href={`${exportBase}/corrections.json`}>
-              Corrections JSON
-            </a>
-            <a className="btn outline" href={`${exportBase}/personality.json`}>
-              Personality JSON
-            </a>
-          </div>
-        </div>
-      )}
-
-      {isOwner && (
-        <div className="card" style={{ marginTop: 24 }}>
-          <h3 style={{ marginTop: 0 }}>Backups</h3>
-          <p style={{ opacity: 0.7 }}>
-            Trigger an immediate MySQL dump and export of corrections/personality. Files store under
-            <code style={{ marginLeft: 4 }}>/var/backups/slimy</code>.
-          </p>
-          <button
-            className="btn"
-            type="button"
-            disabled={backupRunning}
-            onClick={triggerBackup}
-          >
-            {backupRunning ? "Backup running…" : "Trigger MySQL Dump"}
-          </button>
-          {backupStatus && <p style={{ marginTop: 12 }}>{backupStatus}</p>}
-          <div
-            style={{
-              marginTop: 16,
-              background: "rgba(15,23,42,0.6)",
-              border: "1px solid rgba(148,163,184,0.2)",
-              borderRadius: 8,
-              padding: 12,
-              fontFamily: "monospace",
-              fontSize: 12,
-              maxHeight: 200,
-              overflowY: "auto",
-            }}
-          >
-            {backupLogs.length === 0 ? (
-              <p style={{ opacity: 0.7 }}>No backup logs yet.</p>
-            ) : (
-              backupLogs.map((line, index) => <div key={index}>{line}</div>)
-            )}
-          </div>
-
-          {backupInfo && (
-            <div style={{ marginTop: 20, display: "grid", gap: 12 }}>
-              {renderBackupList("MySQL dumps", backupInfo.mysql)}
-              {renderBackupList("Data exports", backupInfo.data)}
+              <div className="form-row">
+                <label>Allow Public Stats (/stats)</label>
+                <input
+                  type="checkbox"
+                  defaultChecked={!!s.allow_public}
+                  onChange={(e)=> save({ allow_public: e.target.checked })}
+                />
+              </div>
             </div>
-          )}
-        </div>
-      )}
+
+            <div style={{ marginTop: "1.5rem", paddingTop: "1.5rem", borderTop: "1px solid rgba(255,255,255,.1)" }}>
+              <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "1rem" }}>Screenshot Upload Settings</div>
+              <div className="grid cols-2">
+                <div className="form-row">
+                  <label>Screenshot Channel ID</label>
+                  <input
+                    type="text"
+                    defaultValue={s.screenshot_channel_id || ""}
+                    onBlur={(e)=> save({ screenshot_channel_id: e.target.value })}
+                    placeholder="Pick from Channels tab or paste ID"
+                  />
+                </div>
+
+                <div className="form-row">
+                  <label>Enable Uploads</label>
+                  <input
+                    type="checkbox"
+                    defaultChecked={s.uploads_enabled !== undefined ? !!s.uploads_enabled : true}
+                    onChange={(e)=> save({ uploads_enabled: e.target.checked })}
+                  />
+                </div>
+
+                <div className="form-row" style={{ gridColumn: "1 / -1" }}>
+                  <label>Notes</label>
+                  <textarea
+                    defaultValue={s.notes || ""}
+                    onBlur={(e)=> save({ notes: e.target.value })}
+                    rows={4}
+                    style={{ width: "100%", padding: ".6rem .7rem", borderRadius: "8px", border: "1px solid rgba(255,255,255,.15)", background: "rgba(0,0,0,.2)", color: "#fff", outline: "none", resize: "vertical" }}
+                  />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      <style jsx>{`
+        .card{ padding:1rem; border:1px solid rgba(255,255,255,.12); border-radius:12px; background:rgba(255,255,255,.02); }
+        .grid{ display:grid; gap:1rem; }
+        @media (max-width: 640px){ .grid.cols-2{ grid-template-columns: 1fr; } }
+        @media (min-width: 641px){ .grid.cols-2{ grid-template-columns: 1fr 1fr; } }
+        .form-row label{ display:block; font-size:.9rem; opacity:.75; margin-bottom:.3rem; }
+        .form-row input, .form-row select{
+          width:100%; padding:.6rem .7rem; border-radius:8px; border:1px solid rgba(255,255,255,.15);
+          background:rgba(0,0,0,.2); color:#fff; outline:none;
+        }
+      `}</style>
     </Layout>
   );
 }
