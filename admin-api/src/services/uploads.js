@@ -69,15 +69,31 @@ async function listGuildUploads(guildId, { days = 14, maxItems = 200 } = {}) {
       const thumb = path.join(dayPath, `${stem}.thumb.jpg`);
       const large = path.join(dayPath, `${stem}.xl.jpg`);
       const original = path.join(dayPath, `${stem}.jpg`);
+      const metaPath = path.join(dayPath, `${stem}.meta.json`);
 
       const stat = await fsp.stat(thumb).catch(() => null);
       if (!stat) continue;
+
+      // Read metadata if available
+      let metadata = {};
+      try {
+        const metaContent = await fsp.readFile(metaPath, "utf-8");
+        metadata = JSON.parse(metaContent);
+      } catch {
+        // If no metadata file, use defaults
+        metadata = {
+          uploadedBy: "unknown",
+          uploadedAt: stat.mtime.toISOString(),
+        };
+      }
 
       items.push({
         id: `${daySlug}/${stem}`,
         guildId: String(guildId),
         date: daySlug,
-        uploadedAt: stat.mtime.toISOString(),
+        uploadedAt: metadata.uploadedAt || stat.mtime.toISOString(),
+        uploadedBy: metadata.uploadedBy || "unknown",
+        originalName: metadata.originalName,
         urls: {
           thumb: toPublicUrl(thumb),
           large: (await pathExists(large)) ? toPublicUrl(large) : toPublicUrl(original),

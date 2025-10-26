@@ -1,88 +1,66 @@
-/**
- * Guild settings for admin-api
- * Works with key-value schema: (guild_id, key_name, value)
- */
-const { query, one } = require('./database');
+"use strict";
+const path = require("path");
+const fs = require("fs");
+const { query, getPool } = require("./database");
 
-const LOW_DEF  = Number(process.env.VERIFY_WARN_LOW_DEFAULT  || 1e9);
-const HIGH_DEF = Number(process.env.VERIFY_WARN_HIGH_DEFAULT || 5e10);
-
-function envGuild(key, guildId, fallback) {
-  const v = process.env[`${key}_${guildId}`];
-  return (v !== undefined && v !== '') ? Number(v) : fallback;
+async function ensureTable() {
+  const sql = fs.readFileSync(path.join(__dirname, "guild-settings.sql"), "utf8");
+  await query(sql);
 }
+
+const DEFAULTS = (guildId) => ({
+  guild_id: guildId,
+  sheet_id: process.env.STATS_SHEET_ID || null,
+  sheet_tab: process.env.STATS_BASELINE_TITLE || "Baseline (10-24-25)",
+  view_mode: "baseline",
+  allow_public: 0,
+  screenshot_channel_id: null,
+  uploads_enabled: 1,
+  notes: null,
+});
 
 async function getGuildSettings(guildId) {
-  try {
-    const rows = await query(
-      'SELECT key_name, value FROM guild_settings WHERE guild_id = ?',
-      [guildId]
-    );
-    const map = {};
-    for (const row of rows) {
-      map[row.key_name] = row.value;
-    }
-    return map;
-  } catch (e) {
-    if (e && (e.code === 'ER_NO_SUCH_TABLE' || /doesn.t exist/i.test(String(e.message)))) {
-      return {};
-    }
-    throw e;
-  }
+  await ensureTable();
+  const rows = await query("SELECT * FROM guild_settings WHERE guild_id = ? LIMIT 1", [guildId]);
+  if (!rows.length) return DEFAULTS(guildId);
+  // Normalize types
+  const r = rows[0];
+  r.allow_public = Number(r.allow_public) ? 1 : 0;
+  r.uploads_enabled = Number(r.uploads_enabled) ? 1 : 0;
+  return r;
 }
 
-async function upsertGuildSettings(guildId, patch = {}) {
-  try {
-    for (const [key, value] of Object.entries(patch)) {
-      if (value === null || value === undefined || value === '') {
-        // Delete the key
-        await query(
-          'DELETE FROM guild_settings WHERE guild_id = ? AND key_name = ?',
-          [guildId, key]
-        );
-      } else {
-        // Upsert the key-value
-        await query(
-          `INSERT INTO guild_settings (guild_id, key_name, value)
-           VALUES (?, ?, ?)
-           ON DUPLICATE KEY UPDATE value = VALUES(value)`,
-          [guildId, key, String(value)]
-        );
-      }
-    }
-  } catch (e) {
-    if (e && (e.code === 'ER_NO_SUCH_TABLE' || /doesn.t exist/i.test(String(e.message)))) {
-      throw new Error('guild_settings table missing. Apply migrations first.');
-    }
-    throw e;
-  }
-}
-
-async function getWarnThresholds(guildId) {
-  const settings = await getGuildSettings(guildId);
-  const envLow  = envGuild('VERIFY_WARN_LOW',  guildId, undefined);
-  const envHigh = envGuild('VERIFY_WARN_HIGH', guildId, undefined);
-
-  const dbLow = settings.warn_total_low ? Number(settings.warn_total_low) : null;
-  const dbHigh = settings.warn_total_high ? Number(settings.warn_total_high) : null;
-
-  return {
-    low:  dbLow || envLow  || LOW_DEF,
-    high: dbHigh || envHigh || HIGH_DEF
+async function upsertGuildSettings(guildId, patch) {
+  await ensureTable();
+  const curr = await getGuildSettings(guildId);
+  const next = {
+    ...curr,
+    ...patch,
+    guild_id: guildId,
   };
+  const sql = `
+    INSERT INTO guild_settings (guild_id, sheet_id, sheet_tab, view_mode, allow_public, screenshot_channel_id, uploads_enabled, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      sheet_id = VALUES(sheet_id),
+      sheet_tab = VALUES(sheet_tab),
+      view_mode = VALUES(view_mode),
+      allow_public = VALUES(allow_public),
+      screenshot_channel_id = VALUES(screenshot_channel_id),
+      uploads_enabled = VALUES(uploads_enabled),
+      notes = VALUES(notes)
+  `;
+  await query(sql, [
+    next.guild_id,
+    next.sheet_id || null,
+    next.sheet_tab || null,
+    next.view_mode || "baseline",
+    Number(next.allow_public) ? 1 : 0,
+    next.screenshot_channel_id || null,
+    Number(next.uploads_enabled) ? 1 : 0,
+    next.notes || null,
+  ]);
+  return next;
 }
 
-async function getWeekAnchor(guildId) {
-  const settings = await getGuildSettings(guildId);
-  const day  = settings.week_anchor_day  || process.env.CLUB_WEEK_ANCHOR_DAY || 'FRI';
-  const time = settings.week_anchor_time || process.env.CLUB_WEEK_ANCHOR_TIME || '04:30';
-  const tz   = settings.week_anchor_tz   || process.env.CLUB_WEEK_ANCHOR_TZ   || 'America/Los_Angeles';
-  return { day, time, tz };
-}
-
-module.exports = {
-  getGuildSettings,
-  upsertGuildSettings,
-  getWarnThresholds,
-  getWeekAnchor
-};
+module.exports = { getGuildSettings, upsertGuildSettings, DEFAULTS };
