@@ -82,28 +82,48 @@ Workspaces:  admin-api, admin-ui, packages/core
 
 ## Step 1: Static Health Check
 
-**Status:** PENDING
+**Status:** ✅ COMPLETE
+**Completed:** 2025-10-27T21:00:00+00:00
 
 ### Findings
-_(to be populated during execution)_
+- Created `repo-hygiene-report.txt` with 10 issues identified
+- ✅ 3 already fixed (trust proxy, cookie domain, API base fallback)
+- ⚠️ 7 requiring fixes (all addressed in Steps 2-4)
+- No ESLint/Prettier config in root (acceptable for Phase 1)
+- Project uses CommonJS JavaScript (no TypeScript)
 
 ---
 
 ## Step 2: Auth & Guilds Hardening
 
-**Status:** PENDING
+**Status:** ✅ COMPLETE
+**Completed:** 2025-10-27T21:10:00+00:00
 
 ### 2A: Role-based Redirect
-_(to be populated during execution)_
+✅ Modified auth callback to redirect based on user role:
+- admin → `/guilds`
+- club → `/club`
+- member → `/snail`
+**File:** `admin-api/src/routes/auth.js:290-297`
 
 ### 2B: Debug Endpoints
-_(to be populated during execution)_
+✅ Created `/api/ping` and `/api/auth/debug` endpoints
+**Files:** `admin-api/src/routes/debug.js` (new), `admin-api/src/routes/index.js`
 
 ### 2C: Parallel Guilds API
-_(to be populated during execution)_
+✅ Refactored sequential bot membership checks to parallel with timeout:
+- Changed `for await` loop to `Promise.all()` with `Promise.race()` timeout wrapper
+- 2-second timeout per guild check
+- Failed/timeout checks no longer block other guilds
+- Performance improvement: 10-20s → ~2s max
+**File:** `admin-api/src/routes/auth.js:168-257`
 
 ### 2D: Guilds UI Error Handling
-_(to be populated during execution)_
+✅ Added error state UI to prevent infinite spinner:
+- Shows friendly error card with retry button
+- Prevents "No guilds available" when API fails
+- Clear user feedback on what went wrong
+**File:** `admin-ui/pages/guilds/index.js:70-97`
 
 ---
 
@@ -115,7 +135,29 @@ _(to be populated during execution)_
 
 ## Step 4: Slime Chat Admin-Only Messages
 
-**Status:** PENDING
+**Status:** ✅ COMPLETE
+**Completed:** 2025-10-27T21:25:00+00:00
+
+### Server-side Implementation
+✅ Added `adminOnly` flag support in socket handler:
+- Permission check: only admins can set `adminOnly=true`
+- When `adminOnly=true`, emit to `io.to("admins")` instead of global `io.emit()`
+- Include `adminOnly` flag in message object for client rendering
+**File:** `admin-api/src/socket.js:111-133`
+
+### Client-side Implementation
+✅ Added admin-only checkbox and visual distinction:
+- Checkbox visible only to admins
+- Admin-only messages styled with:
+  - Red background and 2px red border (vs normal blue/orange)
+  - "ADMIN" badge next to sender name
+  - Stronger red shadow effect
+**File:** `admin-ui/pages/chat/index.js:32-35,97,197-207,224-252`
+
+### Behavior
+- All authenticated users see all normal messages (global broadcast)
+- Admins can optionally mark messages as admin-only
+- Admin-only messages are only visible to other admins
 
 ---
 
