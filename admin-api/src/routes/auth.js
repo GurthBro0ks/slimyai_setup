@@ -1,142 +1,324 @@
 "use strict";
 
 const express = require("express");
-
-const config = require("../config");
-const oauth = require("../services/oauth");
-const stateStore = require("../services/state-store");
-const { determineRole, filterAllowedGuilds } = require("../services/rbac");
-const { createSessionToken, getCookieOptions } = require("../services/token");
-const { recordAudit } = require("../services/audit");
-const { requireAuth } = require("../middleware/auth");
-const { requireCsrf } = require("../middleware/csrf");
-
-const STATE_COOKIE_NAME = process.env.ADMIN_STATE_COOKIE || "slimy_admin_state";
+const crypto = require("crypto");
+const { signSession, setAuthCookie, clearAuthCookie } = require("../../lib/jwt");
+const {
+  storeSession,
+  clearSession,
+  getSession,
+} = require("../../lib/session-store");
+const { resolveRoleLevel } = require("../lib/roles");
 
 const router = express.Router();
 
-router.get("/login", (_req, res) => {
-  if (!config.discord.clientId || !config.discord.clientSecret) {
-    return res.status(500).json({ error: "discord-oauth-not-configured" });
+const DISCORD = {
+  API: "https://discord.com/api/v10",
+  TOKEN_URL: "https://discord.com/api/oauth2/token",
+  AUTH_URL: "https://discord.com/oauth2/authorize",
+};
+
+function requiredEnv(name) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required env var: ${name}`);
   }
+  return value;
+}
 
-  const state = stateStore.createState({});
-  const authorizeUrl = oauth.buildAuthorizeUrl(state);
+const CLIENT_ID = requiredEnv("DISCORD_CLIENT_ID");
+const CLIENT_SECRET = requiredEnv("DISCORD_CLIENT_SECRET");
+const REDIRECT_URI =
+  process.env.DISCORD_REDIRECT_URI ||
+  "https://admin.slimyai.xyz/api/auth/callback";
+const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || null;
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || ".slimyai.xyz";
+const SCOPES = "identify guilds";
 
-  res.cookie(STATE_COOKIE_NAME, state, {
+const ROLE_ORDER = { member: 0, club: 1, admin: 2 };
+
+function issueState(res) {
+  const payload = {
+    nonce: crypto.randomBytes(16).toString("base64url"),
+    ts: Date.now(),
+  };
+  res.cookie("oauth_state", payload.nonce, {
     httpOnly: true,
+    secure: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 5 * 60,
+    domain: COOKIE_DOMAIN,
     path: "/",
+    maxAge: 5 * 60 * 1000,
   });
+  return Buffer.from(JSON.stringify(payload)).toString("base64url");
+}
 
-  return res.json({ url: authorizeUrl, state });
+function parseState(value) {
+  if (!value) return null;
+  try {
+    return JSON.parse(
+      Buffer.from(String(value), "base64url").toString("utf8"),
+    );
+  } catch (err) {
+    return null;
+  }
+}
+
+async function fetchJson(url, options) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    const error = new Error(`Request failed: ${response.status} ${text}`);
+    error.status = response.status;
+    error.raw = text;
+    throw error;
+  }
+  return response.json();
+}
+
+router.get("/login", (_req, res) => {
+  const state = issueState(res);
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: "code",
+    scope: SCOPES,
+    state,
+    prompt: "consent",
+  });
+  res.redirect(302, `${DISCORD.AUTH_URL}?${params.toString()}`);
 });
 
 router.get("/callback", async (req, res) => {
-  const { code, state, error } = req.query;
-
-  if (error) {
-    return res.redirect(config.ui.failureRedirect);
-  }
-
-  if (!code || !state) {
-    return res.redirect(config.ui.failureRedirect);
-  }
-
-  const storedState = stateStore.consumeState(state);
-  const cookieState = req.cookies?.[STATE_COOKIE_NAME];
-
-  res.clearCookie(STATE_COOKIE_NAME, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-  });
-
-  if (!storedState || cookieState !== state) {
-    return res.redirect(config.ui.failureRedirect);
-  }
-
   try {
-    const tokenResponse = await oauth.exchangeCode(code);
-    const accessToken = tokenResponse.access_token;
-
-    const [user, guilds] = await Promise.all([
-      oauth.fetchUserProfile(accessToken),
-      oauth.fetchUserGuilds(accessToken),
-    ]);
-
-    const allowedGuilds = filterAllowedGuilds(guilds);
-    const role = determineRole(user.id, guilds);
-
-    if (!role || !allowedGuilds.length) {
-      return res.redirect(`${config.ui.failureRedirect}?reason=unauthorized`);
+    const { code, state } = req.query;
+    const savedNonce = req.cookies?.oauth_state;
+    const parsed = parseState(state);
+    if (
+      !code ||
+      !parsed ||
+      !parsed.nonce ||
+      !savedNonce ||
+      parsed.nonce !== savedNonce
+    ) {
+      return res.redirect("/?error=state_mismatch");
     }
 
-    const sanitizedGuilds = allowedGuilds.map((guild) => ({
+    const body = new URLSearchParams({
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      grant_type: "authorization_code",
+      code: String(code),
+      redirect_uri: REDIRECT_URI,
+    });
+
+    const tokenResponse = await fetch(DISCORD.TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    if (!tokenResponse.ok) {
+      return res.redirect("/?error=token_exchange_failed");
+    }
+    const tokens = await tokenResponse.json();
+
+    const headers = { Authorization: `Bearer ${tokens.access_token}` };
+    const me = await fetchJson(`${DISCORD.API}/users/@me`, { headers });
+    const userGuilds = await fetchJson(`${DISCORD.API}/users/@me/guilds`, {
+      headers,
+    });
+
+    const guilds = Array.isArray(userGuilds) ? userGuilds : [];
+    const enrichedGuilds = [];
+    let highestRole = "member";
+
+    const MANAGE_GUILD = 0x0000000000000020n;
+    const ADMINISTRATOR = 0x0000000000080000n;
+
+    if (!BOT_TOKEN) {
+      console.warn(
+        "[auth] DISCORD_BOT_TOKEN not configured; skipping guild intersection",
+      );
+      for (const guild of guilds) {
+        let roleLevel = "member";
+        try {
+          const perms = BigInt(guild.permissions || "0");
+          if ((perms & ADMINISTRATOR) === ADMINISTRATOR || guild.owner) {
+            roleLevel = "admin";
+          } else if ((perms & MANAGE_GUILD) === MANAGE_GUILD) {
+            roleLevel = "admin";
+          }
+        } catch {
+          roleLevel = "member";
+        }
+        if (ROLE_ORDER[roleLevel] > ROLE_ORDER[highestRole]) {
+          highestRole = roleLevel;
+        }
+        enrichedGuilds.push({
+          id: guild.id,
+          name: guild.name,
+          icon: guild.icon,
+          roles: [],
+          role: roleLevel,
+          permissions: guild.permissions,
+          installed: false,
+        });
+      }
+    } else {
+      for (const guild of guilds) {
+        try {
+          const botHeaders = { Authorization: `Bot ${BOT_TOKEN}` };
+          const detail = await fetch(
+            `${DISCORD.API}/guilds/${guild.id}`,
+            {
+              headers: botHeaders,
+            },
+          );
+          if (!detail.ok) {
+            continue;
+          }
+          const memberRes = await fetch(
+            `${DISCORD.API}/guilds/${guild.id}/members/${me.id}`,
+            { headers: botHeaders },
+          );
+          let memberRoles = [];
+          if (memberRes.ok) {
+            const memberJson = await memberRes.json();
+            memberRoles = Array.isArray(memberJson.roles)
+              ? memberJson.roles
+              : [];
+          }
+          let roleLevel = resolveRoleLevel(memberRoles);
+          try {
+            const perms = BigInt(guild.permissions || "0");
+            if (roleLevel === "member") {
+              if ((perms & ADMINISTRATOR) === ADMINISTRATOR || guild.owner) {
+                roleLevel = "admin";
+              } else if ((perms & MANAGE_GUILD) === MANAGE_GUILD) {
+                roleLevel = "admin";
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+          if (ROLE_ORDER[roleLevel] > ROLE_ORDER[highestRole]) {
+            highestRole = roleLevel;
+          }
+          enrichedGuilds.push({
+            id: guild.id,
+            name: guild.name,
+            icon: guild.icon,
+            roles: memberRoles,
+            role: roleLevel,
+            permissions: guild.permissions,
+            installed: true,
+          });
+        } catch (err) {
+          console.warn(
+            `[auth] Failed to verify guild ${guild.id}:`,
+            err.message,
+          );
+        }
+      }
+    }
+
+    if (!enrichedGuilds.length && guilds.length && !BOT_TOKEN) {
+      // Provide graceful fallback so members still see guilds even without bot token.
+      for (const guild of guilds) {
+        let roleLevel = "member";
+        try {
+          const perms = BigInt(guild.permissions || "0");
+          if ((perms & ADMINISTRATOR) === ADMINISTRATOR || guild.owner) {
+            roleLevel = "admin";
+          } else if ((perms & MANAGE_GUILD) === MANAGE_GUILD) {
+            roleLevel = "admin";
+          }
+        } catch {
+          roleLevel = "member";
+        }
+        if (ROLE_ORDER[roleLevel] > ROLE_ORDER[highestRole]) {
+          highestRole = roleLevel;
+        }
+        enrichedGuilds.push({
+          id: guild.id,
+          name: guild.name,
+          icon: guild.icon,
+          roles: [],
+          role: roleLevel,
+          permissions: guild.permissions,
+          installed: false,
+        });
+      }
+    }
+
+    const lightweightGuilds = enrichedGuilds.map((guild) => ({
       id: guild.id,
       name: guild.name,
-      owner: guild.owner,
+      icon: guild.icon,
+      role: guild.role,
+      installed: guild.installed,
       permissions: guild.permissions,
     }));
 
-    const { token, csrfToken, session } = createSessionToken({
-      user,
-      guilds: sanitizedGuilds,
-      role,
+    const userRole = highestRole;
+    const user = {
+      id: me.id,
+      username: me.username,
+      globalName: me.global_name || me.username,
+      avatar: me.avatar || null,
+      role: userRole,
+      guilds: lightweightGuilds,
+    };
+
+    storeSession(user.id, {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      guilds: enrichedGuilds,
+      role: userRole,
     });
 
-    const cookieOptions = getCookieOptions();
-    res.cookie(config.jwt.cookieName, token, {
-      ...cookieOptions,
+    const signed = signSession({ user });
+    setAuthCookie(res, signed);
+    res.clearCookie("oauth_state", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      domain: COOKIE_DOMAIN,
+      path: "/",
     });
 
-    await recordAudit({
-      adminId: user.id,
-      action: "login",
-      payload: { role, guildIds: sanitizedGuilds.map((g) => g.id) },
-    });
-
-    // Expose CSRF token via fragment redirect for UI bootstrap
-    const redirectUrl = new URL(config.ui.successRedirect);
-    redirectUrl.hash = `csrf=${csrfToken}`;
-
-    return res.redirect(redirectUrl.toString());
+    // Role-based redirect
+    let redirectPath = "/guilds"; // default for admin
+    if (userRole === "club") {
+      redirectPath = "/club";
+    } else if (userRole === "member") {
+      redirectPath = "/snail";
+    }
+    return res.redirect(redirectPath);
   } catch (err) {
-    await recordAudit({
-      adminId: null,
-      action: "login-failed",
-      payload: { error: err.message },
-    });
-    return res.redirect(`${config.ui.failureRedirect}?reason=oauth-error`);
+    console.error("[auth/callback] failed:", err);
+    return res.redirect("/?error=server_error");
   }
 });
 
-router.get("/me", requireAuth, (req, res) => {
-  const user = req.user;
+router.get("/me", (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  const session = getSession(req.user.id);
   return res.json({
-    id: user.sub,
-    username: user.username,
-    globalName: user.globalName,
-    avatar: user.avatar,
-    role: user.role,
-    guilds: user.guilds || [],
-    csrfToken: user.csrfToken,
+    ...req.user,
+    guilds: req.user.guilds || [],
+    sessionGuilds: session?.guilds || [],
   });
 });
 
-router.post("/logout", requireAuth, requireCsrf, async (req, res) => {
-  const cookieOptions = getCookieOptions();
-  res.clearCookie(config.jwt.cookieName, cookieOptions);
-
-  await recordAudit({
-    adminId: req.user.sub,
-    action: "logout",
-  });
-
-  return res.status(204).end();
+router.post("/logout", (req, res) => {
+  if (req.user?.id) {
+    clearSession(req.user.id);
+  }
+  clearAuthCookie(res);
+  res.json({ ok: true });
 });
 
 module.exports = router;
