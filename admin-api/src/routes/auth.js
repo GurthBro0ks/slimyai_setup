@@ -165,22 +165,31 @@ router.get("/callback", async (req, res) => {
         });
       }
     } else {
-      for (const guild of guilds) {
-        try {
-          const botHeaders = { Authorization: `Bot ${BOT_TOKEN}` };
-          const detail = await fetch(
-            `${DISCORD.API}/guilds/${guild.id}`,
-            {
-              headers: botHeaders,
-            },
-          );
+      // Parallel bot membership checks with timeout protection
+      const TIMEOUT_MS = 2000; // 2 second timeout per guild check
+
+      const checkGuild = async (guild) => {
+        const botHeaders = { Authorization: `Bot ${BOT_TOKEN}` };
+
+        // Timeout wrapper
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("timeout")), TIMEOUT_MS);
+        });
+
+        const checkPromise = (async () => {
+          const detail = await fetch(`${DISCORD.API}/guilds/${guild.id}`, {
+            headers: botHeaders,
+          });
+
           if (!detail.ok) {
-            continue;
+            throw new Error(`guild_detail_${detail.status}`);
           }
+
           const memberRes = await fetch(
             `${DISCORD.API}/guilds/${guild.id}/members/${me.id}`,
             { headers: botHeaders },
           );
+
           let memberRoles = [];
           if (memberRes.ok) {
             const memberJson = await memberRes.json();
@@ -188,7 +197,18 @@ router.get("/callback", async (req, res) => {
               ? memberJson.roles
               : [];
           }
+
+          return memberRoles;
+        })();
+
+        return Promise.race([checkPromise, timeoutPromise]);
+      };
+
+      const checks = guilds.map(async (guild) => {
+        try {
+          const memberRoles = await checkGuild(guild);
           let roleLevel = resolveRoleLevel(memberRoles);
+
           try {
             const perms = BigInt(guild.permissions || "0");
             if (roleLevel === "member") {
@@ -201,23 +221,37 @@ router.get("/callback", async (req, res) => {
           } catch {
             /* ignore */
           }
-          if (ROLE_ORDER[roleLevel] > ROLE_ORDER[highestRole]) {
-            highestRole = roleLevel;
-          }
-          enrichedGuilds.push({
-            id: guild.id,
-            name: guild.name,
-            icon: guild.icon,
-            roles: memberRoles,
-            role: roleLevel,
-            permissions: guild.permissions,
-            installed: true,
-          });
+
+          return {
+            success: true,
+            guild: {
+              id: guild.id,
+              name: guild.name,
+              icon: guild.icon,
+              roles: memberRoles,
+              role: roleLevel,
+              permissions: guild.permissions,
+              installed: true,
+            },
+            roleLevel,
+          };
         } catch (err) {
           console.warn(
             `[auth] Failed to verify guild ${guild.id}:`,
             err.message,
           );
+          return { success: false, guild: null, roleLevel: null };
+        }
+      });
+
+      const results = await Promise.all(checks);
+
+      for (const result of results) {
+        if (result.success) {
+          if (ROLE_ORDER[result.roleLevel] > ROLE_ORDER[highestRole]) {
+            highestRole = result.roleLevel;
+          }
+          enrichedGuilds.push(result.guild);
         }
       }
     }
