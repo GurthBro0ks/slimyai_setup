@@ -36,8 +36,8 @@ async function getHealth(guildId) {
     [guildId],
   );
 
-  const settingsMap = await guildSettings.getGuildSettings(guildId);
-  const lastSheetPush = settingsMap.get("last_sheet_push_at") || null;
+  const settings = await guildSettings.getGuildSettings(guildId);
+  const lastSheetPush = settings?.last_sheet_push_at || null;
 
   const latestAt = aggregate?.latest_at || null;
   const weekId = latestAt ? getWeekId(new Date(latestAt)) : null;
