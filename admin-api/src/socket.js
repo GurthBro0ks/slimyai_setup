@@ -48,25 +48,44 @@ function initSocket(server) {
       const cookies = parseCookies(socket.handshake.headers.cookie || "");
       const token = cookies[COOKIE_NAME];
       if (!token) {
-        return next(new Error("unauthorized"));
+        return next(new Error("not_authorized"));
       }
-      const session = verifySession(token);
-      socket.user = session?.user;
-      socket.session = getSession(socket.user?.id) || null;
+      const jwtSession = verifySession(token);
+      socket.user = jwtSession?.user;
       if (!socket.user) {
-        return next(new Error("unauthorized"));
+        return next(new Error("not_authorized"));
       }
-      const guilds = socket.user.guilds || [];
+
+      // Guilds are stored in session store, not JWT (to keep JWT under 4KB)
+      const sessionData = getSession(socket.user.id);
+      socket.session = sessionData;
+      const guilds = Array.isArray(sessionData?.guilds) ? sessionData.guilds : [];
       socket.guildIds = guilds.map((g) => String(g.id));
       socket.isAdmin = socket.user.role === "admin";
+
+      console.log("[slime-chat] connection", {
+        userId: socket.user.id,
+        role: socket.user.role,
+        guilds: socket.guildIds.length,
+      });
+
       return next();
     } catch (err) {
-      return next(err);
+      console.log("[slime-chat] auth failed:", err.message);
+      return next(new Error("not_authorized"));
     }
   });
 
   io.on("connection", (socket) => {
     if (!socket.user) {
+      socket.emit("error", { error: "not_authorized" });
+      socket.disconnect(true);
+      return;
+    }
+
+    // If non-admin with no guilds, emit error
+    if (!socket.isAdmin && socket.guildIds.length === 0) {
+      socket.emit("error", { error: "no_guild_context" });
       socket.disconnect(true);
       return;
     }

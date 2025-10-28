@@ -21,29 +21,6 @@ export default function SlimeChatBar({ guildId }) {
   const isAdmin = user?.role === "admin";
   const roleLabel = isAdmin ? "(admin)" : "";
 
-  // Room-scoped cache key
-  const roomKey = isAdmin ? "admin-global" : `guild-${guildId || "unknown"}`;
-  const cacheKey = `slimeChatCache:${roomKey}`;
-
-  // Load cached messages on mount
-  useEffect(() => {
-    if (!user) return;
-
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        const cachedMessages = JSON.parse(cached);
-        if (Array.isArray(cachedMessages)) {
-          setMessages(cachedMessages);
-          console.log("[chat-bar] loaded", cachedMessages.length, "cached messages for", roomKey);
-        }
-      }
-    } catch (err) {
-      console.warn("[chat-bar] failed to load cache:", err);
-    }
-  }, [user, cacheKey, roomKey]);
-
-  // Socket connection effect
   useEffect(() => {
     if (!user) return;
 
@@ -80,17 +57,7 @@ export default function SlimeChatBar({ guildId }) {
       if (message.adminOnly && !isAdmin) {
         return;
       }
-      setMessages((prev) => {
-        const updated = [...prev, message];
-        // Cache last 50 messages
-        try {
-          const last50 = updated.slice(-50);
-          localStorage.setItem(cacheKey, JSON.stringify(last50));
-        } catch (err) {
-          console.warn("[chat-bar] failed to cache messages:", err);
-        }
-        return updated;
-      });
+      setMessages((prev) => [...prev, message]);
     });
 
     socket.on("connect_error", (err) => {
@@ -210,16 +177,14 @@ export default function SlimeChatBar({ guildId }) {
             style={{
               flex: 1,
               overflowY: "auto",
-              padding: "0.5rem",
+              padding: "1rem",
               display: "flex",
               flexDirection: "column",
-              gap: "2px",
-              fontSize: "0.8rem",
-              lineHeight: "1.2",
+              gap: "0.5rem",
             }}
           >
             {messages.length === 0 && !error && !connecting && (
-              <div style={{ color: "#9ca3af", textAlign: "center", marginTop: "2rem", fontSize: "0.75rem" }}>
+              <div style={{ color: "#9ca3af", textAlign: "center", marginTop: "2rem" }}>
                 No messages yet. Start chatting!
               </div>
             )}
@@ -227,26 +192,26 @@ export default function SlimeChatBar({ guildId }) {
               <div
                 key={msg.messageId || idx}
                 style={{
-                  padding: "4px 6px",
-                  backgroundColor: msg.adminOnly ? "#374151" : "transparent",
-                  borderLeft: `2px solid ${msg.from.color}`,
-                  borderRadius: "2px",
+                  padding: "0.5rem",
+                  backgroundColor: msg.adminOnly ? "#374151" : "#1f2937",
+                  borderLeft: `3px solid ${msg.from.color}`,
+                  borderRadius: "0.25rem",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "baseline", gap: "0.4rem", marginBottom: "2px" }}>
-                  <span style={{ color: msg.from.color, fontWeight: "600", fontSize: "0.75rem" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                  <span style={{ color: msg.from.color, fontWeight: "600", fontSize: "0.875rem" }}>
                     {msg.from.name}
                   </span>
-                  <span style={{ color: "#6b7280", fontSize: "0.65rem" }}>
-                    {new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <span style={{ color: "#6b7280", fontSize: "0.75rem" }}>
+                    {new Date(msg.ts).toLocaleTimeString()}
                   </span>
                   {msg.adminOnly && (
-                    <span style={{ color: "#ef4444", fontSize: "0.65rem", fontWeight: "600" }}>
-                      [ADMIN]
+                    <span style={{ color: "#ef4444", fontSize: "0.75rem", fontWeight: "600" }}>
+                      [ADMIN ONLY]
                     </span>
                   )}
                 </div>
-                <div style={{ color: "#f3f4f6", fontSize: "0.8rem", whiteSpace: "pre-wrap", lineHeight: "1.3" }}>
+                <div style={{ color: "#f3f4f6", fontSize: "0.875rem", whiteSpace: "pre-wrap" }}>
                   {msg.text}
                 </div>
               </div>
@@ -258,10 +223,10 @@ export default function SlimeChatBar({ guildId }) {
           {!error && (
             <div
               style={{
-                padding: "0.5rem 0.75rem",
+                padding: "0.75rem 1rem",
                 borderTop: "1px solid #374151",
                 display: "flex",
-                gap: "0.4rem",
+                gap: "0.5rem",
               }}
             >
               <input
@@ -273,25 +238,25 @@ export default function SlimeChatBar({ guildId }) {
                 disabled={!guildId || connecting}
                 style={{
                   flex: 1,
-                  padding: "0.4rem 0.6rem",
+                  padding: "0.5rem",
                   backgroundColor: "#374151",
                   border: "1px solid #4b5563",
                   borderRadius: "0.25rem",
                   color: "#f3f4f6",
-                  fontSize: "0.8rem",
+                  fontSize: "0.875rem",
                 }}
               />
               <button
                 onClick={handleSend}
                 disabled={!input.trim() || !guildId || connecting}
                 style={{
-                  padding: "0.4rem 0.8rem",
+                  padding: "0.5rem 1rem",
                   backgroundColor: input.trim() && guildId && !connecting ? "#3b82f6" : "#4b5563",
                   color: "#f3f4f6",
                   border: "none",
                   borderRadius: "0.25rem",
                   cursor: input.trim() && guildId && !connecting ? "pointer" : "not-allowed",
-                  fontSize: "0.75rem",
+                  fontSize: "0.875rem",
                   fontWeight: "600",
                 }}
               >
