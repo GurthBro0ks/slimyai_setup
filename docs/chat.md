@@ -6,6 +6,14 @@ Slime Chat is the real-time messaging system integrated into the Slimy.ai Admin 
 
 Slime Chat appears as a **pinned bottom bar** with a collapse/expand toggle that overlays all admin panel pages. It provides real-time communication between users with role-based visibility controls.
 
+**Key Features:**
+- ✅ Pinned to bottom of screen on all pages after login
+- ✅ Tap/click header strip to expand or collapse
+- ✅ Expanded bar shows ~10 compact messages (scrollable for older messages)
+- ✅ **Messages persist locally** - cached per room, survive page refresh
+- ✅ Role-aware (admin sees admin/global chat, others see guild chat)
+- ✅ Graceful error handling (shows banner instead of silent spinner)
+
 ## Features
 
 ### Bottom Bar UI
@@ -14,6 +22,11 @@ Slime Chat appears as a **pinned bottom bar** with a collapse/expand toggle that
 - **Collapsible**: Toggle between collapsed (~40px header) and expanded (~40% viewport height)
 - **Mobile-friendly**: Responsive design that works on desktop and mobile devices
 - **Role indicator**: Shows user's role (admin/club/member) in the header
+- **Dense layout**: Compact message rows with small fonts and tight spacing (~10 messages visible)
+- **Local persistence**: Recent messages (last 50) cached per room in localStorage
+  - Messages appear instantly after page refresh
+  - Collapse/expand doesn't lose chat history
+  - Cached per admin-global room OR per guild-<id> room
 
 ### Role-Based Access
 
@@ -44,9 +57,16 @@ The chat bar displays different states:
 
 Each message shows:
 - **Sender name**: Colored by role (member: blue, club: orange, admin: red, bot: green)
-- **Timestamp**: When the message was sent
-- **Message text**: Supports line breaks
-- **Admin-only tag**: For messages visible only to admins
+- **Timestamp**: Compact HH:MM format (e.g. "14:32")
+- **Message text**: Supports line breaks, compact font size
+- **Admin-only tag**: "[ADMIN]" badge for messages visible only to admins
+
+**Density optimizations:**
+- Message padding: 4px 6px (compact)
+- Font size: 0.8rem (~13px) for readability
+- Line spacing: 1.2-1.3 (tight)
+- Gap between messages: 2px
+- Result: **~10 messages visible** in expanded panel without scrolling
 
 ## Technical Implementation
 
@@ -67,6 +87,13 @@ Each message shows:
 - **Message filtering**: Non-admins don't see admin-only messages
 - **Auto-scroll**: Scrolls to bottom when new messages arrive
 - **Keyboard shortcuts**: Press Enter to send (Shift+Enter for new line)
+- **Local cache persistence**:
+  - Room key: `admin-global` for admins OR `guild-{guildId}` for others
+  - Cache key: `slimeChatCache:{roomKey}` in localStorage
+  - Stores last 50 messages per room
+  - Loads cached messages on component mount (instant restore)
+  - Updates cache on every new message received
+  - Survives page refresh, collapse/expand, navigation
 
 ### Integration
 
