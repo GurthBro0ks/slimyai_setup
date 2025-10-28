@@ -2,6 +2,7 @@
 
 const express = require("express");
 const { COOKIE_NAME, verifySession } = require("../../lib/jwt");
+const { getSession } = require("../../lib/session-store");
 
 const router = express.Router();
 
@@ -13,20 +14,23 @@ router.get("/ping", (_req, res) => {
 // Auth debugging endpoint
 router.get("/auth/debug", (req, res) => {
   const token = req.cookies?.[COOKIE_NAME];
-  
+
   if (!token) {
     return res.json({ cookie: false, message: "No auth cookie found" });
   }
 
   try {
-    const session = verifySession(token);
-    const user = session?.user;
-    
+    const jwtSession = verifySession(token);
+    const user = jwtSession?.user;
+
     if (!user) {
       return res.json({ cookie: true, badToken: true, message: "Cookie present but invalid session" });
     }
 
-    const guilds = Array.isArray(user.guilds) ? user.guilds : [];
+    // Guilds are stored in session store, not JWT (to keep JWT under 4KB)
+    const sessionData = getSession(user.id);
+    const guilds = Array.isArray(sessionData?.guilds) ? sessionData.guilds : [];
+
     return res.json({
       cookie: true,
       user: {
@@ -34,8 +38,8 @@ router.get("/auth/debug", (req, res) => {
         username: user.username,
         globalName: user.globalName,
         role: user.role || "member",
-        guildCount: guilds.length,
       },
+      guildCount: guilds.length,
     });
   } catch (err) {
     return res.json({
