@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "ms-vscode.remote-ssh",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "eamodio.gitlens",
+    "ms-azuretools.vscode-docker",
+    "ms-vscode.vscode-typescript-next"
+  ]
+}

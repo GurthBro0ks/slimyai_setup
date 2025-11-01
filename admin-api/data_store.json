@@ -1,0 +1,49 @@
+{
+  "channelModes": [
+    {
+      "guildId": "1176605506912141444",
+      "targetId": "1430584866545864724",
+      "targetType": "thread",
+      "modes": {
+        "chat": false,
+        "admin": false,
+        "personality": true,
+        "rating_pg13": false,
+        "super_snail": true,
+        "no_personality": false,
+        "rating_unrated": true
+      },
+      "updatedAt": 1761259602168
+    },
+    {
+      "guildId": "1176605506912141444",
+      "targetId": "1430584866545864724",
+      "targetType": "thread",
+      "modes": {
+        "chat": false,
+        "admin": false,
+        "personality": true,
+        "rating_pg13": false,
+        "super_snail": true,
+        "no_personality": false,
+        "rating_unrated": true
+      },
+      "updatedAt": 1761259602168
+    },
+    {
+      "guildId": "1176605506912141444",
+      "targetId": "1424143671724343388",
+      "targetType": "channel",
+      "modes": {
+        "chat": true,
+        "admin": false,
+        "personality": true,
+        "rating_pg13": false,
+        "super_snail": false,
+        "no_personality": false,
+        "rating_unrated": true
+      },
+      "updatedAt": 1761259685367
+    }
+  ]
+}

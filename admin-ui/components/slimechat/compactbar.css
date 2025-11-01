@@ -1,0 +1,112 @@
+/* ===== Slime Chat – compact dock & right aligned lane ===== */
+
+:root {
+  --chat-lane-width: min(720px, 92vw);
+}
+
+.slimeChatBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+}
+
+.slimeChatBar[data-open="0"] .slimeChatDock {
+  height: 30px;
+  padding: 4px 8px;
+}
+
+.slimeChatDock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  line-height: 1.1;
+}
+
+.slimeChatDock .dock-status {
+  font-size: 0.68rem;
+  opacity: 0.7;
+}
+
+.unreadBadge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #f97316;
+  color: #111827;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.slimeChatHeader,
+.msgLane,
+.slimeChatControls,
+.slimeChatInputRow {
+  width: var(--chat-lane-width);
+  margin-left: auto;
+}
+
+.slimeChatHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 4px;
+  font-size: 0.75rem;
+  line-height: 1.1;
+  color: rgba(248, 250, 252, 0.9);
+}
+
+.slimeChatHeader .label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+  font-size: 0.72rem;
+}
+
+.slimeChatHeader .pill {
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.slimeChatHeader .meta {
+  margin-left: auto;
+  opacity: 0.75;
+  font-size: 0.7rem;
+  text-align: right;
+}
+
+.msgLane {
+  padding: 0 8px;
+}
+
+.msgList {
+  padding: 6px 0;
+}
+
+.slimeChatControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 10px;
+}
+
+.slimeChatControls select,
+.slimeChatControls label span,
+.slimeChatControls .pill {
+  font-size: 0.75rem;
+}
+
+.slimeChatInputRow {
+  padding: 6px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.slimeChatInputRow input[type="text"] {
+  font-size: 16px;
+}

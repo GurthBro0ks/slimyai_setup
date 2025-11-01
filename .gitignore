@@ -21,3 +21,6 @@ lib/app-files-backup.tar.gz.local
 # legacy local store
 /backups/
 /data_store.json
+
+.env
+google-service-account.json

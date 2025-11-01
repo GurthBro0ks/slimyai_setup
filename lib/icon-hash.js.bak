@@ -1,0 +1,29 @@
+const sharp = require('sharp');
+const imghash = require('imghash');
+
+async function normalizeAndHash(buffer) {
+  const sq = await sharp(buffer).resize(64, 64, { fit: 'cover' }).grayscale().toBuffer();
+  // imghash with 32 blocks returns 1024 bits (256 hex chars); compress to first 256 bits (64 hex chars)
+  let phash = await imghash.hash(sq, 32, 'hex');
+  if (phash.length > 64) {
+    phash = Buffer.from(phash, 'hex').subarray(0, 32).toString('hex');
+  }
+  return { phash, buf: sq };
+}
+
+function hamming(hex1, hex2) {
+  if (!hex1 || !hex2 || hex1.length !== hex2.length) {
+    return 64; // treat mismatched hashes as max distance
+  }
+  const a = BigInt('0x' + hex1);
+  const b = BigInt('0x' + hex2);
+  let x = a ^ b;
+  let d = 0n;
+  while (x) {
+    d += x & 1n;
+    x >>= 1n;
+  }
+  return Number(d);
+}
+
+module.exports = { normalizeAndHash, hamming };

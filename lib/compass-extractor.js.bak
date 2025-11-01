@@ -1,0 +1,23 @@
+const sharp = require('sharp');
+const { roiRect } = require('./screen-detector');
+const { matchCropToItem } = require('./icon-match');
+const { logUnknown } = require('./unknown-logger');
+
+async function extractRelicIcons(buf, relicSlots, W, H) {
+  const out = [];
+  for (const [affct, r] of Object.entries(relicSlots)) {
+    const crop = await sharp(buf).extract(roiRect(W, H, r)).png().toBuffer();
+    const match = await matchCropToItem(crop, 'relic', affct);
+    if (match.canonical_name === 'Unknown' || match.confidence < 60) {
+      await logUnknown('relic', affct, crop);
+    }
+    out.push({
+      item_type: 'relic',
+      item_slot: affct,
+      canonical_name: match.canonical_name,
+      confidence: match.confidence
+    });
+  }
+  return out;
+}
+module.exports = { extractRelicIcons };

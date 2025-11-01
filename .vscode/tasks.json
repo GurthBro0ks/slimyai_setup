@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "npm: install",
+      "type": "shell",
+      "command": "npm ci || npm install",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "npm: lint",
+      "type": "shell",
+      "command": "npm run lint --if-present",
+      "group": "test",
+      "problemMatcher": "$eslint-stylish"
+    },
+    {
+      "label": "npm: test",
+      "type": "shell",
+      "command": "npm test --if-present",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "npm: dev",
+      "type": "shell",
+      "command": "npm run dev || npm start",
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "pattern": [
+            { "regexp": ".+", "file": 1, "location": 2, "message": 3 }
+          ],
+          "background": { "activeOnStart": true, "beginsPattern": ".*", "endsPattern": "listening|ready|compiled|running" }
+        }
+      ]
+    }
+  ]
+}

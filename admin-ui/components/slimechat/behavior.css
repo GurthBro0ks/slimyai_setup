@@ -1,0 +1,39 @@
+.slimeChatBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+}
+
+.slimeChatBar .msgLane {
+  width: min(720px, 92vw);
+  margin-left: auto;
+}
+
+.slimeChatBar .msgList {
+  max-height: 40vh;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+
+.slimeChatBar .slimeChatInputRow {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  position: sticky;
+  bottom: 0;
+  z-index: 10000;
+  background: rgba(8, 13, 23, 0.94);
+  border-top: 1px solid #1f2937;
+}
+
+.slimeChatBar input[type="text"],
+.slimeChatBar textarea {
+  pointer-events: auto !important;
+  font-size: 16px;
+}
+
+.slimeChatBar * {
+  user-select: text;
+}

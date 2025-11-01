@@ -1,0 +1,130 @@
+/* ======================= */
+/*  DENSE / COMPACT MODE   */
+/* ======================= */
+/* Apply when body[data-density="compact"] is present. Safe, additive overrides. */
+
+:root{
+  --c-gap: 8px;
+  --c-gap-sm: 6px;
+  --c-pad: 10px;
+  --c-pad-sm: 8px;
+  --c-radius: 10px;
+  --c-line: 1.25;
+  --c-font-100: .92rem;
+  --c-font-200: .96rem;
+}
+
+body[data-density="compact"] main,
+body[data-density="compact"] .main,
+body[data-density="compact"] .content,
+body[data-density="compact"] .container,
+body[data-density="compact"] .page,
+body[data-density="compact"] .wrap {
+  gap: var(--c-gap) !important;
+  padding-top: var(--c-gap);
+  padding-bottom: var(--c-gap);
+}
+
+body[data-density="compact"] section,
+body[data-density="compact"] .section,
+body[data-density="compact"] .panel,
+body[data-density="compact"] .card,
+body[data-density="compact"] .block {
+  margin-top: var(--c-gap);
+  margin-bottom: var(--c-gap);
+  padding: var(--c-pad) !important;
+  border-radius: var(--c-radius) !important;
+}
+
+body[data-density="compact"] .grid,
+body[data-density="compact"] .stack,
+body[data-density="compact"] .row,
+body[data-density="compact"] .columns,
+body[data-density="compact"] [class*="grid"],
+body[data-density="compact"] [class*="row"],
+body[data-density="compact"] [class*="stack"] {
+  gap: var(--c-gap) !important;
+}
+
+body[data-density="compact"] h1 { margin: 6px 0 8px !important; line-height: 1.15 }
+body[data-density="compact"] h2 { margin: 6px 0 6px !important; line-height: 1.18 }
+body[data-density="compact"] h3 { margin: 4px 0 6px !important; line-height: 1.2  }
+
+body[data-density="compact"] .btn,
+body[data-density="compact"] button,
+body[data-density="compact"] .badge,
+body[data-density="compact"] .pill {
+  padding: 6px 10px !important;
+  min-height: 30px !important;
+  line-height: var(--c-line);
+  font-size: var(--c-font-100);
+  gap: var(--c-gap-sm) !important;
+}
+body[data-density="compact"] .btn-lg,
+body[data-density="compact"] .button-lg { padding: 8px 12px !important; }
+
+body[data-density="compact"] input[type="text"],
+body[data-density="compact"] input[type="number"],
+body[data-density="compact"] input[type="email"],
+body[data-density="compact"] select,
+body[data-density="compact"] textarea {
+  padding: 6px 8px !important;
+  min-height: 34px !important;
+  line-height: var(--c-line) !important;
+  font-size: var(--c-font-200);
+}
+
+body[data-density="compact"] table { width: 100% !important; table-layout: auto; }
+body[data-density="compact"] table th,
+body[data-density="compact"] table td {
+  padding: 6px 8px !important;
+  line-height: var(--c-line) !important;
+  font-size: var(--c-font-200);
+  vertical-align: middle;
+}
+body[data-density="compact"] thead th { padding-top: 6px !important; padding-bottom: 6px !important; }
+
+body[data-density="compact"] [class*="metric"],
+body[data-density="compact"] [class*="stats"],
+body[data-density="compact"] [class*="kpi"] {
+  padding: var(--c-pad) !important;
+  gap: var(--c-gap-sm) !important;
+}
+body[data-density="compact"] [class*="metric"] h4,
+body[data-density="compact"] [class*="stats"] h4 { margin: 0 0 4px !important; }
+body[data-density="compact"] [class*="metric"] .value,
+body[data-density="compact"] [class*="kpi"] .value {
+  margin: 0 !important;
+}
+
+body[data-density="compact"] .chip,
+body[data-density="compact"] .tag {
+  padding: 2px 8px !important;
+  font-size: var(--c-font-100);
+}
+
+body[data-density="compact"] .inner,
+body[data-density="compact"] .section-body,
+body[data-density="compact"] .panel-body,
+body[data-density="compact"] .card-body {
+  padding: var(--c-pad) !important;
+  gap: var(--c-gap) !important;
+}
+
+body[data-density="compact"] .msgList { padding: 6px 0 !important; }
+body[data-density="compact"] .msgRow { margin: 2px 0 !important; }
+
+body[data-density="compact"] [class*="Diagnostics"],
+body[data-density="compact"] [data-section="diagnostics"],
+body[data-density="compact"] [data-testid="baseline-switcher"] {
+  margin-top: var(--c-gap) !important;
+  margin-bottom: var(--c-gap) !important;
+  padding: var(--c-pad) !important;
+}
+
+body[data-density="compact"] ul,
+body[data-density="compact"] ol { margin: 6px 0 8px !important; }
+body[data-density="compact"] li { margin: 2px 0 !important; }
+
+body[data-density="compact"] td.num,
+body[data-density="compact"] td.right { padding-right: 6px !important; }

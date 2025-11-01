@@ -1,0 +1,18 @@
+<svg width="192" height="192" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="panelGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#39ff14" />
+      <stop offset="100%" stop-color="#8a2be2" />
+    </linearGradient>
+  </defs>
+  <circle cx="96" cy="96" r="88" fill="none" stroke="url(#panelGradient)" stroke-width="8" />
+  <path
+    d="M60 120c0-30 28-54 60-54 18 0 30 10 30 22 0 12-10 20-20 20-10 0-18-7-18-16 0-9 8-16 18-16"
+    fill="none"
+    stroke="url(#panelGradient)"
+    stroke-width="8"
+    stroke-linecap="round"
+  />
+  <circle cx="138" cy="88" r="6" fill="#39ff14" />
+  <path d="M28 140c26 8 70 16 96-8" fill="none" stroke="url(#panelGradient)" stroke-width="8" stroke-linecap="round" />
+</svg>

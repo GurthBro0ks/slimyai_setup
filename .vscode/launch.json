@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run: npm run dev",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Attach: Node on 9229",
+      "type": "node",
+      "request": "attach",
+      "address": "localhost",
+      "port": 9229,
+      "restart": true,
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ],
+  "compounds": [
+    { "name": "Dev + Attach", "configurations": ["Run: npm run dev", "Attach: Node on 9229"] }
+  ]
+}
