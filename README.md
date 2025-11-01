@@ -228,8 +228,8 @@ Provide reassurance and a small next step.
 ### Required Environment Variables
 ```bash
 # Discord
-DISCORD_TOKEN=your_bot_token
-DISCORD_CLIENT_ID=your_client_id
+DISCORD_TOKEN=MTQxNTM4NzExNjU2NDkxMDE2MQ.GvInmG.CDqWEBZx2p4upRZHnlC7Al4Ot8bpPv-5Kw4DZQ
+DISCORD_CLIENT_ID=1415387116564910161
 
 # Database (REQUIRED for v2.0)
 DB_HOST=127.0.0.1
@@ -253,11 +253,20 @@ SHEETS_PARENT_FOLDER_ID=your_drive_folder_id
 
 # Personality
 PERSONALITY_CONFIG=./bot-personality.md
+
+# Admin API (Discord OAuth backend)
+ADMIN_DISCORD_CLIENT_ID=1431075878586290377
+ADMIN_DISCORD_CLIENT_SECRET=lkKc7DQP_AH9s1m4T2YS1QqLP8N-duRK
+ADMIN_DISCORD_BOT_TOKEN=MTQzMTA3NTg3ODU4NjI5MDM3Nw.GGVf1t.H6p391cneIC1NVtKlykr-rHMHU5m7sUt8vu8eg
+ROLE_ADMIN_IDS=
+ROLE_CLUB_IDS=
 ```
 
 ### Google Sheets Provisioning
 - Ensure the service account JSON is available at the path set in `GOOGLE_APPLICATION_CREDENTIALS`.
 - Set `SHEETS_PARENT_FOLDER_ID` to the Drive folder where per-user spreadsheets should live.
+
+See `docs/secrets.md` for the current Discord credential set mirrored in GitHub Actions secrets.
 - Seed or repair per-user sheets at any time:
   ```bash
   node scripts/seed-sheets.js

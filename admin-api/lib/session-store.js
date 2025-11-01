@@ -9,16 +9,20 @@ const MAX_AGE = 12 * 60 * 60 * 1000; // 12 hours
 setInterval(() => {
   const now = Date.now();
   for (const [userId, session] of sessions.entries()) {
-    if (now - session.createdAt > MAX_AGE) {
+    const lastActive = session.updatedAt || session.createdAt || 0;
+    if (now - lastActive > MAX_AGE) {
       sessions.delete(userId);
     }
   }
 }, 60 * 60 * 1000);
 
 function storeSession(userId, data) {
+  const timestamp = Date.now();
+  const existing = sessions.get(userId);
   sessions.set(userId, {
     ...data,
-    createdAt: Date.now()
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp
   });
   console.log('[session-store] Stored session for user:', userId);
 }
@@ -28,7 +32,8 @@ function getSession(userId) {
   if (!session) return null;
 
   // Check if expired
-  if (Date.now() - session.createdAt > MAX_AGE) {
+  const lastActive = session.updatedAt || session.createdAt || 0;
+  if (Date.now() - lastActive > MAX_AGE) {
     sessions.delete(userId);
     return null;
   }
@@ -41,8 +46,21 @@ function clearSession(userId) {
   console.log('[session-store] Cleared session for user:', userId);
 }
 
+function activeSessionCount() {
+  return sessions.size;
+}
+
+function getAllSessions() {
+  return Array.from(sessions.entries()).map(([userId, value]) => ({
+    userId,
+    ...value
+  }));
+}
+
 module.exports = {
   storeSession,
   getSession,
-  clearSession
+  clearSession,
+  activeSessionCount,
+  getAllSessions
 };
