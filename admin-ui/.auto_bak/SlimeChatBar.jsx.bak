@@ -1,0 +1,1097 @@
+"use client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { io } from "socket.io-client";
+import { useSession } from "../lib/session";
+
+const API_BASE =
+  typeof window !== "undefined"
+    ? process.env.NEXT_PUBLIC_ADMIN_API_BASE || ""
+    : "";
+
+const CACHE_VERSION = 2;
+const CACHE_PREFIX = `slimeChatCache:v${CACHE_VERSION}:`;
+const LEGACY_PREFIXES = ["slimeChatCache:", "slimeChatCache:v1:"];
+const MAX_CACHED = 100;
+
+const LAST_GUILD_KEY = "slimeChat:lastGuild";
+const ADMIN_MODE_KEY = "slimeChat:adminOnly";
+const ADMIN_ROOM_KEY = "admin-global";
+
+const isBrowser = () => typeof window !== "undefined";
+
+const ROLE_COLORS = {
+  admin: "var(--role-admin, #39FF14)",
+  club: "var(--role-club, #8A2BE2)",
+  member: "var(--role-member, #94a3b8)",
+  bot: "var(--role-bot, #2dd4bf)",
+};
+
+function roomKeyOf(isAdmin, guildId, adminOnly) {
+  if (adminOnly && isAdmin) return ADMIN_ROOM_KEY;
+  return guildId ? `guild-${guildId}` : null;
+}
+
+function safeDate(value) {
+  if (!value) return new Date();
+  const date = typeof value === "string" || typeof value === "number"
+    ? new Date(value)
+    : value instanceof Date
+      ? value
+      : new Date();
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function toRenderable(raw, roomContext) {
+  if (!raw) return null;
+  const baseRoom = roomContext || (raw.adminOnly ? ADMIN_ROOM_KEY : null);
+  const tsDate = safeDate(raw.ts || raw.timestamp || raw.created_at || Date.now());
+  const ts = tsDate.toISOString();
+  const messageId = raw.messageId || raw.id || `${baseRoom || "room"}:${ts}`;
+  const guildId = raw.guildId || (raw.adminOnly ? ADMIN_ROOM_KEY : (baseRoom && baseRoom.startsWith("guild-") ? baseRoom.slice(6) : null));
+  const from = raw.from || raw.author || {};
+  const userId = raw.userId || raw.authorId || from.id || null;
+  const username = raw.username || from.name || from.username || "unknown";
+  let role = raw.role || from.role || null;
+  if (!role) {
+    if (username === "slimy.ai" || userId === "bot") {
+      role = "bot";
+    } else {
+      role = raw.adminOnly ? "admin" : "member";
+    }
+  }
+  return {
+    messageId,
+    guildId,
+    userId: userId ? String(userId) : null,
+    username,
+    role,
+    text: raw.text || raw.content || "",
+    adminOnly: Boolean(raw.adminOnly),
+    ts,
+  };
+}
+
+function normalizeMessages(list = [], roomContext) {
+  const byId = new Map();
+  for (const item of list) {
+    const normalized = toRenderable(item, roomContext);
+    if (!normalized) continue;
+    byId.set(normalized.messageId, normalized);
+  }
+  return Array.from(byId.values()).sort(
+    (a, b) => safeDate(a.ts).getTime() - safeDate(b.ts).getTime(),
+  );
+}
+
+function arraysEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (
+      a[i].messageId !== b[i].messageId ||
+      a[i].ts !== b[i].ts ||
+      a[i].text !== b[i].text ||
+      a[i].username !== b[i].username ||
+      a[i].role !== b[i].role
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const formatTime = (value) => {
+  if (!value) return "";
+  const date = safeDate(value);
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
+function RoleChip({ role }) {
+  const color = ROLE_COLORS[role] || ROLE_COLORS.member;
+  return (
+    <span className="chip" style={{ borderColor: color, color }}>
+      {role}
+    </span>
+  );
+}
+
+function MessageBubble({ message, isMine }) {
+  const color = ROLE_COLORS[message.role] || ROLE_COLORS.member;
+  return (
+    <div className={`msgRow ${isMine ? "me" : "other"}`}>
+      <div className={`bubble ${isMine ? "me" : "other"}`}>
+        <div className="head">
+          <span className="name" style={{ color }}>
+            {message.username}
+          </span>
+          <RoleChip role={message.role} />
+        </div>
+        <div className="text">{message.text}</div>
+        <div className="foot">{formatTime(message.ts)}</div>
+      </div>
+    </div>
+  );
+}
+
+function mapConnectionError(code) {
+  if (!code) return null;
+  if (code === "not_authorized") {
+    return "Chat unavailable: not authorized (showing cached messages only).";
+  }
+  if (code === "no_guild_context") {
+    return "Chat unavailable: no guild context (showing cached messages only).";
+  }
+  if (code === "forbidden") {
+    return "Chat unavailable: insufficient permissions (showing cached messages only).";
+  }
+  if (code === "server_error") {
+    return "Chat temporarily unavailable (showing cached messages only).";
+  }
+  if (code === "disconnected") {
+    return "Chat offline: connection lost (showing cached messages only).";
+  }
+  if (code === "connect_error") {
+    return "Chat offline: unable to connect (showing cached messages only).";
+  }
+  return `Chat unavailable: ${code}`;
+}
+
+export default function SlimeChatBar({ guildId: routedGuildId }) {
+  const { user } = useSession();
+  const [isOpen, setIsOpen] = useState(false);
+  const [isAdminOnly, setIsAdminOnly] = useState(() => {
+    if (!isBrowser()) return false;
+    return window.localStorage.getItem(ADMIN_MODE_KEY) === "true";
+  });
+  const [activeGuildId, setActiveGuildId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [connecting, setConnecting] = useState(true);
+  const [connectionError, setConnectionError] = useState(null);
+  const [input, setInput] = useState("");
+  const [sendError, setSendError] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+  const socketRef = useRef(null);
+  const cacheRef = useRef(new Map());
+  const currentRoomRef = useRef(null);
+  const msgListRef = useRef(null);
+  const inputRef = useRef(null);
+  const messagesEndRef = useRef(null);
+  const isOpenRef = useRef(false);
+  const isAdminRef = useRef(false);
+  const manualSelectionRef = useRef(false);
+  const lastRouteGuildRef = useRef(null);
+
+  const isAdmin = user?.role === "admin";
+  isAdminRef.current = isAdmin;
+  const currentUserId = user?.id ? String(user.id) : null;
+
+  const availableGuilds = useMemo(() => {
+    const guilds = Array.isArray(user?.guilds) ? user.guilds : [];
+    return guilds.map((guild) => ({
+      id: String(guild.id),
+      name: guild.name || guild.id,
+      role: guild.role || user?.role || "member",
+    }));
+  }, [user?.guilds, user?.role]);
+
+  const activeGuild = useMemo(
+    () => availableGuilds.find((guild) => guild.id === activeGuildId) || null,
+    [availableGuilds, activeGuildId],
+  );
+
+  const activeRoom = useMemo(
+    () => roomKeyOf(isAdmin, activeGuildId, isAdmin && isAdminOnly),
+    [isAdmin, activeGuildId, isAdminOnly],
+  );
+
+  const historyTarget = useMemo(
+    () => (isAdmin && isAdminOnly ? ADMIN_ROOM_KEY : activeGuildId),
+    [isAdmin, isAdminOnly, activeGuildId],
+  );
+
+  const saveRoomMessages = useCallback((room, list) => {
+    if (!room || !isBrowser()) return;
+    try {
+      const trimmed = list.slice(Math.max(0, list.length - MAX_CACHED));
+      window.localStorage.setItem(
+        CACHE_PREFIX + room,
+        JSON.stringify(trimmed),
+      );
+    } catch (err) {
+      console.warn("[chat-bar] failed to persist cache", room, err.message);
+    }
+  }, []);
+
+  const readRoomMessages = useCallback((room) => {
+    if (!room) return [];
+    if (cacheRef.current.has(room)) {
+      return cacheRef.current.get(room);
+    }
+    let stored = [];
+    if (isBrowser()) {
+      let raw = null;
+      try {
+        raw = window.localStorage.getItem(CACHE_PREFIX + room);
+      } catch (err) {
+        console.warn("[chat-bar] cache read failed", err.message);
+      }
+      if (!raw) {
+        for (const prefix of LEGACY_PREFIXES) {
+          try {
+            raw = window.localStorage.getItem(prefix + room);
+            if (raw) break;
+          } catch (err) {
+            console.warn("[chat-bar] legacy cache read failed", err.message);
+          }
+        }
+      }
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          stored = Array.isArray(parsed) ? parsed : [];
+        } catch (err) {
+          console.warn("[chat-bar] cache parse failed", err.message);
+        }
+      }
+    }
+    const normalized = normalizeMessages(stored, room);
+    const trimmed = normalized.slice(Math.max(0, normalized.length - MAX_CACHED));
+    cacheRef.current.set(room, trimmed);
+    return trimmed;
+  }, []);
+
+  const mergeRoomMessages = useCallback(
+    (room, incoming, { replace = false, bumpUnread = false } = {}) => {
+      if (!room) return;
+      const current = readRoomMessages(room);
+      const incomingNormalized = normalizeMessages(incoming, room);
+      const combined = replace
+        ? incomingNormalized
+        : normalizeMessages([...current, ...incomingNormalized], room);
+      const trimmed = combined.slice(Math.max(0, combined.length - MAX_CACHED));
+      if (arraysEqual(current, trimmed)) return;
+      cacheRef.current.set(room, trimmed);
+      saveRoomMessages(room, trimmed);
+      if (currentRoomRef.current === room) {
+        setMessages(trimmed);
+        if (!isOpenRef.current && bumpUnread) {
+          setUnreadCount((count) => count + 1);
+        }
+      } else if (!isOpenRef.current && bumpUnread) {
+        setUnreadCount((count) => count + 1);
+      }
+    },
+    [readRoomMessages, saveRoomMessages],
+  );
+
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+    if (isOpen) {
+      setUnreadCount(0);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    currentRoomRef.current = activeRoom;
+  }, [activeRoom]);
+
+  useEffect(() => {
+    if (!isBrowser()) return undefined;
+    const viewport = window.visualViewport;
+    if (!viewport) return undefined;
+    const handleViewport = () => {
+      const covered = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      setKeyboardOffset(covered);
+    };
+    viewport.addEventListener("resize", handleViewport);
+    viewport.addEventListener("scroll", handleViewport);
+    handleViewport();
+    return () => {
+      viewport.removeEventListener("resize", handleViewport);
+      viewport.removeEventListener("scroll", handleViewport);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isBrowser()) return;
+    if (isAdmin) {
+      window.localStorage.setItem(ADMIN_MODE_KEY, isAdminOnly ? "true" : "false");
+    } else {
+      window.localStorage.removeItem(ADMIN_MODE_KEY);
+    }
+  }, [isAdmin, isAdminOnly]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const normalizedRoute = routedGuildId ? String(routedGuildId) : null;
+    if (lastRouteGuildRef.current !== normalizedRoute) {
+      lastRouteGuildRef.current = normalizedRoute;
+      manualSelectionRef.current = false;
+    }
+
+    if (manualSelectionRef.current) {
+      const stillValid = activeGuildId
+        ? availableGuilds.some((guild) => guild.id === activeGuildId)
+        : false;
+      if (stillValid) {
+        return;
+      }
+      manualSelectionRef.current = false;
+    }
+
+    const storedGuild =
+      isBrowser() && window.localStorage.getItem(LAST_GUILD_KEY);
+    const storedValid =
+      storedGuild && availableGuilds.some((guild) => guild.id === storedGuild)
+        ? storedGuild
+        : null;
+    const fallback = availableGuilds[0]?.id || null;
+
+    const target =
+      (normalizedRoute &&
+        availableGuilds.some((guild) => guild.id === normalizedRoute) &&
+        normalizedRoute) ||
+      storedValid ||
+      fallback ||
+      null;
+
+    if (target !== activeGuildId) {
+      setActiveGuildId(target);
+    }
+  }, [user, availableGuilds, routedGuildId, activeGuildId]);
+
+  useEffect(() => {
+    if (!isBrowser()) return;
+    if (activeGuildId) {
+      window.localStorage.setItem(LAST_GUILD_KEY, activeGuildId);
+    } else {
+      window.localStorage.removeItem(LAST_GUILD_KEY);
+    }
+  }, [activeGuildId]);
+
+  useEffect(() => {
+    if (!user) return;
+    const openHandler = () => setIsOpen(true);
+    const toggleHandler = () => setIsOpen((prev) => !prev);
+
+    if (isBrowser()) {
+      window.addEventListener("slimeChatBar:open", openHandler);
+      window.addEventListener("slimeChatBar:toggle", toggleHandler);
+    }
+
+    return () => {
+      if (isBrowser()) {
+        window.removeEventListener("slimeChatBar:open", openHandler);
+        window.removeEventListener("slimeChatBar:toggle", toggleHandler);
+      }
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setMessages([]);
+      return;
+    }
+    if (!activeRoom) {
+      setMessages([]);
+      return;
+    }
+    const cached = readRoomMessages(activeRoom);
+    setMessages(cached.slice());
+    setUnreadCount(0);
+  }, [user, activeRoom, readRoomMessages]);
+
+  useEffect(() => {
+    if (!user || !historyTarget || !activeRoom) {
+      return undefined;
+    }
+
+    let aborted = false;
+    const controller = new AbortController();
+
+    const loadHistory = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE}/api/chat/${historyTarget}/history?limit=${MAX_CACHED}`,
+          {
+            credentials: "include",
+            signal: controller.signal,
+          },
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        if (aborted) return;
+        const incoming = Array.isArray(payload?.messages) ? payload.messages : [];
+        if (incoming.length) {
+          mergeRoomMessages(activeRoom, incoming, { replace: false });
+        }
+      } catch (err) {
+        if (aborted || err.name === "AbortError") return;
+        console.warn("[chat-bar] failed to load history", err.message);
+      }
+    };
+
+    loadHistory();
+
+    return () => {
+      aborted = true;
+      controller.abort();
+    };
+  }, [user, activeRoom, historyTarget, mergeRoomMessages]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const socketUrl = API_BASE || window.location.origin;
+    const socket = io(socketUrl, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    socketRef.current = socket;
+    setConnecting(true);
+    setConnectionError(null);
+
+    const handleIncoming = (rawMessage) => {
+      if (!rawMessage) return;
+      if (rawMessage.adminOnly && !isAdminRef.current) return;
+
+      const normalized = toRenderable(rawMessage);
+      const fallbackGuildId =
+        normalized.guildId ||
+        rawMessage.guildId ||
+        (currentRoomRef.current && currentRoomRef.current.startsWith("guild-")
+          ? currentRoomRef.current.slice(6)
+          : null);
+
+      const targetRoom = normalized.adminOnly
+        ? ADMIN_ROOM_KEY
+        : roomKeyOf(false, fallbackGuildId, false) || currentRoomRef.current;
+
+      if (!targetRoom) return;
+
+      mergeRoomMessages(targetRoom, [normalized], {
+        replace: false,
+        bumpUnread: true,
+      });
+    };
+
+    socket.on("connect", () => {
+      setConnecting(false);
+      setConnectionError(null);
+    });
+
+    socket.on("disconnect", () => {
+      setConnecting(false);
+      setConnectionError("disconnected");
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("[chat-bar] connect_error:", err.message);
+      setConnecting(false);
+      setConnectionError("connect_error");
+    });
+
+    socket.on("error", (err) => {
+      const code = err?.error || err?.message || "server_error";
+      setConnecting(false);
+      setConnectionError(code);
+    });
+
+    socket.on("chat:message", handleIncoming);
+
+    return () => {
+      socket.off("chat:message", handleIncoming);
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [user, mergeRoomMessages]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const list = msgListRef.current;
+    if (list) {
+      list.scrollTop = list.scrollHeight;
+    }
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isOpen]);
+
+  const inputDisabled = Boolean(connectionHintText);
+
+  useEffect(() => {
+    if (isOpen && inputRef.current && !inputDisabled) {
+      try {
+        inputRef.current.focus({ preventScroll: true });
+      } catch (err) {
+        // ignore focus errors
+      }
+    }
+  }, [isOpen, inputDisabled]);
+
+  if (!user) return null;
+
+  const displayName = user?.globalName || user?.username || "Unknown";
+  const roleLabel = user?.role ? String(user.role) : null;
+  const headerGuildLabel =
+    isAdmin && isAdminOnly
+      ? "Admin room"
+      : activeGuild?.name || (activeGuildId ? activeGuildId : null);
+  const connectionHintText = mapConnectionError(connectionError);
+  const headerMetaParts = [];
+  if (connectionHintText) {
+    headerMetaParts.push(connectionHintText);
+  } else if (connecting) {
+    headerMetaParts.push("Connecting…");
+  } else {
+    headerMetaParts.push("Live");
+  }
+  if (user?.username) {
+    headerMetaParts.push(`Connected as ${user.username}`);
+  }
+  const headerMeta = headerMetaParts.join(" • ");
+
+  const handleSelectGuild = (event) => {
+    const nextId = event.target.value || null;
+    manualSelectionRef.current = true;
+    setActiveGuildId(nextId);
+    setUnreadCount(0);
+  };
+
+  const handleToggleAdminOnly = (event) => {
+    const nextValue = event.target.checked;
+    setIsAdminOnly(nextValue);
+    setUnreadCount(0);
+    const nextRoom = roomKeyOf(isAdmin, activeGuildId, isAdmin && nextValue);
+    const cached = readRoomMessages(nextRoom);
+    setMessages(cached.slice());
+  };
+
+  const handleSend = () => {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    if (inputDisabled) {
+      setSendError(
+        connectionHintText
+          ? "Chat is offline. Try again after reconnecting."
+          : "Select a guild before sending a message.",
+      );
+      return;
+    }
+    const targetRoom = isAdmin && isAdminOnly ? ADMIN_ROOM_KEY : activeGuildId;
+    if (!targetRoom) {
+      setSendError("Select a guild before sending a message.");
+      return;
+    }
+
+    if (!socketRef.current) return;
+
+    const payload = {
+      text: trimmed,
+      guildId: targetRoom,
+      adminOnly: Boolean(isAdmin && isAdminOnly),
+    };
+
+    setSendError(null);
+    socketRef.current.emit("chat:message", payload, (response) => {
+      if (response?.error) {
+        setSendError(response.error);
+      }
+    });
+    setInput("");
+  };
+
+  const handleKeyDown = (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleSend();
+    }
+  };
+
+  const collapsedUnread =
+    unreadCount > 99 ? "99+" : String(unreadCount || "");
+
+  const inputPlaceholder = isAdmin && isAdminOnly
+    ? "Send a message to all admins…"
+    : activeGuildId
+      ? "Type a message…"
+      : "Select a guild to enable chat";
+
+  const canSend =
+    Boolean(input.trim()) &&
+    !inputDisabled &&
+    !connectionHintText;
+
+  const safeAreaInset = "env(safe-area-inset-bottom, 0px)";
+
+  return (
+    <>
+      <style jsx global>{`
+        :root {
+          --role-admin: #39ff14;
+          --role-club: #8a2be2;
+          --role-member: #94a3b8;
+          --role-bot: #2dd4bf;
+          --chat-lane-width: min(720px, 92vw);
+        }
+
+        .slimeChatBar input[type="text"],
+        .slimeChatBar textarea,
+        .slimeChatBar button {
+          font-size: 16px;
+        }
+
+        .slimeChatBar {
+          position: fixed;
+          left: 0;
+          right: 0;
+          z-index: 9999;
+          -webkit-text-size-adjust: 100%;
+        }
+
+        .slimeChatDock {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.75rem;
+          line-height: 1.1;
+          min-height: 32px;
+          padding: 4px 8px;
+          background: rgba(17, 24, 39, 0.9);
+          backdrop-filter: blur(6px);
+          border-top: 1px solid #1f2937;
+          box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.45);
+        }
+
+        .slimeChatBar[data-open="0"] .slimeChatDock {
+          min-height: 28px;
+        }
+
+        .slimeChatDock .dock-status {
+          font-size: 0.68rem;
+          opacity: 0.7;
+        }
+
+        .unreadBadge {
+          padding: 2px 6px;
+          border-radius: 999px;
+          background: #f97316;
+          color: #111827;
+          font-size: 0.72rem;
+          font-weight: 700;
+        }
+
+        .slimeChatPanel {
+          background: rgba(8, 13, 23, 0.92);
+          backdrop-filter: blur(10px);
+        }
+
+        .slimeChatPanel {
+          display: flex;
+          flex-direction: column;
+        }
+
+        @supports (height: 100dvh) {
+          .slimeChatPanel {
+            max-height: min(60dvh, 520px);
+          }
+        }
+
+        @supports not (height: 100dvh) {
+          .slimeChatPanel {
+            max-height: 60vh;
+          }
+        }
+
+        .msgLane {
+          width: var(--chat-lane-width);
+          margin-left: auto;
+          padding: 0 8px;
+        }
+
+        .msgList {
+          overflow-y: auto;
+          padding: 6px 0 72px;
+          font-size: 0.85rem;
+          line-height: 1.25;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .msgRow {
+          display: flex;
+        }
+
+        .msgRow.me {
+          justify-content: flex-end;
+        }
+
+        .msgRow.other {
+          justify-content: flex-start;
+        }
+
+        .bubble {
+          max-width: 75%;
+          padding: 6px 8px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.06);
+          box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.15);
+        }
+
+        .bubble.me {
+          background: rgba(57, 255, 20, 0.15);
+          border: 1px solid rgba(57, 255, 20, 0.35);
+        }
+
+        .head {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 2px;
+          font-size: 0.75rem;
+        }
+
+        .name {
+          font-weight: 600;
+        }
+
+        .chip {
+          border: 1px solid currentColor;
+          border-radius: 8px;
+          padding: 0 6px;
+          font-size: 0.7rem;
+          opacity: 0.9;
+          text-transform: lowercase;
+        }
+
+        .text {
+          color: #f8fafc;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        .bubble.me .text {
+          color: #d1fae5;
+        }
+
+        .foot {
+          font-size: 0.65rem;
+          margin-top: 2px;
+          opacity: 0.75;
+          color: rgba(226, 232, 240, 0.75);
+        }
+
+        .bubble.me .foot {
+          color: rgba(190, 242, 198, 0.8);
+          text-align: right;
+        }
+
+        .bubble.other .foot {
+          text-align: left;
+        }
+
+        .msgList-end {
+          height: 1px;
+        }
+
+        .slimeChatHeader,
+        .slimeChatControls,
+        .slimeChatInputRow {
+          width: var(--chat-lane-width);
+          margin-left: auto;
+        }
+
+        .slimeChatHeader {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 6px 8px 4px;
+          font-size: 0.75rem;
+          line-height: 1.1;
+          color: rgba(248, 250, 252, 0.9);
+        }
+
+        .slimeChatHeader .label {
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          opacity: 0.75;
+          font-size: 0.72rem;
+        }
+
+        .slimeChatHeader .pill {
+          padding: 2px 6px;
+          border-radius: 10px;
+          font-size: 0.7rem;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          background: rgba(255, 255, 255, 0.06);
+        }
+
+        .slimeChatHeader .meta {
+          margin-left: auto;
+          opacity: 0.75;
+          font-size: 0.7rem;
+          text-align: right;
+        }
+
+        .slimeChatControls {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 10px;
+          padding: 4px 8px 10px;
+        }
+
+        .slimeChatControls label {
+          font-size: 0.75rem;
+          color: #f3f4f6;
+        }
+
+        .slimeChatControls select {
+          background-color: #1f2937;
+          color: #f3f4f6;
+          border: 1px solid #374151;
+          border-radius: 0.375rem;
+          padding: 0.3rem 0.6rem;
+          font-size: 0.8rem;
+        }
+
+        .slimeChatInputRow {
+          position: sticky;
+          bottom: 0;
+          padding: 8px 12px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          background: rgba(8, 13, 23, 0.94);
+          backdrop-filter: blur(10px);
+          border-top: 1px solid #1f2937;
+        }
+      `}</style>
+      <div
+        className="slimeChatBar"
+        data-open={isOpen ? "1" : "0"}
+        style={{
+          bottom: keyboardOffset,
+          paddingBottom: `calc(${safeAreaInset})`,
+        }}
+      >
+      <div
+        className="slimeChatDock"
+        onClick={() => !isOpen && setIsOpen(true)}
+        style={{
+          cursor: isOpen ? "default" : "pointer",
+          userSelect: "none",
+          pointerEvents: isOpen ? "none" : "auto",
+        }}
+      >
+        <span style={{ color: "#f9fafb", fontWeight: 600 }}>Chat</span>
+        {!connectionHintText && connecting && (
+          <span className="dock-status">Connecting…</span>
+        )}
+        {connectionHintText && (
+          <span className="dock-status">Offline</span>
+        )}
+        {unreadCount > 0 && (
+          <span className="unreadBadge">{collapsedUnread}</span>
+        )}
+        <span style={{ marginLeft: "auto", color: "#9ca3af" }}>
+          {isOpen ? "▼" : "▲"}
+        </span>
+      </div>
+
+      {isOpen && (
+        <div
+          className="slimeChatPanel"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            backgroundColor: "#0f172a",
+            borderTop: "1px solid #1f2937",
+            pointerEvents: "auto",
+          }}
+        >
+        <div className="slimeChatHeader">
+          <span className="label">Chat</span>
+          {roleLabel && <span className="pill">{roleLabel}</span>}
+          {headerGuildLabel && <span className="pill">{headerGuildLabel}</span>}
+          {headerMeta && <span className="meta">{headerMeta}</span>}
+          <button
+            type="button"
+            onClick={() => setIsOpen(false)}
+            style={{
+              marginLeft: "8px",
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid rgba(148, 163, 184, 0.35)",
+              background: "rgba(15, 23, 42, 0.6)",
+              color: "#f8fafc",
+              fontSize: "0.7rem",
+              cursor: "pointer",
+            }}
+          >
+            Collapse
+          </button>
+        </div>
+
+        <div className="slimeChatControls">
+          {isAdmin && (
+            <label
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                fontSize: "0.75rem",
+                color: "#f3f4f6",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={Boolean(isAdminOnly)}
+                onChange={handleToggleAdminOnly}
+              />
+              Admin-only
+            </label>
+          )}
+          {isAdmin && !isAdminOnly ? (
+            <select
+              value={activeGuildId || ""}
+              onChange={handleSelectGuild}
+              style={{
+                backgroundColor: "#1f2937",
+                color: "#f3f4f6",
+                border: "1px solid #374151",
+                borderRadius: "0.375rem",
+                padding: "0.3rem 0.6rem",
+                fontSize: "0.8rem",
+              }}
+            >
+              {availableGuilds.map((guild) => (
+                <option key={guild.id} value={guild.id}>
+                  {guild.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            !isAdminOnly && headerGuildLabel && (
+              <span className="pill" style={{ fontSize: "0.75rem" }}>
+                {headerGuildLabel}
+              </span>
+            )
+          )}
+        </div>
+
+        <div className="msgLane">
+          <div className="msgList" ref={msgListRef} style={{ flex: 1, minHeight: 0 }}>
+            {connectionHintText && (
+              <div
+                style={{
+                  backgroundColor: "#1f2937",
+                  border: "1px solid #f87171",
+                  borderRadius: "0.375rem",
+                  color: "#fca5a5",
+                  fontSize: "0.75rem",
+                  padding: "0.4rem 0.6rem",
+                  marginBottom: "0.5rem",
+                }}
+              >
+                {connectionHintText}
+              </div>
+            )}
+
+            {messages.length === 0 && !connectionHintText && (
+              <div
+                style={{
+                  color: "#9ca3af",
+                  textAlign: "center",
+                  fontSize: "0.75rem",
+                  marginTop: "1.5rem",
+                }}
+              >
+                {historyTarget
+                  ? "No messages yet. Say hello!"
+                  : "Select a guild to view chat history."}
+              </div>
+            )}
+
+            {messages.map((msg) => (
+              <MessageBubble
+                key={msg.messageId}
+                message={msg}
+                isMine={Boolean(currentUserId) && msg.userId === currentUserId}
+              />
+            ))}
+            <div ref={messagesEndRef} className="msgList-end" />
+          </div>
+        </div>
+
+        <div className="slimeChatInputRow">
+            {sendError && (
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: "#fca5a5",
+                  backgroundColor: "#1f2937",
+                  border: "1px solid #f87171",
+                  borderRadius: "0.375rem",
+                  padding: "0.35rem 0.5rem",
+                }}
+              >
+                {sendError}
+              </div>
+            )}
+            <div
+              style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}
+            >
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={inputPlaceholder}
+                autoFocus={isOpen && !inputDisabled}
+                aria-disabled={inputDisabled}
+                style={{
+                  flex: 1,
+                  padding: "0.45rem 0.6rem",
+                  backgroundColor: "#1f2937",
+                  border: "1px solid #374151",
+                  borderRadius: "0.375rem",
+                  color: "#f3f4f6",
+                  fontSize: "16px",
+                  opacity: inputDisabled ? 0.6 : 1,
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={!canSend}
+                style={{
+                  padding: "0.45rem 0.9rem",
+                  backgroundColor: canSend ? "#3b82f6" : "#374151",
+                  color: "#f9fafb",
+                  border: "none",
+                  borderRadius: "0.375rem",
+                  fontSize: "16px",
+                  fontWeight: 600,
+                  cursor: canSend ? "pointer" : "not-allowed",
+                  transition: "background-color 0.2s ease",
+                }}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+      </div>
+    )}
+      </div>
+    </>
+  );
+}

@@ -5,25 +5,32 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node --env-file=.env index.js",
     "deploy": "node deploy-commands.js",
     "test:memory": "node tests/memory-simple.test.js",
     "test:integration": "node tests/discord-integration-test.js",
     "test:integration:verbose": "node tests/discord-integration-test.js --verbose",
     "test:integration:force": "node tests/discord-integration-test.js --force",
-    "test:personality": "node --test tests/personality-tests.js"
+    "test:personality": "node --test tests/personality-tests.js",
+    "dev": "nodemon --env-file=.env index.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "@seald-io/nedb": "^4.1.2",
+    "axios": "^1.13.1",
     "discord.js": "^14.22.1",
     "dotenv": "^17.2.3",
     "googleapis": "^133.0.0",
+    "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.15.2",
     "node-fetch": "^2.7.0",
     "openai": "^4.57.0",
     "proper-lockfile": "^4.1.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "tsx": "^4.20.6"
   }
 }

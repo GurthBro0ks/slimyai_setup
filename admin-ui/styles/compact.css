@@ -1,0 +1,17 @@
+body.__compact *,
+body.__compact :where(*) { --gap:8px; --pad:10px; --lh:1.25; --fs:.95rem; }
+body.__compact .card, body.__compact [class*="card"],
+body.__compact .panel, body.__compact [class*="panel"] { padding:var(--pad)!important; margin:var(--gap) 0!important; }
+body.__compact table th, body.__compact table td { padding:6px 8px!important; line-height:var(--lh)!important; font-size:.92rem!important; }
+body.__compact button, body.__compact .btn { padding:6px 10px!important; min-height:30px!important; line-height:var(--lh)!important; font-size:.95rem!important; }
+body.__compact input[type=text], body.__compact textarea, body.__compact select { padding:6px 8px!important; min-height:34px!important; line-height:var(--lh)!important; font-size:16px!important; }
+body.__compact .slimeChatDock { pointer-events:none!important; user-select:none!important; }
+body.__compact .slimeChatPanel,
+body.__compact .slimeChatControls,
+body.__compact .slimeChatInputRow,
+body.__compact .slimeChatInputRow * { pointer-events:auto!important; }
+body.__compact .slimeChatBar { position:sticky; bottom:0; z-index:3000!important; }
+body.__compact .msgList { max-height:40vh!important; overflow-y:auto!important; }
+@supports (-webkit-touch-callout: none) {
+  input, textarea, select { font-size:16px!important; }
+}

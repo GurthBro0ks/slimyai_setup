@@ -5,6 +5,7 @@ const costs = require('../supersnail-costs.js');
 const { analyzeSnailScreenshot } = require('../lib/snail-vision');
 const database = require('../lib/database');
 const sheetsCreator = require('../lib/sheets-creator');
+const mcpClient = require('../services/mcp-client');
 
 // Small helper to pick the right tier function
 function pickCalc(tier) {
@@ -240,6 +241,11 @@ module.exports = {
           const guildId = interaction.guildId;
           const username = interaction.user.username;
           const guildName = interaction.guild?.name || 'Unknown';
+
+          // Track usage in MCP analytics (non-blocking)
+          mcpClient.getUserStats(userId, guildId, '30d')
+            .then(() => console.log(`[MCP] Tracked snail analysis for user ${userId}`))
+            .catch(err => console.error('[MCP] Analytics tracking failed:', err.message));
 
           let savedToSheet = false;
           const sheetDetails = await ensureSheetForUser({

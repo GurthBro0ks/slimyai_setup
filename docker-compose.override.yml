@@ -1,0 +1,31 @@
+services:
+  slimy-admin-ui:
+    image: node:lts
+    working_dir: /app
+    volumes:
+    - ./admin-ui:/app
+    environment:
+    - PORT=3081
+    - ADMIN_API_ORIGIN=http://172.19.0.1:3080
+    - NEXT_PUBLIC_ADMIN_API_BASE=http://172.19.0.1:3080
+    - PORT=3081
+    - HOST=0.0.0.0
+    - HOSTNAME=0.0.0.0
+    - ADMIN_API_ORIGIN=http://172.19.0.1:3080
+    - NEXT_PUBLIC_ADMIN_API_BASE=http://172.19.0.1:3080
+    ports:
+    - 3081:3081
+    command:
+    - sh
+    - -lc
+    - PORT=3081 node .next/standalone/server.js
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - 'node -e "require(''http'').get(''http://127.0.0.1:3081/'', res => process.exit(res.statusCode
+        === 200 ? 0 : 1)).on(''error'', () => process.exit(1));"'
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+    restart: unless-stopped

@@ -1,0 +1,57 @@
+const db = require('./database');
+const { normalizeAndHash, hamming } = require('./icon-hash');
+
+let visionFallback = async () => null;
+
+function setVisionFallback(fn) {
+  if (typeof fn === 'function') {
+    visionFallback = fn;
+  }
+}
+
+function distToConfidence(dist, slotHint) {
+  const accessoryBump = slotHint && /^acc/.test(slotHint) ? 2 : 0;
+  if (dist <= 8 + accessoryBump) return 92;
+  if (dist <= 16 + accessoryBump) return 75;
+  return 40;
+}
+
+async function matchCropToItem(cropBuffer, itemType, slotHint, { allowFallback = true } = {}) {
+  const { phash } = await normalizeAndHash(cropBuffer);
+  const rows = await db.query(
+    'SELECT id, canonical_name, phash, item_slot FROM snail_item_icons WHERE item_type=?',
+    [itemType]
+  );
+
+  const filtered = rows.filter(r => !slotHint || r.item_slot === slotHint);
+  const ranked = filtered
+    .map(row => ({
+      ...row,
+      dist: hamming(phash, row.phash)
+    }))
+    .sort((a, b) => a.dist - b.dist);
+
+  const best = ranked[0];
+  if (!best) {
+    if (allowFallback) {
+      const vision = await visionFallback(cropBuffer, itemType, slotHint);
+      if (vision) return { ...vision, phash };
+    }
+    return { canonical_name: 'Unknown', confidence: 0, dist: null, phash };
+  }
+
+  const confidence = distToConfidence(best.dist, slotHint);
+  if (confidence < 60 && allowFallback) {
+    const vision = await visionFallback(cropBuffer, itemType, slotHint);
+    if (vision) return { ...vision, phash, dist: best.dist };
+  }
+
+  return {
+    canonical_name: best.canonical_name,
+    confidence,
+    dist: best.dist,
+    phash
+  };
+}
+
+module.exports = { matchCropToItem, setVisionFallback, distToConfidence };

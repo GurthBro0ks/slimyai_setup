@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//opt/slimy/web/**)",
+      "Bash(git fetch:*)",
+      "Bash(sudo lsof:*)",
+      "Bash(sudo netstat:*)",
+      "Bash(sudo ss:*)",
+      "Bash(sudo cat:*)",
+      "Bash(sudo caddy validate:*)",
+      "Bash(sudo systemctl reload:*)",
+      "Bash(sudo systemctl daemon-reload:*)",
+      "Bash(sudo systemctl enable:*)",
+      "Bash(sudo systemctl status:*)",
+      "Bash(pnpm list:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm tsc:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm build:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

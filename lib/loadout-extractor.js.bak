@@ -1,0 +1,52 @@
+const sharp = require('sharp');
+const { roiRect } = require('./screen-detector');
+const { matchCropToItem } = require('./icon-match');
+const { logUnknown } = require('./unknown-logger');
+
+async function detectActiveLoadout(buf, layout, W, H) {
+  const { y, diam, x_left, x_mid, x_right } = layout.loadout_buttons;
+  const centers = [
+    { slot: 'A', x: x_left, y },
+    { slot: 'B', x: x_mid, y },
+    { slot: 'C', x: x_right, y }
+  ];
+  let best = { slot: 'A', red: 0 };
+  for (const c of centers) {
+    const rect = circleRect(W, H, c.x, y, diam);
+    const stats = await averageRGB(buf, rect);
+    const redness = stats.r - Math.max(stats.g, stats.b);
+    if (redness > best.red) best = { slot: c.slot, red: redness };
+  }
+  return best.slot;
+}
+
+async function extractGearIcons(buf, gearSlots, W, H) {
+  const out = [];
+  for (const [slot, r] of Object.entries(gearSlots)) {
+    const crop = await sharp(buf).extract(roiRect(W, H, r)).png().toBuffer();
+    const match = await matchCropToItem(crop, 'gear', slot);
+    if (match.canonical_name === 'Unknown' || match.confidence < 60) {
+      await logUnknown('gear', slot, crop);
+    }
+    out.push({
+      item_type: 'gear',
+      item_slot: slot,
+      canonical_name: match.canonical_name,
+      confidence: match.confidence
+    });
+  }
+  return out;
+}
+
+function circleRect(W, H, xRel, yRel, diamRel) {
+  const dW = Math.round(W * diamRel);
+  const dH = Math.round(W * diamRel);
+  return { left: Math.round(W * xRel - dW / 2), top: Math.round(H * yRel - dH / 2), width: dW, height: dH };
+}
+async function averageRGB(buf, rect) {
+  const { left, top, width, height } = rect;
+  const stats = await sharp(buf).extract({ left, top, width, height }).stats();
+  return { r: stats.channels[0].mean, g: stats.channels[1].mean, b: stats.channels[2].mean };
+}
+
+module.exports = { detectActiveLoadout, extractGearIcons };

@@ -1,0 +1,44 @@
+.wrapper {
+  display: grid;
+  gap: 10px;
+}
+
+.row3,
+.row2 {
+  display: grid;
+  gap: 8px;
+}
+
+.row3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.row2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.btn,
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-weight: 600;
+}
+
+.btnPrimary {
+  background: linear-gradient(90deg, #7a5cff, #2dd4bf);
+  border: none;
+  color: #0f172a;
+}
+
+@media (min-width: 768px) {
+  .wrapper {
+    display: none;
+  }
+}

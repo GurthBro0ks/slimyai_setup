@@ -1,0 +1,793 @@
+{
+  "timestamp": "2025-10-15T00:23:12.394Z",
+  "environment": "production",
+  "phases": [
+    {
+      "name": "Phase 1: Environment",
+      "tests": [
+        {
+          "name": "ENV: DB_HOST",
+          "passed": true,
+          "message": "Present: db...",
+          "data": {
+            "category": "database",
+            "value": "SET"
+          },
+          "timestamp": "2025-10-15T00:23:12.414Z"
+        },
+        {
+          "name": "ENV: DB_PORT",
+          "passed": true,
+          "message": "Present: 3306...",
+          "data": {
+            "category": "database",
+            "value": "SET"
+          },
+          "timestamp": "2025-10-15T00:23:12.414Z"
+        },
+        {
+          "name": "ENV: DB_USER",
+          "passed": true,
+          "message": "Present: slimy_bot_user...",
+          "data": {
+            "category": "database",
+            "value": "SET"
+          },
+          "timestamp": "2025-10-15T00:23:12.414Z"
+        },
+        {
+          "name": "ENV: DB_PASSWORD",
+          "passed": true,
+          "message": "Present: PAw5zMUtPAw5zMUt...",
+          "data": {
+            "category": "database",
+            "value": "SET"
+          },
+          "timestamp": "2025-10-15T00:23:12.414Z"
+        },
+        {
+          "name": "ENV: DB_NAME",
+          "passed": true,
+          "message": "Present: slimy_ai_bot...",
+          "data": {
+            "category": "database",
+            "value": "SET"
+          },
+          "timestamp": "2025-10-15T00:23:12.414Z"
+        },
+        {
+          "name": "ENV: DISCORD_TOKEN",
+          "passed": true,
+          "message": "Present: MTQxNTM4NzExNjU2NDkx...",
+          "data": {
+            "category": "discord",
+            "value": "SET"
+          },
+          "timestamp": "2025-10-15T00:23:12.414Z"
+        },
+        {
+          "name": "ENV: DISCORD_CLIENT_ID",
+          "passed": true,
+          "message": "Present: 1415387116564910161...",
+          "data": {
+            "category": "discord",
+            "value": "SET"
+          },
+          "timestamp": "2025-10-15T00:23:12.415Z"
+        },
+        {
+          "name": "ENV: OPENAI_API_KEY",
+          "passed": true,
+          "message": "Present: sk-proj-EEspKV5Et5CD...",
+          "data": {
+            "category": "openai",
+            "value": "SET"
+          },
+          "timestamp": "2025-10-15T00:23:12.415Z"
+        },
+        {
+          "name": "ENV: GOOGLE_APPLICATION_CREDENTIALS",
+          "passed": true,
+          "message": "Present: ./google-service-acc...",
+          "data": {
+            "category": "google",
+            "value": "SET"
+          },
+          "timestamp": "2025-10-15T00:23:12.415Z"
+        },
+        {
+          "name": "ENV: SHEETS_PARENT_FOLDER_ID",
+          "passed": true,
+          "message": "Present: 1ivR2dyxdQ1W3cNPOSKG...",
+          "data": {
+            "category": "google",
+            "value": "SET"
+          },
+          "timestamp": "2025-10-15T00:23:12.415Z"
+        },
+        {
+          "name": "ENV: VISION_MODEL",
+          "passed": true,
+          "message": "Set to: gpt-4o",
+          "data": {
+            "optional": true
+          },
+          "timestamp": "2025-10-15T00:23:12.415Z"
+        },
+        {
+          "name": "ENV: OPENAI_MODEL",
+          "passed": true,
+          "message": "Optional variable not set, will use defaults",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:12.415Z"
+        },
+        {
+          "name": "ENV: IMAGE_MODEL",
+          "passed": true,
+          "message": "Optional variable not set, will use defaults",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:12.415Z"
+        },
+        {
+          "name": "ENV: DISCORD_GUILD_ID",
+          "passed": true,
+          "message": "Set to: 1176605506912141444",
+          "data": {
+            "optional": true
+          },
+          "timestamp": "2025-10-15T00:23:12.415Z"
+        },
+        {
+          "name": "CONFIG: Persona Config",
+          "passed": true,
+          "message": "File exists at ./config/slimy_ai.persona.json",
+          "data": {
+            "path": "./config/slimy_ai.persona.json"
+          },
+          "timestamp": "2025-10-15T00:23:12.415Z"
+        },
+        {
+          "name": "CONFIG: Google Service Account",
+          "passed": true,
+          "message": "File exists at ./google-service-account.json",
+          "data": {
+            "path": "./google-service-account.json"
+          },
+          "timestamp": "2025-10-15T00:23:12.416Z"
+        },
+        {
+          "name": "CONFIG: Package.json",
+          "passed": true,
+          "message": "File exists at ./package.json",
+          "data": {
+            "path": "./package.json"
+          },
+          "timestamp": "2025-10-15T00:23:12.416Z"
+        },
+        {
+          "name": "CONFIG: Personality Markdown",
+          "passed": true,
+          "message": "File exists at ./bot-personality.md",
+          "data": {
+            "optional": true
+          },
+          "timestamp": "2025-10-15T00:23:12.416Z"
+        },
+        {
+          "name": "DEPENDENCY: discord.js",
+          "passed": true,
+          "message": "Installed: ^14.22.1",
+          "data": {
+            "version": "^14.22.1"
+          },
+          "timestamp": "2025-10-15T00:23:12.416Z"
+        },
+        {
+          "name": "DEPENDENCY: mysql2",
+          "passed": true,
+          "message": "Installed: ^3.15.2",
+          "data": {
+            "version": "^3.15.2"
+          },
+          "timestamp": "2025-10-15T00:23:12.416Z"
+        },
+        {
+          "name": "DEPENDENCY: openai",
+          "passed": true,
+          "message": "Installed: ^4.57.0",
+          "data": {
+            "version": "^4.57.0"
+          },
+          "timestamp": "2025-10-15T00:23:12.416Z"
+        },
+        {
+          "name": "DEPENDENCY: googleapis",
+          "passed": true,
+          "message": "Installed: ^133.0.0",
+          "data": {
+            "version": "^133.0.0"
+          },
+          "timestamp": "2025-10-15T00:23:12.416Z"
+        },
+        {
+          "name": "DEPENDENCY: dotenv",
+          "passed": true,
+          "message": "Installed: ^17.2.2",
+          "data": {
+            "version": "^17.2.2"
+          },
+          "timestamp": "2025-10-15T00:23:12.416Z"
+        },
+        {
+          "name": "DEPENDENCY: uuid",
+          "passed": true,
+          "message": "Installed: ^9.0.1",
+          "data": {
+            "version": "^9.0.1"
+          },
+          "timestamp": "2025-10-15T00:23:12.416Z"
+        },
+        {
+          "name": "GOOGLE SERVICE ACCOUNT",
+          "passed": true,
+          "message": "Valid: slimy-ai@slimy-ai.iam.gserviceaccount.com",
+          "data": {
+            "email": "slimy-ai@slimy-ai.iam.gserviceaccount.com",
+            "project": "slimy-ai"
+          },
+          "timestamp": "2025-10-15T00:23:12.417Z"
+        }
+      ]
+    },
+    {
+      "name": "Phase 2: Database",
+      "tests": [
+        {
+          "name": "DB CONNECTION",
+          "passed": false,
+          "message": "Connection failed: getaddrinfo EAI_AGAIN db",
+          "data": {
+            "error": "getaddrinfo EAI_AGAIN db"
+          },
+          "timestamp": "2025-10-15T00:23:12.530Z"
+        }
+      ]
+    },
+    {
+      "name": "Phase 3: Commands",
+      "tests": [
+        {
+          "name": "COMMAND: /consent",
+          "passed": true,
+          "message": "Valid command structure: Manage memory consent",
+          "data": {
+            "hasData": true,
+            "hasExecute": true,
+            "hasName": true,
+            "hasDescription": true,
+            "description": "Manage memory consent"
+          },
+          "timestamp": "2025-10-15T00:23:13.104Z"
+        },
+        {
+          "name": "COMMAND OPTIONS: /consent",
+          "passed": true,
+          "message": "Has 2 option(s)",
+          "data": {
+            "options": [
+              "set",
+              "status"
+            ]
+          },
+          "timestamp": "2025-10-15T00:23:13.104Z"
+        },
+        {
+          "name": "COMMAND: /remember",
+          "passed": true,
+          "message": "Valid command structure: Save a note (server-wide memory with /consent)",
+          "data": {
+            "hasData": true,
+            "hasExecute": true,
+            "hasName": true,
+            "hasDescription": true,
+            "description": "Save a note (server-wide memory with /consent)"
+          },
+          "timestamp": "2025-10-15T00:23:13.107Z"
+        },
+        {
+          "name": "COMMAND OPTIONS: /remember",
+          "passed": true,
+          "message": "Has 2 option(s)",
+          "data": {
+            "options": [
+              "note",
+              "tags"
+            ]
+          },
+          "timestamp": "2025-10-15T00:23:13.107Z"
+        },
+        {
+          "name": "COMMAND: /export",
+          "passed": true,
+          "message": "Valid command structure: Export your notes (latest 25)",
+          "data": {
+            "hasData": true,
+            "hasExecute": true,
+            "hasName": true,
+            "hasDescription": true,
+            "description": "Export your notes (latest 25)"
+          },
+          "timestamp": "2025-10-15T00:23:13.107Z"
+        },
+        {
+          "name": "COMMAND OPTIONS: /export",
+          "passed": true,
+          "message": "Has 0 option(s)",
+          "data": {
+            "options": []
+          },
+          "timestamp": "2025-10-15T00:23:13.107Z"
+        },
+        {
+          "name": "COMMAND: /forget",
+          "passed": true,
+          "message": "Valid command structure: Delete memories",
+          "data": {
+            "hasData": true,
+            "hasExecute": true,
+            "hasName": true,
+            "hasDescription": true,
+            "description": "Delete memories"
+          },
+          "timestamp": "2025-10-15T00:23:13.108Z"
+        },
+        {
+          "name": "COMMAND OPTIONS: /forget",
+          "passed": true,
+          "message": "Has 1 option(s)",
+          "data": {
+            "options": [
+              "id"
+            ]
+          },
+          "timestamp": "2025-10-15T00:23:13.108Z"
+        },
+        {
+          "name": "COMMAND: /dream",
+          "passed": true,
+          "message": "Valid command structure: Generate AI images - bring your dreams to life",
+          "data": {
+            "hasData": true,
+            "hasExecute": true,
+            "hasName": true,
+            "hasDescription": true,
+            "description": "Generate AI images - bring your dreams to life"
+          },
+          "timestamp": "2025-10-15T00:23:13.214Z"
+        },
+        {
+          "name": "COMMAND OPTIONS: /dream",
+          "passed": true,
+          "message": "Has 2 option(s)",
+          "data": {
+            "options": [
+              "prompt",
+              "style"
+            ]
+          },
+          "timestamp": "2025-10-15T00:23:13.214Z"
+        },
+        {
+          "name": "COMMAND: /mode",
+          "passed": true,
+          "message": "Valid command structure: [Admin] Manage slimy.ai modes",
+          "data": {
+            "hasData": true,
+            "hasExecute": true,
+            "hasName": true,
+            "hasDescription": true,
+            "description": "[Admin] Manage slimy.ai modes"
+          },
+          "timestamp": "2025-10-15T00:23:13.217Z"
+        },
+        {
+          "name": "COMMAND OPTIONS: /mode",
+          "passed": true,
+          "message": "Has 4 option(s)",
+          "data": {
+            "options": [
+              "set",
+              "view",
+              "list",
+              "clear"
+            ]
+          },
+          "timestamp": "2025-10-15T00:23:13.217Z"
+        },
+        {
+          "name": "COMMAND: /chat",
+          "passed": true,
+          "message": "Valid command structure: Chat with slimy.ai",
+          "data": {
+            "hasData": true,
+            "hasExecute": true,
+            "hasName": true,
+            "hasDescription": true,
+            "description": "Chat with slimy.ai"
+          },
+          "timestamp": "2025-10-15T00:23:13.219Z"
+        },
+        {
+          "name": "COMMAND OPTIONS: /chat",
+          "passed": true,
+          "message": "Has 2 option(s)",
+          "data": {
+            "options": [
+              "message",
+              "reset"
+            ]
+          },
+          "timestamp": "2025-10-15T00:23:13.219Z"
+        },
+        {
+          "name": "COMMAND: /snail",
+          "passed": true,
+          "message": "Valid command structure: Supersnail costs calculator (T5–T8)",
+          "data": {
+            "hasData": true,
+            "hasExecute": true,
+            "hasName": true,
+            "hasDescription": true,
+            "description": "Supersnail costs calculator (T5–T8)"
+          },
+          "timestamp": "2025-10-15T00:23:14.355Z"
+        },
+        {
+          "name": "COMMAND OPTIONS: /snail",
+          "passed": true,
+          "message": "Has 5 option(s)",
+          "data": {
+            "options": [
+              "test",
+              "calc",
+              "analyze",
+              "sheet",
+              "sheet-setup"
+            ]
+          },
+          "timestamp": "2025-10-15T00:23:14.355Z"
+        },
+        {
+          "name": "COMMAND: /diag",
+          "passed": true,
+          "message": "Valid command structure: Comprehensive health check and diagnostics",
+          "data": {
+            "hasData": true,
+            "hasExecute": true,
+            "hasName": true,
+            "hasDescription": true,
+            "description": "Comprehensive health check and diagnostics"
+          },
+          "timestamp": "2025-10-15T00:23:14.356Z"
+        },
+        {
+          "name": "COMMAND OPTIONS: /diag",
+          "passed": true,
+          "message": "Has 0 option(s)",
+          "data": {
+            "options": []
+          },
+          "timestamp": "2025-10-15T00:23:14.356Z"
+        },
+        {
+          "name": "EXTRA COMMAND FILES",
+          "passed": true,
+          "message": "Found unexpected command files: personality-config",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.356Z"
+        }
+      ]
+    },
+    {
+      "name": "Phase 4: Lib Modules",
+      "tests": [
+        {
+          "name": "LIB: database",
+          "passed": true,
+          "message": "All 3 exports present",
+          "data": {
+            "expectedExports": [
+              "getPool",
+              "testConnection",
+              "ensureSchema"
+            ],
+            "missingExports": []
+          },
+          "timestamp": "2025-10-15T00:23:14.357Z"
+        },
+        {
+          "name": "LIB: personality-engine",
+          "passed": true,
+          "message": "All 2 exports present",
+          "data": {
+            "expectedExports": [
+              "buildPersonalityPrompt",
+              "loadPersonalityConfig"
+            ],
+            "missingExports": []
+          },
+          "timestamp": "2025-10-15T00:23:14.358Z"
+        },
+        {
+          "name": "LIB: modes",
+          "passed": true,
+          "message": "All 2 exports present",
+          "data": {
+            "expectedExports": [
+              "getEffectiveModes",
+              "setChannelModes"
+            ],
+            "missingExports": []
+          },
+          "timestamp": "2025-10-15T00:23:14.358Z"
+        },
+        {
+          "name": "LIB: memory",
+          "passed": true,
+          "message": "All 2 exports present",
+          "data": {
+            "expectedExports": [
+              "saveMemory",
+              "getMemories"
+            ],
+            "missingExports": []
+          },
+          "timestamp": "2025-10-15T00:23:14.358Z"
+        },
+        {
+          "name": "LIB: images",
+          "passed": true,
+          "message": "All 1 exports present",
+          "data": {
+            "expectedExports": [
+              "generateImage"
+            ],
+            "missingExports": []
+          },
+          "timestamp": "2025-10-15T00:23:14.358Z"
+        },
+        {
+          "name": "LIB: openai",
+          "passed": true,
+          "message": "All 1 exports present",
+          "data": {
+            "expectedExports": [
+              "chatCompletion"
+            ],
+            "missingExports": []
+          },
+          "timestamp": "2025-10-15T00:23:14.358Z"
+        },
+        {
+          "name": "LIB: sheets-creator",
+          "passed": true,
+          "message": "Module loads successfully",
+          "data": {
+            "note": "No specific exports required"
+          },
+          "timestamp": "2025-10-15T00:23:14.358Z"
+        },
+        {
+          "name": "LIB: vision",
+          "passed": true,
+          "message": "Module loads successfully",
+          "data": {
+            "note": "No specific exports required"
+          },
+          "timestamp": "2025-10-15T00:23:14.358Z"
+        },
+        {
+          "name": "PERSONALITY ENGINE",
+          "passed": true,
+          "message": "Generated prompt (2749 chars)",
+          "data": {
+            "promptLength": 2749
+          },
+          "timestamp": "2025-10-15T00:23:14.361Z"
+        }
+      ]
+    },
+    {
+      "name": "Phase 5: Integrations",
+      "tests": [
+        {
+          "name": "OPENAI MODULE",
+          "passed": true,
+          "message": "OpenAI module loaded successfully",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.361Z"
+        },
+        {
+          "name": "OPENAI API TEST",
+          "passed": true,
+          "message": "Skipped actual API call to avoid costs",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.361Z"
+        },
+        {
+          "name": "GOOGLE SHEETS MODULE",
+          "passed": true,
+          "message": "Google Sheets module loaded successfully",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.362Z"
+        },
+        {
+          "name": "GOOGLE SHEETS API TEST",
+          "passed": true,
+          "message": "Skipped actual API call to avoid creating test spreadsheets",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.362Z"
+        },
+        {
+          "name": "MODES: getEffectiveModes",
+          "passed": true,
+          "message": "Returned 0 modes",
+          "data": {
+            "modesCount": 0
+          },
+          "timestamp": "2025-10-15T00:23:14.362Z"
+        },
+        {
+          "name": "MEMORY MODULE",
+          "passed": true,
+          "message": "Memory module loaded successfully",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.363Z"
+        }
+      ]
+    },
+    {
+      "name": "Phase 6: Edge Cases",
+      "tests": [
+        {
+          "name": "ERROR HANDLING: Missing Token",
+          "passed": true,
+          "message": "Bot handles missing DISCORD_TOKEN gracefully",
+          "data": {
+            "note": "Would exit with error code 1"
+          },
+          "timestamp": "2025-10-15T00:23:14.363Z"
+        },
+        {
+          "name": "ERROR HANDLING: Invalid DB Creds",
+          "passed": true,
+          "message": "Skipped to avoid breaking active connection",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.363Z"
+        },
+        {
+          "name": "LONG INPUT: 2000 chars",
+          "passed": true,
+          "message": "Can create 2000-char string",
+          "data": {
+            "length": 2000
+          },
+          "timestamp": "2025-10-15T00:23:14.363Z"
+        },
+        {
+          "name": "SPECIAL CHARACTERS",
+          "passed": true,
+          "message": "Special characters handled in string",
+          "data": {
+            "sample": "Test with ' quotes \" double quotes & ampersand < less than > greater than"
+          },
+          "timestamp": "2025-10-15T00:23:14.363Z"
+        },
+        {
+          "name": "SQL INJECTION PREVENTION",
+          "passed": false,
+          "message": "Test failed: getaddrinfo EAI_AGAIN db",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.372Z"
+        }
+      ]
+    },
+    {
+      "name": "Phase 7: Performance",
+      "tests": [
+        {
+          "name": "MAIN ENTRY POINT",
+          "passed": true,
+          "message": "index.js exists and ready to start",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.372Z"
+        },
+        {
+          "name": "PM2 CONFIG",
+          "passed": true,
+          "message": "PM2 ecosystem config found and valid",
+          "data": {
+            "apps": 1
+          },
+          "timestamp": "2025-10-15T00:23:14.372Z"
+        },
+        {
+          "name": "MEMORY USAGE",
+          "passed": true,
+          "message": "Heap: 64.33 MB / 94.54 MB",
+          "data": {
+            "heapUsed": 67450280,
+            "heapTotal": 99127296,
+            "external": 3841991
+          },
+          "timestamp": "2025-10-15T00:23:14.384Z"
+        },
+        {
+          "name": "MONITORING: /diag command",
+          "passed": true,
+          "message": "Diagnostic command available for runtime monitoring",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.384Z"
+        }
+      ]
+    },
+    {
+      "name": "Phase 8: Deployment",
+      "tests": [
+        {
+          "name": "DOCKER: Dockerfile",
+          "passed": true,
+          "message": "Dockerfile present for containerized deployment",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.388Z"
+        },
+        {
+          "name": "DOCKER: docker-compose.yml",
+          "passed": true,
+          "message": "Docker Compose config present",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.388Z"
+        },
+        {
+          "name": "SECURITY: .gitignore",
+          "passed": true,
+          "message": "Sensitive files properly ignored",
+          "data": {
+            "hasEnv": true,
+            "hasNodeModules": true,
+            "hasGoogleCreds": true
+          },
+          "timestamp": "2025-10-15T00:23:14.388Z"
+        },
+        {
+          "name": "DEPLOYMENT: Migration Scripts",
+          "passed": true,
+          "message": "Found 5 script(s) in /scripts",
+          "data": {
+            "scripts": [
+              "backup-database.sh",
+              "inspect-memory-db.sh",
+              "migrate-to-database.js",
+              "restore-database.sh",
+              "system-check.sh"
+            ]
+          },
+          "timestamp": "2025-10-15T00:23:14.388Z"
+        },
+        {
+          "name": "DEPLOYMENT: Legacy Data Store",
+          "passed": true,
+          "message": "No legacy data_store.json (good for database-only mode)",
+          "data": {},
+          "timestamp": "2025-10-15T00:23:14.388Z"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total": 74,
+    "passed": 72,
+    "failed": 2,
+    "warnings": 6
+  }
+}

@@ -1,0 +1,52 @@
+/* ===== Full-Width Override (safe, additive) ===== */
+
+/* Tunables */
+:root{
+  --page-max: 100%;
+  --content-px: 16px;      /* left/right padding inside content */
+  --section-gap: 12px;     /* vertical gap between sections */
+  --card-pad: 12px;        /* inner padding for cards/panels */
+}
+
+/* Kill any central max-width containers */
+main, .main, .page, .content, .container, .shell, .wrap, .viewport {
+  max-width: var(--page-max) !important;
+  width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: var(--content-px);
+  padding-right: var(--content-px);
+}
+
+/* Tighten vertical rhythm + internal padding */
+section, .section, .panel, .card, .block {
+  margin-top: var(--section-gap);
+  margin-bottom: var(--section-gap);
+}
+.card, .panel, .block {
+  padding: var(--card-pad) !important;
+}
+
+/* Grids and stacks: reduce gaps so content isn't spread out */
+.grid, .stack, .row, .columns {
+  gap: var(--section-gap) !important;
+}
+
+/* Tables & wrappers: stretch to full width and scroll nicely if needed */
+.tableWrap, .table-wrapper, table {
+  width: 100% !important;
+}
+.tableWrap, .table-wrapper {
+  overflow-x: auto;
+}
+
+/* Headline spacing on dashboards */
+h1, .pageTitle {
+  margin-bottom: 10px !important;
+}
+
+/* Keep the chat lane compact on the right even as pages go full width */
+.msgLane{
+  width: min(720px, 92vw);
+  margin-left: auto;   /* pin lane to the right edge */
+}

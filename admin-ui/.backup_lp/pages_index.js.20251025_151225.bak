@@ -1,0 +1,120 @@
+import Image from "next/image";
+import Layout from "../components/Layout";
+
+export default function Home() {
+  return (
+    <Layout title="slimy.ai • Admin Panel" hideSidebar>
+      <div className="hero">
+        <div className="hero__logo">
+          <Image
+            src="/slimy-admin-logo.svg"
+            alt="slimy admin logo"
+            width={96}
+            height={96}
+            priority
+          />
+        </div>
+
+        <h1 className="hero__title">slimy • Admin Panel</h1>
+        <p className="hero__tagline">
+          fueled by <span>adhd</span> — driven by <span>feet</span> — motivated by <span>ducks</span>
+        </p>
+
+        <a className="hero__cta" href="/api/auth/login">Login with Discord</a>
+      </div>
+
+      <footer className="hero__footer">
+        UI is online on port 3081 behind Caddy.
+      </footer>
+
+      <style jsx>{`
+        .hero {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          padding: 56px 0 40px;
+          gap: 14px;
+        }
+        .hero__logo {
+          border-radius: 20px;
+          padding: 10px;
+          background: radial-gradient(circle at 50% 30%, rgba(56, 189, 248, 0.35), transparent 62%);
+          box-shadow: 0 16px 45px rgba(59, 130, 246, 0.2);
+        }
+        .hero__title {
+          margin: 0;
+          font-weight: 800;
+          line-height: 1.08;
+          font-size: 2.35rem;
+          letter-spacing: 0.25px;
+          background: linear-gradient(135deg, #60a5fa, #22c55e);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+        }
+        .hero__tagline {
+          margin: 0;
+          font-size: 1.1rem;
+          padding: 6px 18px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: rgba(15, 23, 42, 0.5);
+          box-shadow:
+            0 12px 28px rgba(15, 23, 42, 0.35),
+            inset 0 0 0 1px rgba(94, 234, 212, 0.1);
+        }
+        .hero__tagline span {
+          font-weight: 700;
+          background: linear-gradient(135deg, #a855f7, #22d3ee);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+        }
+        .hero__cta {
+          margin-top: 6px;
+          display: inline-block;
+          padding: 13px 22px;
+          border-radius: 12px;
+          font-weight: 700;
+          text-decoration: none;
+          background: linear-gradient(135deg, #5865f2, #3ba55d);
+          color: #fff;
+          box-shadow:
+            0 14px 32px rgba(88, 101, 242, 0.28),
+            inset 0 2px 0 rgba(255, 255, 255, 0.12);
+          transition: transform 120ms ease, box-shadow 180ms ease, filter 180ms ease;
+        }
+        .hero__cta:hover {
+          transform: translateY(-1px);
+          filter: brightness(1.05);
+          box-shadow:
+            0 18px 36px rgba(88, 101, 242, 0.36),
+            inset 0 2px 0 rgba(255, 255, 255, 0.14);
+        }
+        .hero__cta:active {
+          transform: translateY(0);
+          filter: brightness(0.95);
+        }
+        .hero__footer {
+          margin-top: 48px;
+          text-align: center;
+          opacity: 0.6;
+          font-size: 8pt;
+        }
+        @media (max-width: 520px) {
+          .hero {
+            padding-top: 40px;
+          }
+          .hero__title {
+            font-size: 1.95rem;
+          }
+          .hero__tagline {
+            font-size: 0.95rem;
+            padding: 6px 12px;
+          }
+        }
+      `}</style>
+    </Layout>
+  );
+}

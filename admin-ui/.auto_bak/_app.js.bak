@@ -1,0 +1,48 @@
+import "../styles/fullwidth.css";
+import "../styles/density-ultra.css";
+import "../styles/density-force.css";
+import "../components/slimechat/behavior.css";
+import Head from "next/head";
+import { useEffect } from "react";
+import "../styles/globals.css";
+import "../styles/mobile.css";
+import "../styles/density-compact.css";
+import { SessionProvider } from "../lib/session";
+import ErrorBoundary from "../components/ErrorBoundary";
+
+export default function SlimyAdminApp({ Component, pageProps }) {
+  useEffect(() => {
+    const targetDensity = "ultra";
+
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage?.setItem("uiDensity", targetDensity);
+      } catch (err) {
+        console.warn("Unable to persist uiDensity preference:", err);
+      }
+    }
+
+    if (typeof document !== "undefined") {
+      document.body.setAttribute("data-density", targetDensity);
+      document.body.classList.add("__compact");
+    }
+
+    return () => {
+      if (typeof document !== "undefined") {
+        document.body.classList.remove("__compact");
+        document.body.removeAttribute("data-density");
+      }
+    };
+  }, []);
+
+  return (
+    <SessionProvider>
+      <Head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+      </Head>
+      <ErrorBoundary>
+        <Component {...pageProps} />
+      </ErrorBoundary>
+    </SessionProvider>
+  );
+}

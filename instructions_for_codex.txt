@@ -28,7 +28,7 @@ echo "▶ Creating .env.example (no secrets)..."
 cat > .env.example <<'ENV'
 # Discord
 DISCORD_TOKEN=
-DISCORD_CLIENT_ID=
+DISCORD_CLIENT_ID=1415387116564910161
 DISCORD_GUILD_ID=
 
 # OpenAI
