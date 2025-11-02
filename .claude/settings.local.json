@@ -17,7 +17,9 @@
       "Bash(pnpm lint:*)",
       "Bash(pnpm tsc:*)",
       "Bash(pnpm test:*)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(docker compose:*)",
+      "Read(//opt/slimy/**)"
     ],
     "deny": [],
     "ask": []
