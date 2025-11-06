@@ -1,0 +1,57 @@
+# AUTO-CODEX TEST PROMPT — Repository Hygiene, One-Fix-at-a-Time (2025-10-22)
+
+You are a coding agent with WRITE access to the Discord bot repo. Perform a full-codebase health pass, fixing issues **one at a time**, testing after each fix, and producing human-readable reports.
+
+## Scope
+- Platform: Node 18+, Discord.js v14, MySQL (`mysql2/promise`), OpenAI, Google Sheets.
+- Test images (for /club analyze): **/opt/slimy/app/screenshots/test** (current as of last Sunday). Weekly uploads should happen **Friday/Saturday/Sunday**. Club reset & updates occur on **Fridays**.
+- Timezone for weekly logic and dated artifacts: **America/Detroit**.
+
+## Objectives
+1) **Scan** the entire repo for: build errors, type errors (tsc --noEmit if TS), ESLint/Prettier issues, dead files, duplicate/near-duplicate files, case-insensitive filename collisions, incorrect export/file naming, unused deps, and circular deps.
+2) **Plan** fixes (ordered list). For each item: create a tiny commit, run tests, and record result.
+3) **Validate** /club commands in **TEST_MODE** (dry-run) using the project's harness (or create one if missing): `npm run refresh:commands` → restart → dry-run slash tests.
+4) **Weekly boundary sanity**: ensure weekly change windows are parameterized for **Friday 00:00 America/Detroit**; do **NOT** hardcode Monday. Note: screenshots should be ingested Fri–Sun.
+5) **Final sweep**: run the scanners again; fix remaining issues; regenerate reports.
+
+## Required Artifacts
+- **command-test-report.txt** — overwritten with this run’s results.
+- **repo-hygiene-report.txt** — summary of scans (before/after), key issues, and per-fix outcomes.
+- **auto-codex-test-run-2025-10-22.md** — detailed log: ordered fix list, commands run, outputs, and commit SHAs.
+- Update **UPDATES.md** with a dated entry “2025-10-22 — Hygiene pass & weekly boundary parameterization”.
+
+## Detailed Steps
+A. Discovery & Setup
+- Detect package manager; install deps; print Node and npm/pnpm/yarn versions.
+- If TS present, run `tsc -v` and `tsc --noEmit`.
+- Run ESLint + Prettier checks; attempt `--fix` where safe.
+- Enumerate the tree; compute SHA-1 for files > 512B to find duplicates; note case-insensitive filename clashes.
+
+B. Static/Runtime Analysis
+- Build (or typecheck). Note errors/warnings.
+- Grep for unused exported functions/modules; detect circular deps (madge or equivalent).
+- Detect mismatches: file name vs default export; index barrels that hide duplicate symbol names.
+
+C. Ordered Fix Loop (one fix per commit)
+For each issue:
+1. Create a small branch/commit: `fix(hygiene): <short description>`.
+2. Apply the fix with minimal footprint.
+3. Run: lint → typecheck → unit/integration (if any) → **dry-run slash tests** (`node scripts/run-slash-tests.js` or equivalent).
+4. If passes, keep; if fails, revert/adjust and retest.
+5. Append a row to **repo-hygiene-report.txt** with status and timing.
+
+D. Weekly Boundary & /club Validation
+- Ensure config/env allows **Friday 00:00 America/Detroit** as weekly boundary (not Monday). Add env like `CLUB_WEEKLY_BOUNDARY="FRI_00:00_America/Detroit"` if missing.
+- In **TEST_MODE**, simulate ingestion from **/opt/slimy/app/screenshots/test** and run `/club analyze` (dry) → preview/confirm path → `/club stats` to ensure outputs render.
+
+E. Final Sweep & Reports
+- Re-run all scans. If any new deltas are found, loop one-fix-at-a-time again.
+- Overwrite **command-test-report.txt** with the latest results.
+- Write **repo-hygiene-report.txt** and **auto-codex-test-run-2025-10-22.md** with complete details.
+- Update **UPDATES.md** entry for today.
+
+## Rules
+- Make **many small commits**, each with a single purpose.
+- **Never** skip tests between fixes.
+- Do not change product behavior except where hygiene or the Friday boundary parameterization requires.
+- Output must be self-contained in the listed artifacts.

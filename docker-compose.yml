@@ -1,0 +1,56 @@
+
+name: slimy-stack
+services:
+  db:
+    image: mysql:8.0
+    container_name: slimy-db
+    restart: unless-stopped
+    env_file: .env.db
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -p\"$$MYSQL_ROOT_PASSWORD\" >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    ports:
+      - "127.0.0.1:3306:3306"            # private
+    volumes:
+      - ../ops/mysql:/var/lib/mysql
+    networks: [ slimy-net ]
+
+  adminer:
+    image: adminer:latest
+    container_name: slimy-adminer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"            # tunnel only
+    depends_on: [ db ]
+    networks: [ slimy-net ]
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: slimy-bot
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: ".env"
+    ports:
+      - "127.0.0.1:3000:3000"            # Health check endpoints
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - ../ops/logs:/app/logs
+      - ../ops/bot-data:/app/data
+      - ./google-service-account.json:/app/google-service-account.json:ro
+    networks: [ slimy-net ]
+
+networks:
+  slimy-net:
+    external: true

@@ -1,434 +1,439 @@
 "use strict";
 
 const express = require("express");
-const { requireAuth, requireRole, requireGuildMember } = require("../middleware/auth");
-const { cacheGuildData, cacheUserData, getAPICache } = require("../middleware/cache");
-const { guilds } = require("../lib/validation/schemas");
-const guildService = require("../services/guild.service");
-const metrics = require("../lib/monitoring/metrics");
-const { apiHandler } = require("../lib/errors");
+const multer = require("multer");
+const { z } = require("zod");
+
+const { requireAuth } = require("../middleware/auth");
+const { requireCsrf } = require("../middleware/csrf");
+const { requireRole, requireGuildAccess } = require("../middleware/rbac");
+const { validateBody, validateQuery } = require("../middleware/validate");
+const settingsService = require("../services/settings");
+const personalityService = require("../services/personality");
+const channelService = require("../services/channels");
+const correctionsService = require("../services/corrections");
+const usageService = require("../services/usage");
+const healthService = require("../services/health");
+const { rescanMember } = require("../services/rescan");
+const { recordAudit } = require("../services/audit");
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 6 * 1024 * 1024,
+  },
+});
 
 const router = express.Router();
+
+const settingsSchema = z.object({
+  sheetUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((val) => (val === "" ? null : val)),
+  weekWindowDays: z
+    .union([z.number().int().min(1).max(14), z.null()])
+    .optional(),
+  thresholds: z
+    .object({
+      warnLow: z.union([z.number(), z.null()]).optional(),
+      warnHigh: z.union([z.number(), z.null()]).optional(),
+    })
+    .partial()
+    .optional(),
+  tokensPerMinute: z.union([z.number().int().positive(), z.null()]).optional(),
+  testSheet: z.boolean().optional(),
+});
+
+const personalitySchema = z.object({
+  profile: z.record(z.any()).default({}),
+});
+
+const channelEntrySchema = z.object({
+  channelId: z.string().min(1),
+  channelName: z.string().min(1).optional(),
+  modes: z.record(z.any()).default({}),
+  allowlist: z.array(z.string()).default([]),
+});
+
+const channelsSchema = z.object({
+  channels: z.array(channelEntrySchema).default([]),
+});
+
+const correctionsQuerySchema = z.object({
+  weekId: z.string().optional(),
+});
+
+const correctionSchema = z
+  .object({
+    weekId: z.string().optional(),
+    memberKey: z.string().optional(),
+    displayName: z.string().optional(),
+    memberInput: z.string().optional(),
+    metric: z.enum(["total", "sim"]),
+    value: z.union([z.number(), z.string()]),
+    reason: z.string().optional(),
+  })
+  .refine(
+    (data) => data.memberKey || data.displayName || data.memberInput,
+    "memberKey or displayName is required",
+  );
+
+const usageQuerySchema = z.object({
+  window: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+});
+
 router.use(requireAuth);
 
+router.get("/", (req, res) => {
+  res.json({ guilds: req.user.guilds || [] });
+});
 
-// Guild CRUD operations
-
-/**
- * GET /api/guilds
- * List all guilds with pagination
- */
-router.get("/", requireRole("admin"), guilds.list, cacheUserData(300), apiHandler(async (req, res) => {
-  const {
-    limit = 50,
-    offset = 0,
-    search,
-    includeMembers = false,
-  } = req.query;
-
-  const result = await guildService.listGuilds({
-    limit: parseInt(limit),
-    offset: parseInt(offset),
-    search,
-    includeMembers: includeMembers === "true",
-  });
-
-  metrics.recordApiCall("guilds.list");
-  return result;
-}, { routeName: "guilds/list" }));
-
-/**
- * POST /api/guilds
- * Create a new guild
- */
-router.post("/", requireRole("admin"), express.json(), guilds.create, apiHandler(async (req, res) => {
-  const { discordId, name, settings = {} } = req.body;
-
-  const guild = await guildService.createGuild({
-    discordId,
-    name,
-    settings,
-  });
-
-  // Invalidate cache for guilds list
-  const cache = getAPICache();
-  await cache.invalidate('api:*guilds*');
-
-  metrics.recordApiCall("guilds.create");
-  res.status(201); // Set status before returning
-  return guild;
-}, {
-  routeName: "guilds/create",
-  errorMapper: (error, req, res) => {
-    if (error.message.includes("already exists")) {
-      res.status(409).json({ error: "guild_already_exists" });
-      return false; // Don't continue with default error handling
+router.get(
+  "/:guildId/settings",
+  requireGuildAccess,
+  async (req, res, next) => {
+    try {
+      const result = await settingsService.getSettings(req.params.guildId, {
+        includeTest: req.query.test === "true",
+      });
+      res.json(result);
+    } catch (err) {
+      next(err);
     }
-    // Let default error handling take over
-    return null;
-  }
-}));
+  },
+);
 
-/**
- * GET /api/guilds/:id
- * Get guild by ID
- */
-router.get("/:id", requireGuildMember(), cacheGuildData(180), apiHandler(async (req, res) => {
-  const { id } = req.params;
-  const { includeMembers = true } = req.query;
-
-  const guild = await guildService.getGuildById(id);
-
-  // Check if user has permission to view this guild
-  if (req.user.role !== "admin") {
-    const hasPermission = await guildService.checkPermission(
-      req.user.id,
-      id,
-      "view_members"
-    );
-    if (!hasPermission) {
-      res.status(403).json({ error: "insufficient_permissions" });
-      return;
+router.put(
+  "/:guildId/settings",
+  requireGuildAccess,
+  requireRole("editor"),
+  requireCsrf,
+  validateBody(settingsSchema),
+  async (req, res, next) => {
+    try {
+      const result = await settingsService.updateSettings(
+        req.params.guildId,
+        req.validated.body,
+      );
+      await recordAudit({
+        adminId: req.user.sub,
+        action: "guild.settings.update",
+        guildId: req.params.guildId,
+        payload: req.validated.body,
+      });
+      res.json(result);
+    } catch (err) {
+      next(err);
     }
-  }
+  },
+);
 
-  metrics.recordApiCall("guilds.get");
-  return includeMembers === "false" ? { ...guild, members: undefined } : guild;
-}, {
-  routeName: "guilds/get",
-  errorMapper: (error, req, res) => {
-    if (error.message === "Guild not found") {
-      res.status(404).json({ error: "guild_not_found" });
-      return false; // Don't continue with default error handling
+router.get(
+  "/:guildId/personality",
+  requireGuildAccess,
+  async (req, res, next) => {
+    try {
+      const record = await personalityService.getPersonality(
+        req.params.guildId,
+      );
+      res.json(record);
+    } catch (err) {
+      next(err);
     }
-    // Let default error handling take over
-    return null;
-  }
-}));
+  },
+);
 
-/**
- * PATCH /api/guilds/:id
- * Update guild
- */
-router.patch("/:id", requireGuildMember(), express.json(), guilds.update, apiHandler(async (req, res) => {
-  const { id } = req.params;
-  const { name, settings } = req.body;
-
-  // Check permissions
-  if (req.user.role !== "admin") {
-    const hasPermission = await guildService.checkPermission(
-      req.user.id,
-      id,
-      "manage_guild"
-    );
-    if (!hasPermission) {
-      res.status(403).json({ error: "insufficient_permissions" });
-      return;
+router.put(
+  "/:guildId/personality",
+  requireGuildAccess,
+  requireRole("editor"),
+  requireCsrf,
+  validateBody(personalitySchema),
+  async (req, res, next) => {
+    try {
+      const record = await personalityService.updatePersonality(
+        req.params.guildId,
+        req.validated.body.profile,
+        { userId: req.user.sub },
+      );
+      await recordAudit({
+        adminId: req.user.sub,
+        action: "guild.personality.update",
+        guildId: req.params.guildId,
+      });
+      res.json(record);
+    } catch (err) {
+      next(err);
     }
-  }
+  },
+);
 
-  const guild = await guildService.updateGuild(id, { name, settings });
-
-  // Invalidate cache for this guild and guilds list
-  const cache = getAPICache();
-  await cache.invalidate(`api:*guild_${id}*`);
-  await cache.invalidate('api:*guilds*');
-
-  metrics.recordApiCall("guilds.update");
-  return guild;
-}, {
-  routeName: "guilds/update",
-  errorMapper: (error, req, res) => {
-    if (error.message === "Guild not found") {
-      res.status(404).json({ error: "guild_not_found" });
-      return false; // Don't continue with default error handling
+router.get(
+  "/:guildId/channels",
+  requireGuildAccess,
+  async (req, res, next) => {
+    try {
+      const channels = await channelService.getChannelSettings(
+        req.params.guildId,
+      );
+      res.json({ channels });
+    } catch (err) {
+      next(err);
     }
-    // Let default error handling take over
-    return null;
-  }
-}));
+  },
+);
 
-/**
- * DELETE /api/guilds/:id
- * Delete guild
- */
-router.delete("/:id", requireRole("admin"), apiHandler(async (req, res) => {
-  const { id } = req.params;
-
-  await guildService.deleteGuild(id);
-
-  metrics.recordApiCall("guilds.delete");
-  return { success: true };
-}, {
-  routeName: "guilds/delete",
-  errorMapper: (error, req, res) => {
-    if (error.message === "Guild not found") {
-      res.status(404).json({ error: "guild_not_found" });
-      return false; // Don't continue with default error handling
+router.put(
+  "/:guildId/channels",
+  requireGuildAccess,
+  requireRole("editor"),
+  requireCsrf,
+  validateBody(channelsSchema),
+  async (req, res, next) => {
+    try {
+      const result = await channelService.replaceChannelSettings(
+        req.params.guildId,
+        req.validated.body.channels,
+        { userId: req.user.sub },
+      );
+      await recordAudit({
+        adminId: req.user.sub,
+        action: "guild.channels.update",
+        guildId: req.params.guildId,
+        payload: { count: req.validated.body.channels.length },
+      });
+      res.json({ channels: result });
+    } catch (err) {
+      next(err);
     }
-    // Let default error handling take over
-    return null;
-  }
-}));
+  },
+);
 
-// Member management
-
-/**
- * GET /api/guilds/:id/members
- * Get guild members
- */
-router.get("/:id/members", requireGuildMember(), guilds.members, cacheGuildData(120), apiHandler(async (req, res) => {
-  const { id } = req.params;
-  const {
-    limit = 50,
-    offset = 0,
-    search,
-  } = req.query;
-
-  // Check permissions
-  if (req.user.role !== "admin") {
-    const hasPermission = await guildService.checkPermission(
-      req.user.id,
-      id,
-      "view_members"
-    );
-    if (!hasPermission) {
-      res.status(403).json({ error: "insufficient_permissions" });
-      return;
+router.get(
+  "/:guildId/corrections",
+  requireGuildAccess,
+  validateQuery(correctionsQuerySchema),
+  async (req, res, next) => {
+    try {
+      const corrections = await correctionsService.listCorrections(
+        req.params.guildId,
+        req.validated?.query?.weekId,
+      );
+      res.json({ corrections });
+    } catch (err) {
+      next(err);
     }
-  }
+  },
+);
 
-  const result = await guildService.getGuildMembers(id, {
-    limit: parseInt(limit),
-    offset: parseInt(offset),
-    search,
-  });
-
-  metrics.recordApiCall("guilds.members.list");
-  return result;
-}, { routeName: "guilds/members" }));
-
-/**
- * POST /api/guilds/:id/members
- * Add member to guild
- */
-router.post("/:id/members", requireGuildMember(), express.json(), guilds.addMember, apiHandler(async (req, res) => {
-  const { id } = req.params;
-  const { userId, roles = [] } = req.body;
-
-  // Check permissions
-  if (req.user.role !== "admin") {
-    const hasPermission = await guildService.checkPermission(
-      req.user.id,
-      id,
-      "manage_members"
-    );
-    if (!hasPermission) {
-      res.status(403).json({ error: "insufficient_permissions" });
-      return;
+router.post(
+  "/:guildId/corrections",
+  requireGuildAccess,
+  requireRole("editor"),
+  requireCsrf,
+  validateBody(correctionSchema),
+  async (req, res, next) => {
+    try {
+      const result = await correctionsService.createCorrection(
+        req.params.guildId,
+        req.validated.body,
+        { userId: req.user.sub },
+      );
+      await recordAudit({
+        adminId: req.user.sub,
+        action: "guild.corrections.add",
+        guildId: req.params.guildId,
+        payload: req.validated.body,
+      });
+      res.status(201).json(result);
+    } catch (err) {
+      next(err);
     }
-  }
+  },
+);
 
-  const member = await guildService.addMember(id, userId, roles);
+router.delete(
+  "/:guildId/corrections/:correctionId",
+  requireGuildAccess,
+  requireRole("editor"),
+  requireCsrf,
+  async (req, res, next) => {
+    try {
+      const correctionId = Number(req.params.correctionId);
+      if (!Number.isFinite(correctionId)) {
+        return res.status(400).json({ error: "invalid-correction-id" });
+      }
 
-  metrics.recordApiCall("guilds.members.add");
-  res.status(201); // Set status before returning
-  return member;
-}, {
-  routeName: "guilds/members/add",
-  errorMapper: (error, req, res) => {
-    if (error.message === "User not found") {
-      res.status(404).json({ error: "user_not_found" });
-      return false;
+      const success = await correctionsService.deleteCorrectionById(
+        req.params.guildId,
+        correctionId,
+      );
+      if (!success) {
+        return res.status(404).json({ error: "not-found" });
+      }
+      await recordAudit({
+        adminId: req.user.sub,
+        action: "guild.corrections.delete",
+        guildId: req.params.guildId,
+        payload: { id: correctionId },
+      });
+      return res.status(204).end();
+    } catch (err) {
+      next(err);
     }
-    if (error.message === "Guild not found") {
-      res.status(404).json({ error: "guild_not_found" });
-      return false;
+  },
+);
+
+router.post(
+  "/:guildId/rescan-user",
+  requireGuildAccess,
+  requireRole("editor"),
+  requireCsrf,
+  upload.single("file"),
+  async (req, res, next) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "file-required" });
+      }
+
+      const result = await rescanMember(
+        req.params.guildId,
+        {
+          fileBuffer: req.file.buffer,
+          fileMime: req.file.mimetype,
+          filename: req.file.originalname,
+          memberInput: req.body.member || req.body.memberInput,
+          metric: req.body.metric,
+          weekId: req.body.weekId,
+        },
+        { userId: req.user.sub },
+      );
+
+      await recordAudit({
+        adminId: req.user.sub,
+        action: "guild.rescan",
+        guildId: req.params.guildId,
+        payload: { member: req.body.member, metric: result.metric },
+      });
+
+      res.json(result);
+    } catch (err) {
+      next(err);
     }
-    if (error.message.includes("already a member")) {
-      res.status(409).json({ error: "user_already_member" });
-      return false;
+  },
+);
+
+router.get(
+  "/:guildId/usage",
+  requireGuildAccess,
+  validateQuery(usageQuerySchema),
+  async (req, res, next) => {
+    try {
+      const result = await usageService.getUsage(req.params.guildId, {
+        window: req.validated?.query?.window,
+        startDate: req.validated?.query?.startDate,
+        endDate: req.validated?.query?.endDate,
+      });
+      res.json(result);
+    } catch (err) {
+      next(err);
     }
-    // Let default error handling take over
-    return null;
-  }
-}));
+  },
+);
 
-/**
- * PATCH /api/guilds/:id/members/:userId
- * Update member roles
- */
-router.patch("/:id/members/:userId", requireGuildMember(), express.json(), guilds.updateMember, apiHandler(async (req, res) => {
-  const { id, userId } = req.params;
-  const { roles } = req.body;
-
-  // Check permissions
-  if (req.user.role !== "admin") {
-    const hasPermission = await guildService.checkPermission(
-      req.user.id,
-      id,
-      "manage_members"
-    );
-    if (!hasPermission) {
-      res.status(403).json({ error: "insufficient_permissions" });
-      return;
+router.get(
+  "/:guildId/health",
+  requireGuildAccess,
+  async (req, res, next) => {
+    try {
+      const result = await healthService.getHealth(req.params.guildId);
+      res.json(result);
+    } catch (err) {
+      next(err);
     }
-  }
+  },
+);
 
-  const member = await guildService.updateMemberRoles(id, userId, roles);
+router.get(
+  "/:guildId/export/corrections.csv",
+  requireGuildAccess,
+  requireRole("admin"),
+  async (req, res, next) => {
+    try {
+      const rows = await correctionsService.fetchCorrectionsForExport(
+        req.params.guildId,
+      );
+      const csv = correctionsService.correctionsToCsv(rows);
 
-  metrics.recordApiCall("guilds.members.update");
-  return member;
-}, {
-  routeName: "guilds/members/update",
-  errorMapper: (error, req, res) => {
-    if (error.message === "User is not a member of this guild") {
-      res.status(404).json({ error: "member_not_found" });
-      return false;
+      await recordAudit({
+        adminId: req.user.sub,
+        action: "guild.export.corrections.csv",
+        guildId: req.params.guildId,
+        payload: { count: rows.length },
+      });
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${req.params.guildId}-corrections.csv"`,
+      );
+      res.setHeader("Cache-Control", "no-store");
+      res.send(csv);
+    } catch (err) {
+      next(err);
     }
-    // Let default error handling take over
-    return null;
-  }
-}));
+  },
+);
 
-/**
- * DELETE /api/guilds/:id/members/:userId
- * Remove member from guild
- */
-router.delete("/:id/members/:userId", requireGuildMember(), apiHandler(async (req, res) => {
-  const { id, userId } = req.params;
-
-  // Check permissions
-  if (req.user.role !== "admin") {
-    const hasPermission = await guildService.checkPermission(
-      req.user.id,
-      id,
-      "manage_members"
-    );
-    if (!hasPermission) {
-      res.status(403).json({ error: "insufficient_permissions" });
-      return;
+router.get(
+  "/:guildId/export/corrections.json",
+  requireGuildAccess,
+  requireRole("admin"),
+  async (req, res, next) => {
+    try {
+      const rows = await correctionsService.fetchCorrectionsForExport(
+        req.params.guildId,
+      );
+      await recordAudit({
+        adminId: req.user.sub,
+        action: "guild.export.corrections.json",
+        guildId: req.params.guildId,
+        payload: { count: rows.length },
+      });
+      res.setHeader("Content-Disposition", `attachment; filename="${req.params.guildId}-corrections.json"`);
+      res.setHeader("Cache-Control", "no-store");
+      res.json(rows);
+    } catch (err) {
+      next(err);
     }
-  }
+  },
+);
 
-  await guildService.removeMember(id, userId);
-
-  metrics.recordApiCall("guilds.members.remove");
-  return { success: true };
-}, {
-  routeName: "guilds/members/remove",
-  errorMapper: (error, req, res) => {
-    if (error.message === "User is not a member of this guild") {
-      res.status(404).json({ error: "member_not_found" });
-      return false;
+router.get(
+  "/:guildId/export/personality.json",
+  requireGuildAccess,
+  requireRole("admin"),
+  async (req, res, next) => {
+    try {
+      const record = await personalityService.getPersonality(req.params.guildId);
+      await recordAudit({
+        adminId: req.user.sub,
+        action: "guild.export.personality.json",
+        guildId: req.params.guildId,
+      });
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${req.params.guildId}-personality.json"`,
+      );
+      res.setHeader("Cache-Control", "no-store");
+      res.json(record.profile || {});
+    } catch (err) {
+      next(err);
     }
-    // Let default error handling take over
-    return null;
-  }
-}));
-
-// Bulk operations
-
-/**
- * POST /api/guilds/:id/members/bulk-add
- * Bulk add members
- */
-router.post("/:id/members/bulk-add", requireGuildMember(), express.json(), guilds.bulkAddMembers, apiHandler(async (req, res) => {
-  const { id } = req.params;
-  const { members } = req.body;
-
-  // Check permissions
-  if (req.user.role !== "admin") {
-    const hasPermission = await guildService.checkPermission(
-      req.user.id,
-      id,
-      "manage_members"
-    );
-    if (!hasPermission) {
-      res.status(403).json({ error: "insufficient_permissions" });
-      return;
-    }
-  }
-
-  const result = await guildService.bulkAddMembers(id, members);
-
-  metrics.recordApiCall("guilds.members.bulk_add");
-  return result;
-}, { routeName: "guilds/members/bulk-add" }));
-
-/**
- * POST /api/guilds/:id/members/bulk-update
- * Bulk update member roles
- */
-router.post("/:id/members/bulk-update", requireGuildMember(), express.json(), guilds.bulkUpdateMembers, apiHandler(async (req, res) => {
-  const { id } = req.params;
-  const { updates } = req.body;
-
-  // Check permissions
-  if (req.user.role !== "admin") {
-    const hasPermission = await guildService.checkPermission(
-      req.user.id,
-      id,
-      "manage_members"
-    );
-    if (!hasPermission) {
-      res.status(403).json({ error: "insufficient_permissions" });
-      return;
-    }
-  }
-
-  const result = await guildService.bulkUpdateMemberRoles(id, updates);
-
-  metrics.recordApiCall("guilds.members.bulk_update");
-  return result;
-}, { routeName: "guilds/members/bulk-update" }));
-
-/**
- * POST /api/guilds/:id/members/bulk-remove
- * Bulk remove members
- */
-router.post("/:id/members/bulk-remove", requireGuildMember(), express.json(), guilds.bulkRemoveMembers, apiHandler(async (req, res) => {
-  const { id } = req.params;
-  const { userIds } = req.body;
-
-  // Check permissions
-  if (req.user.role !== "admin") {
-    const hasPermission = await guildService.checkPermission(
-      req.user.id,
-      id,
-      "manage_members"
-    );
-    if (!hasPermission) {
-      res.status(403).json({ error: "insufficient_permissions" });
-      return;
-    }
-  }
-
-  const result = await guildService.bulkRemoveMembers(id, userIds);
-
-  metrics.recordApiCall("guilds.members.bulk_remove");
-  return result;
-}, { routeName: "guilds/members/bulk-remove" }));
-
-// User guild relationships
-
-/**
- * GET /api/guilds/user/:userId
- * Get user's guilds
- */
-router.get("/user/:userId", guilds.userGuilds, cacheUserData(180), apiHandler(async (req, res) => {
-  const { userId } = req.params;
-
-  // Users can only view their own guilds unless they're admin
-  if (req.user.id !== userId && req.user.role !== "admin") {
-    res.status(403).json({ error: "insufficient_permissions" });
-    return;
-  }
-
-  const guilds = await guildService.getUserGuilds(userId);
-
-  metrics.recordApiCall("guilds.user_guilds");
-  return { guilds };
-}, { routeName: "guilds/user" }));
+  },
+);
 
 module.exports = router;

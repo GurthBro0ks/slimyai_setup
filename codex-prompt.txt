@@ -1,0 +1,238 @@
+# CODEX PROMPT — Refresh, Restart, Auto-Test, and Write Reports
+
+You have write access to a Discord.js v14 Node repo with slash commands in `commands/`. Create scripts to:
+
+* **Refresh** (register) slash commands (global + dev guilds if env says so).
+* **Restart** the running bot using PM2, Docker, systemd, or fallback `npm run start`.
+* **Auto-test** each slash command using **dry-run** mocks (no network side effects), capturing pass/fail.
+* Write:
+
+  * `command-test-report.txt` with detailed results,
+  * `manual-tests-1022.txt` (dated list of scenarios to test by hand).
+
+Follow the steps below and make atomic commits.
+
+## 0) Assumptions & ENV
+
+Add to `.env.example` (keep existing keys):
+
+```
+DISCORD_TOKEN=
+DISCORD_CLIENT_ID=
+DEV_GUILD_IDS=           # optional: comma-separated for faster dev registration
+PM2_NAME=snail-bot       # optional; used if pm2 is installed
+SYSTEMD_SERVICE=snail-bot.service  # optional
+DOCKER_COMPOSE_PATH=     # optional path to compose file
+TEST_MODE=1              # ensures handlers use mocks and skip real APIs during tests
+```
+
+In code, treat `process.env.TEST_MODE==='1'` as **dry-run**: skip OpenAI/Sheets/DB writes; return fixtures.
+
+## 1) Package scripts
+
+Update `package.json` with these entries (merge if keys already exist):
+
+```json
+{
+  "scripts": {
+    "refresh:commands": "node scripts/refresh-commands.js",
+    "restart:bot": "node scripts/restart-bot.js",
+    "test:slash": "node scripts/run-slash-tests.js",
+    "qa:full": "npm run refresh:commands && npm run restart:bot && node scripts/run-slash-tests.js"
+  }
+}
+```
+
+## 2) Command registration
+
+Create `scripts/refresh-commands.js`. It should:
+
+* Load all command JSON from `commands/` (builder data or exported `.data.toJSON()`).
+* If `DEV_GUILD_IDS` is set, register per-guild for those IDs; always also **upsert globally**.
+* Log counts and command names.
+
+Implementation sketch:
+
+```js
+// scripts/refresh-commands.js
+import 'dotenv/config';
+import fs from 'node:fs';
+import path from 'node:path';
+import { REST, Routes } from 'discord.js';
+
+const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+const clientId = process.env.DISCORD_CLIENT_ID;
+const devGuildIds = (process.env.DEV_GUILD_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+
+function loadCommands() {
+  const cmds = [];
+  const dir = path.resolve('commands');
+  for (const file of fs.readdirSync(dir)) {
+    if (!file.endsWith('.js') && !file.endsWith('.ts')) continue;
+    const mod = require(path.join(dir, file));
+    const data = (mod.data?.toJSON?.() || mod.data || mod.command?.data?.toJSON?.());
+    if (data?.name) cmds.push(data);
+  }
+  return cmds;
+}
+
+(async () => {
+  const commands = loadCommands();
+  console.log(`[refresh] Found ${commands.length} commands:`, commands.map(c => c.name).join(', '));
+
+  // Dev guilds (fast)
+  for (const gid of devGuildIds) {
+    await rest.put(Routes.applicationGuildCommands(clientId, gid), { body: commands });
+    console.log(`[refresh] Registered ${commands.length} to guild ${gid}`);
+  }
+  // Global (may take up to an hour to propagate, but register anyway)
+  await rest.put(Routes.applicationCommands(clientId), { body: commands });
+  console.log(`[refresh] Registered ${commands.length} globally`);
+})();
+```
+
+## 3) Restart script (multi-runtime detection)
+
+Create `scripts/restart-bot.js`. It should try, in order:
+
+1. **PM2**: if `pm2 -v` works, then `pm2 restart ${PM2_NAME||<first matching>}`.
+2. **Docker Compose**: if `docker compose` (or `docker-compose`) works and `DOCKER_COMPOSE_PATH` exists, run `docker compose -f <file> restart` (or `up -d --force-recreate` if needed).
+3. **systemd**: if `SYSTEMD_SERVICE` set, run `systemctl --user restart ...` then fallback `sudo systemctl restart ...`.
+4. **Fallback**: kill existing node matching `index.js` or `dist/index.js` then `npm run start -s`.
+
+The script must log which path it took and exit non-zero on failure.
+
+## 4) Dry-run test harness (no external effects)
+
+Create a tiny mock layer so command handlers can run without Discord/DB/APIs:
+
+```
+test/mocks/interaction.js
+test/mocks/context.js
+test/mocks/stubs.js
+```
+
+* `interaction.js`: Minimal **ChatInputCommandInteraction** shim:
+
+  * properties: `user`, `guildId`, `guild`, `channel`, `memberPermissions`, `options` (supports `getString/getInteger/getNumber/getBoolean/getAttachment/getUser/getRole`),
+  * methods: `reply/deferReply/editReply/followUp` that store messages into an in-memory log; return a promise.
+* `context.js`: provides a `makeInteractionFor(commandDef, overrides)` to create sensible defaults per command.
+* `stubs.js`: if `TEST_MODE==='1'`, export stub versions of:
+
+  * DB helpers (resolve promises with mock data),
+  * OpenAI/Sheets calls (return deterministic fixtures),
+  * File/network fetchers (return canned buffers/URLs).
+
+**Integration point:** in your command modules, branch on `TEST_MODE` to import stubs instead of real libs (or monkey-patch inside the test runner).
+
+## 5) Auto-runner
+
+Create `scripts/run-slash-tests.js`. It should:
+
+* **Discover** commands by importing every module in `commands/`.
+* Build a test **matrix**: at minimum run each command once with **default** arguments; add special cases:
+
+  * `/club stats`: `metric=both`, `top=5`, `format=embed|csv`
+  * `/club analyze`: set `force_commit=true` and supply a tiny fixture of “images” via the mocks so the handler path executes (but stubs skip OCR and DB).
+  * Permission tests: run each command as admin and as non-admin (expect a clean “no perms” reply when applicable).
+* **Execute** handlers: simulate `interactionCreate` by calling the exported `execute(interaction)` function (or whatever your repo uses).
+* Timeout each test (e.g., 30s). Catch and record thrown Errors.
+* **Collect results** into a table:
+
+  * command, variant, status (PASS/FAIL/SKIP), ms, key notes (e.g., “reply OK”, “no perms”, error snippet).
+* **Write** `command-test-report.txt` at repo root, with:
+
+  * Timestamp header,
+  * Environment summary (node, package manager, TEST_MODE, chosen runtime path),
+  * Per-command results (aligned, monospace block),
+  * A **failures** section with stack traces (trim to first 20 lines each).
+
+Example report row (use thousands separators and fixed widths):
+
+```
+/club stats   variant=both/embed   PASS   842 ms   reply: 1 embed, 1 button
+/club stats   variant=both/csv     PASS   913 ms   reply: 1 attachment (csv)
+/club analyze variant=force-dry    PASS  1241 ms   preview->commit stubbed
+```
+
+## 6) Manual test list (today’s date)
+
+Create `manual-tests-1022.txt` with a clear checklist, grouped by command. Use today’s date (Oct 22). Include:
+
+* **/club analyze**
+
+  * Upload 3–6 real “Manage Members” screenshots (mix of Sim/Power).
+  * Verify **Preview** shows: missing vs last week, new names, suspicious jumps (±85% default), low-confidence rows flagged.
+  * Try **OCR boost**; confirm new rows appear.
+  * Use **Manual Fix** modal to correct a name and set values for missing entries; confirm alias persists on next run.
+  * Approve & Commit; confirm Google Sheet “Club Latest” updates and sorts by Total Power.
+  * Re-run within same week; verify latest overwrites without duping history.
+
+* **/club stats**
+
+  * Run with `metric=both`, `top=10`, `format=embed`; verify clean tables (arrows, % bars), totals/averages accurate.
+  * Run with `format=csv`; open attachment; columns present.
+  * Permission check: non-admin without club role should get a polite denial.
+
+* **Permissions & Links**
+
+  * “Open Sheet” button opens to readable sheet for admins/club role.
+  * Ensure non-members cannot view.
+
+* **Edge cases**
+
+  * First ever week: % column blank, no division by zero.
+  * Extremely large totals render with separators, not scientific notation.
+  * Names with emojis/tags resolve to same member (normalizer works).
+
+End with a short **sign-off** section for who tested and when.
+
+## 7) Wire TEST_MODE into handlers
+
+For any commands that hit external services (DB, OpenAI, Google Sheets), add a minimal pathway:
+
+```js
+const TEST = process.env.TEST_MODE === '1';
+// Example:
+// const store = TEST ? require('../test/mocks/stubs').store : require('../lib/club-store');
+```
+
+Stubs should return plausible data so the handler can render embeds/tables normally.
+
+## 8) Output files
+
+Write both files to repo root:
+
+* `command-test-report.txt`
+* `manual-tests-1022.txt`
+
+Also add a brief entry to `UPDATES.md`:
+
+```md
+## 2025-10-22 — QA Suite
+- Scripts: `refresh:commands`, `restart:bot`, `test:slash`, `qa:full`
+- Auto test runner produces `command-test-report.txt`
+- Manual checklist: `manual-tests-1022.txt`
+```
+
+## 9) Commit plan
+
+Create commits:
+
+1. `feat(qa): refresh & restart scripts`
+2. `feat(qa): slash command test harness (dry-run)`
+3. `chore(env): TEST_MODE and example vars`
+4. `docs(qa): add UPDATES entry and manual test checklist`
+
+## 10) Final execution
+
+After writing files, run:
+
+* `npm run refresh:commands`
+* `npm run restart:bot`
+* `node scripts/run-slash-tests.js`
+
+Ensure the report files exist and contain results.
+
+**End of prompt.**
+

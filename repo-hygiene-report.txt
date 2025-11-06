@@ -1,0 +1,104 @@
+Repository Hygiene Report - Phase 1 Foundation Hardening
+Generated: 2025-10-27T20:54:21+00:00
+Environment: Production
+Repository: /opt/slimy/app
+
+================================================================================
+STATIC ANALYSIS FINDINGS
+================================================================================
+
+1. TRUST PROXY CONFIGURATION
+   Status: ✅ GOOD
+   Location: admin-api/src/app.js:13
+   Finding: `app.set("trust proxy", 1)` is correctly configured
+   Action: None required
+
+2. COOKIE DOMAIN CONFIGURATION
+   Status: ✅ GOOD
+   Location: admin-api/.env.admin.production
+   Finding: COOKIE_DOMAIN=.slimyai.xyz is correctly set
+   Action: None required
+
+3. API BASE URL FALLBACK
+   Status: ✅ GOOD
+   Location: admin-ui/lib/api.js:6
+   Finding: `const API_BASE = process.env.NEXT_PUBLIC_ADMIN_API_BASE || "";`
+   Action: None required - fallback already in place
+
+4. AUTH REDIRECT NOT ROLE-BASED
+   Status: ⚠️ NEEDS FIX
+   Location: admin-api/src/routes/auth.js:290
+   Finding: All users redirect to `/guilds` regardless of role
+   Current: `return res.redirect("/guilds");`
+   Expected: Role-based redirect (admin→/guilds, club→/club, member→/snail)
+   Action: Implement conditional redirect based on userRole
+
+5. GUILDS API SEQUENTIAL BOT CHECKS
+   Status: ⚠️ NEEDS FIX
+   Location: admin-api/src/routes/auth.js:168-222
+   Finding: Bot membership checks run sequentially in for-loop
+   Issue: Each check blocks the next, causing slow response times (10-20s)
+   Current: for (const guild of guilds) { await fetch(...) }
+   Expected: Parallel checks with Promise.all() and 2s timeout protection
+   Action: Refactor to parallel execution with timeout fallback
+
+6. GUILDS UI INFINITE SPINNER
+   Status: ⚠️ NEEDS FIX
+   Location: admin-ui/pages/guilds/index.js:54-59
+   Finding: Loading state shows spinner, but error handling may not clear loading flag
+   Issue: If API call fails, user sees "Loading your guilds…" forever
+   Expected: Show error card with friendly message on failure
+   Action: Ensure setLoading(false) in error handler, render error UI
+
+7. SLIME CHAT ADMIN-ONLY MESSAGES
+   Status: ⚠️ MISSING FEATURE
+   Location: admin-api/src/socket.js:115,137
+   Finding: All messages broadcast globally with io.emit()
+   Issue: No way for admins to send admin-only messages
+   Current: io.emit("chat:message", message) - everyone sees everything
+   Expected: Support adminOnly flag, emit to io.to("admins") when true
+   Action: Add server-side permission check and selective room emit
+
+   Location: admin-ui/pages/chat/index.js
+   Issue: No UI control for admin-only messages
+   Action: Add checkbox for admins to mark messages as admin-only
+
+8. DEBUG ENDPOINTS
+   Status: ⚠️ MISSING
+   Issue: No /api/ping or /api/auth/debug for troubleshooting
+   Expected: Simple health check and auth diagnostic endpoints
+   Action: Create admin-api/src/routes/debug.js
+
+9. NULL SAFETY IN GUILD ENDPOINTS
+   Status: ⚠️ NEEDS REVIEW
+   Locations:
+     - admin-api/src/routes/guilds.js (:guildId/health, :guildId/usage, :guildId/channels)
+   Issue: May throw errors if database or Discord API fails
+   Expected: Always return safe JSON with error object, never crash
+   Action: Wrap in try/catch, return { error: "...", hint: "..." }
+
+10. ADMIN PANEL PAGE NULL SAFETY
+    Status: ⚠️ NEEDS REVIEW
+    Locations: admin-ui/pages/guilds/[guildId]/*.js
+    Issue: Pages may white-screen if data is null/undefined
+    Expected: Defensive checks, error boundaries, loading states
+    Action: Add null checks and ErrorBoundary wrapper
+
+================================================================================
+PRIORITY FIXES FOR PHASE 1
+================================================================================
+
+CRITICAL (Must Fix):
+  [1] Role-based auth redirect (auth.js:290)
+  [2] Parallel guilds API checks with timeout (auth.js:168-222)
+  [3] Guilds UI error handling (guilds/index.js:54-59)
+  [4] Admin-only messages for Slime Chat (socket.js + chat/index.js)
+
+HIGH (Should Fix):
+  [5] Add debug endpoints (new file: debug.js)
+  [6] Null-safety in guild endpoints (guilds.js)
+  [7] Admin panel page null-safety (all [guildId]/*.js pages)
+
+================================================================================
+END OF REPORT
+================================================================================

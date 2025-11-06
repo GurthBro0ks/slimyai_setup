@@ -1,0 +1,2 @@
+# Daily backup at 03:00 local time
+0 3 * * * ENV_FILE=/opt/slimy/app/admin-api/.env.admin.production /opt/slimy/app/scripts/backup.sh >> /var/log/slimy/backup.log 2>&1

@@ -30,11 +30,28 @@ data_store.json.tmp
 # Runtime files
 .slimy-singleton.lock
 *.zip
-*.tar.gz
-lib/app-files-backup.tar.gz
-lib/app-files-backup.tar.gz.local
-test-outputs/
 
-# PM2
-.pm2/
+# Google Service Account Credentials
+google-service-account.json
+
+# Backup Files
+backups/
+*.sql
+*.sql.gz
+
+# Log Files
 *.log
+
+# Database files
+.env.db
+data.sqlite3
+*.db
+
+# Backup and temporary files
+*.bak
+*.bak.*
+.env.bak
+
+# Test and generated files
+test-results.json
+STRESS-TEST-REPORT.md

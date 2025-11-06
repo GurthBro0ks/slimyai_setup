@@ -1,181 +1,533 @@
 # SLIMY.AI BOT - UPDATE LOG
 
-## Session: Multi-Feature Sprint - /dream & Google Sheets
-**Date:** 2025-10-06
-**Status:** ✅ DEPLOYED
+## 2025-10-28 — Admin Panel Phase C (Production Hardening)
+**Status:** ✅ COMPLETED
 
----
+### Summary
+Production hardening for the Admin Panel: secure cookies & headers, same-origin API policy, reverse proxy manifests (Caddy/nginx) with TLS + SSE, backup/export endpoints, automated backup script, and owner-facing UI for triggering MySQL dumps with live logs.
 
-### 1. NEW: /dream Command - DALL-E 3 Image Generation ✅
+### Highlights
+1. 🔐 **Security & Env**
+   - Cookies now honour `secure`, `SameSite=Lax`, and `admin.slimyai.xyz` domain.
+   - CORS defaults to same-origin; Helmet enables HSTS, frame/CTO/referrer/permissions policies.
+   - `.env.admin.production.example` documents production knobs (HSTS, trusted proxy, cookie flags).
+2. 🌐 **Proxy & Services**
+   - Added `deploy/Caddyfile`, `deploy/nginx-admin.conf`, and provisioning script (`setup-nginx-admin.sh`).
+   - systemd/PM2 manifests run `admin-api` & `admin-ui` with automatic restarts.
+3. 💾 **Backups & Exports**
+   - API endpoints for corrections/personality downloads (CSV/JSON) plus `POST /api/backup/mysql-dump`.
+   - `scripts/backup.sh` + `deploy/cron/backup` generate daily MySQL dumps and guild data exports with 14-day rotation.
+4. 🖥️ **UI Enhancements**
+   - Settings page hosts export buttons, owner-only backup trigger with SSE logs, and recent backup listings.
+5. 📚 **Docs**
+   - New `DEPLOY.md` runbook covering DNS, TLS, services, OAuth, backup/restore flow.
 
-**Features:**
-- Generate images with DALL-E 3 using natural language prompts
-- 10 artistic style presets: standard, poster, neon, photoreal, anime, watercolor, 3d-render, pixel, sketch, cinematic
-- 10-second per-user cooldown (prevents API spam)
-- Enhanced prompts with style-specific hints
-- Error handling with automatic retry capability
+## 2025-10-23 — Club Analytics: Admin Corrections + Sheet Bidirectional Sync
+**Date:** 2025-10-23
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
 
-**File Created:**
-- `commands/dream.js` - Full DALL-E 3 integration (114 lines)
+### Summary
+Comprehensive admin corrections system enabling manual overrides for bad OCR values via Discord commands and Google Sheets. Includes bidirectional sync between Corrections sheet tab and database, automatic application during recompute, visual badging of corrected values, and single-user rescan capability.
 
-**Usage:**
+### Features Delivered
+
+1. ✅ **Corrections Database** (`club_corrections` table)
+   - Stores admin overrides by `{guild_id, week_id, member_key, metric}`
+   - Fields: `value BIGINT`, `reason VARCHAR(255)`, `source ENUM('sheet','command','rescan')`
+   - Audit trail: `created_by`, `created_at`
+   - Unique constraint prevents duplicate corrections
+   - Supports both `total` and `sim` metrics
+
+2. ✅ **Admin Commands** (`/club-admin`)
+   - `/club-admin correct <member> <metric> <value> [week] [reason]`
+     - Manual correction entry via Discord
+     - Supports K/M/B notation (e.g., "2.5M")
+     - Accepts @mentions or plain text member names
+     - Shows "Recompute & Push" button for immediate application
+   - `/club-admin corrections list [week]`
+     - View all active corrections for a week
+     - Groups by metric type
+     - Shows reasons and timestamps
+   - `/club-admin corrections remove <member> <metric> [week]`
+     - Delete a specific correction
+   - `/club-admin corrections sync`
+     - Import corrections from Google Sheets "Corrections" tab
+     - Shows added/updated/skipped counts
+   - `/club-admin rescan-user <member> <image> [metric]`
+     - Re-run OCR on single member from screenshot
+     - Auto-detects metric type or accepts override
+     - Creates correction from freshly scanned value
+
+3. ✅ **Recompute Pipeline Integration**
+   - Corrections automatically applied during `recomputeLatest()`
+   - Fetches corrections map after OCR aggregation
+   - Overrides OCR values where corrections exist
+   - Tracks corrected metrics with flags: `sim_corrected`, `total_corrected`
+   - Stores correction reasons: `sim_correction_reason`, `total_correction_reason`
+   - Logs corrections applied count
+
+4. ✅ **Google Sheets Bidirectional Sync**
+   - **Corrections Tab** (`ensureCorrectionsTab()`)
+     - Auto-creates "Corrections" sheet tab if missing
+     - Headers: Week ID | Member Name | Metric | Value | Reason | Updated By | Status
+     - Formatted with bold header and gray background
+   - **Sheet → Database** (`syncCorrectionsFromSheet()`)
+     - Reads corrections from sheet (skips header)
+     - Only syncs rows with `Status = "Active"` (case-insensitive)
+     - Validates member names via `canonicalize()`
+     - Parses values via `parsePower()` (supports K/M/B)
+     - Returns summary: `{added, updated, skipped, errors}`
+   - **CLI Integration** (`--apply-corrections`)
+     - Flag for `ingest-club-screenshots.js`
+     - Syncs corrections from sheet before ingesting
+     - Skipped in dry-run mode
+
+5. ✅ **Sheet UX Improvements**
+   - **Corrected Value Badging**
+     - Asterisk (*) appended to corrected values in Club Latest tab
+     - Applied to both SIM and Total columns
+     - Only shown when value is non-empty
+   - **Bot-Managed Warning**
+     - Header row in Club Latest tab: "⚠️ BOT-MANAGED: This tab is auto-updated..."
+     - Directs users to Corrections tab for manual edits
+     - Empty spacing row for visual separation
+
+6. ✅ **Single-User Rescan** (`handleRescanUser()`)
+   - Upload screenshot + specify member name
+   - Re-run OCR using `parseManageMembersImage()`
+   - Find specific member in parsed results
+   - Auto-create correction with `source='rescan'`
+   - Shows "Recompute & Push" button
+   - Useful for fixing bad OCR without full re-ingest
+
+### Technical Details
+
+**Database Schema:**
+```sql
+CREATE TABLE club_corrections (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  guild_id VARCHAR(32) NOT NULL,
+  week_id VARCHAR(16) NOT NULL,
+  member_key VARCHAR(120) NOT NULL,
+  display_name VARCHAR(120) NOT NULL,
+  metric ENUM('total','sim') NOT NULL,
+  value BIGINT NOT NULL,
+  reason VARCHAR(255) NULL,
+  source ENUM('sheet','command','rescan') NOT NULL DEFAULT 'command',
+  created_by VARCHAR(64) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_corr (guild_id, week_id, member_key, metric)
+);
+
+ALTER TABLE club_latest
+  ADD COLUMN sim_corrected BOOLEAN DEFAULT FALSE,
+  ADD COLUMN total_corrected BOOLEAN DEFAULT FALSE,
+  ADD COLUMN sim_correction_reason VARCHAR(255) NULL,
+  ADD COLUMN total_correction_reason VARCHAR(255) NULL;
 ```
-/dream prompt:"a cat on a skateboard" style:neon
-```
 
-**Style Options:**
-- **Standard** - Natural, clean rendering
-- **Poster** - Bold colors, graphic design
-- **Neon** - Cyberpunk, glowing aesthetics
-- **Photo-real** - Photorealistic, ultra-detailed
-
-**Testing:**
-- ✅ All 4 styles working
-- ✅ Rate limiting active (10s cooldown)
-- ✅ Error handling graceful
-- ✅ User-friendly messages
-
----
-
-### 2. NEW: Google Sheets Integration for Super Snail ✅
-
-**Features:**
-- Save Super Snail stats to Google Sheets automatically
-- Interactive "Save to Sheets" button on `/snail analyze`
-- View saved stats with `/snail sheet`
-- Complete setup guide with `/snail sheet-setup`
-- Auto-creates sheet structure if missing
-- Stores 9 stats: HP, ATK, DEF, RUSH, FAME, TECH, ART, CIV, FTH
-
-**Files Created:**
-- `lib/sheets.js` - Google Sheets read/write library (291 lines)
+**Correction Flow:**
+1. Admin enters correction via `/club-admin correct` or edits Corrections sheet
+2. Correction stored in `club_corrections` table
+3. During recompute, corrections fetched via `getCorrectionsMap()`
+4. OCR values overridden where corrections exist
+5. Corrected flags set in `club_latest`
+6. Sheet writer badges corrected values with asterisk
 
 **Files Modified:**
-- `commands/snail.js` - Added 3 new subcommands:
-  - `/snail sheet` - View saved stats (with embeds)
-  - `/snail sheet-setup` - Setup instructions
-  - `/snail analyze` - Enhanced with "Save to Sheets" button
+- `migrations/2025-10-23-club-corrections.sql` (new)
+- `migrations/2025-10-23-club-corrections-flags.sql` (new)
+- `lib/club-corrections.js` (new)
+- `lib/recompute-latest.js` (corrections integration)
+- `lib/club-sheets.js` (Corrections tab + sync + badging + warning)
+- `commands/club-admin.js` (new commands)
+- `scripts/ingest-club-screenshots.js` (--apply-corrections flag)
 
-**New Subcommands:**
+### Usage Examples
 
-1. **Analyze with Save Button:**
-   ```
-   /snail analyze screenshot:[upload]
-   → Analyzes stats
-   → Shows "💾 Save to Google Sheets" button
-   → Click to save (button expires in 60s)
-   ```
-
-2. **View Stats:**
-   ```
-   /snail sheet user:@username limit:5
-   → Shows last 5 stat entries as Discord embed
-   → Filter by user (optional)
-   → Customizable limit (max: 10)
-   ```
-
-3. **Setup Guide:**
-   ```
-   /snail sheet-setup
-   → Complete Google Cloud setup instructions
-   → Service account creation guide
-   → Environment variable configuration
-   ```
-
-**Authentication:**
-- Service account via JSON file or inline JSON
-- Environment variables: `GOOGLE_APPLICATION_CREDENTIALS`, `SHEETS_SPREADSHEET_ID`
-- Graceful fallback if credentials not configured
-
-**Sheet Structure:**
-| Timestamp | User ID | Username | HP | ATK | DEF | RUSH | FAME | TECH | ART | CIV | FTH | Screenshot URL |
-
-**Testing:**
-- ✅ Sheet auto-creation working
-- ✅ Save button appears after analysis
-- ✅ Data saves correctly to Google Sheets
-- ✅ Retrieval shows formatted embeds
-- ✅ Setup instructions comprehensive
-- ✅ Graceful handling when credentials missing
-
----
-
-### 3. Deployment
-
-**Commands Deployed:** 10 total (added `/dream`)
-
-```bash
-node deploy-commands.js
-pm2 restart slimy-bot
+**Command-Based Correction:**
+```
+/club-admin correct member:Alice metric:Total value:2.5M reason:OCR read 25M incorrectly
+→ ✅ Added correction for Alice (total) = 2,500,000
+→ Shows "Recompute & Push" button
 ```
 
-**Status:**
-- ✅ Bot online and healthy
-- ✅ All commands loaded successfully
-- ✅ Both new features operational
+**Sheet-Based Correction:**
+1. Open Google Sheets → "Corrections" tab
+2. Add row: `2025-W43 | Bob | sim | 1.8M | Bad OCR | admin@example.com | Active`
+3. Run: `/club-admin corrections sync`
+4. Run: `/club-admin rollback recompute:y push:y`
+
+**Single-User Rescan:**
+```
+/club-admin rescan-user member:Carol image:<screenshot.png>
+→ OCR finds Carol with total=3.2M
+→ ✅ Correction created from rescan
+→ Shows "Recompute & Push" button
+```
+
+**Headless Ingest with Corrections:**
+```bash
+node scripts/ingest-club-screenshots.js \
+  --guild 1234567890 \
+  --dir screenshots/2025-10-23 \
+  --apply-corrections \
+  --commit
+```
 
 ---
 
-### Files Summary
+## 2025-10-23 — Club Analytics Hardening: Anti-Inflation + SIM/Total + Recompute
+**Date:** 2025-10-23
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
 
-**Created:**
-- `commands/dream.js` - /dream command
-- `lib/sheets.js` - Google Sheets integration
-- `MULTI-FEATURE-SPRINT-SUMMARY.md` - Detailed documentation
+### Summary
+Comprehensive club analytics overhaul addressing OCR inflation bugs, SIM vs Total Power separation, one-row-per-member aggregation, and recompute-from-snapshot capability (no OCR re-run). Includes anti-inflation number parser, member-cap guard, enhanced verifier, and headless operations for production workflows.
 
-**Modified:**
-- `commands/snail.js` - Added Google Sheets integration
-- `.env` - Added SHEETS_SPREADSHEET_ID placeholder
+### Features Delivered
 
-**Total New Code:** ~500+ lines
+1. ✅ **Robust Number Parser** (`lib/numparse.js`) — Anti-inflation heuristics
+   - Normalizes OCR confusions: O→0, l/I→1, unicode separators
+   - Parses suffix notation: 10.1B, 325M, 1.5K
+   - Parses grouped numbers: 218,010,208
+   - **Anti-inflation heuristics**:
+     - Trailing extra digit detection (×10 lookalike): `2180102088` → `218010208`
+     - Bad grouping fix: `1,234,5678` → `1,234,567`
+     - Outlier detection with page median threshold (8x)
+   - Returns `{ value, corrected?, reason? }` for transparency
+   - Comprehensive test suite (59 tests, all passing)
+
+2. ✅ **SIM vs TOTAL Page Classification** — Distinguish power types
+   - New `classifyPage()` function in `lib/club-vision.js`
+   - Detects "Sim Power" vs "Power" (total) from screenshots
+   - Filename hint support: `sim-*` or `sim_*` forces sim classification
+   - Low-detail vision API call for fast classification
+   - Integrated `parsePower()` for all number parsing with correction metadata
+
+3. ✅ **Member-Key Aggregation** — One row per member
+   - **Database migration** (`migrations/2025-10-23-club-member-key.sql`):
+     - Add `member_key VARCHAR(120)` to `club_metrics` and `club_latest`
+     - Replace `club_latest` primary key with `unique(guild_id, member_key)`
+     - Add `unique(snapshot_id, member_key, metric)` to `club_metrics`
+     - Backfill `member_key` from `club_members.name_canonical`
+   - **Metric emission** with UPSERT: `ON DUPLICATE KEY UPDATE value = GREATEST(existing, new)`
+   - **Aggregation**: Query by `member_key` to get union of all members (sim OR total)
+   - **One row per member** in `club_latest` with both `sim_power` and `total_power`
+   - **Week-over-week** comparison joins on `member_key` (not `member_id`)
+
+4. ✅ **Sheet Writer** — SIM + Total columns intact
+   - Already correct: writes **Name | SIM Power | Total Power | Change %**
+   - Sources from `club_latest.{sim_power, total_power}`
+   - Leaves SIM blank if null; sorts by Total Power desc
+
+5. ✅ **Member-Cap Guard** — Prevent noisy commits
+   - CLI flag: `--cap-hint <N>` to specify expected member count
+   - Blocks commits if `COUNT(DISTINCT member_key) > cap_hint + 1`
+   - Shows preview of parsed members when blocked
+   - Override: `--force-commit` flag for admins
+   - Exits with error code 1 when blocked (non-strict mode)
+
+6. ✅ **Enhanced Verifier** — Week IDs + member counts
+   - Displays distinct week_ids with count (expect 1 for consistency)
+   - Shows distinct `member_key` count vs total rows
+   - Reports members with null `sim_power`
+   - Warns if multiple week_ids detected (data inconsistency)
+   - Keeps existing thresholds system: `--warn-low`, `--warn-high`, `--strict`
+   - Non-strict mode: warns but exits 0; strict mode fails on warnings (exits 1)
+
+7. ✅ **Recompute Tool** — Rebuild without OCR
+   - **Library** (`lib/recompute-latest.js`):
+     - Accept `{guildId, snapshotId?, weekId?, force?, capHint?, logger?}`
+     - Resolve week ID via anchor (Fri 04:30 PT)
+     - Choose latest snapshot for resolved week if not specified
+     - Aggregate from `club_metrics` using `member_key` (union/MAX logic)
+     - Enforce member-cap unless `force:true`
+     - Compute WoW % by comparing to previous week's snapshot
+     - Replace `club_latest` in transaction
+     - Return summary: `{weekId, snapshotId, members, sumTotal, sumSim, replacedRows, warnings}`
+   - **CLI** (`scripts/recompute-from-snapshot.js`):
+     - Flags: `--guild`, `--snapshot`/`--latest`, `--week`, `--rebuild-wow`, `--push-sheet`, `--force`, `--dry`, `--cap-hint`, `--json`
+     - Dry run: preview without writing
+     - Push sheet: sync to Google Sheets after recompute
+     - JSON output: write summary to file
+   - **NPM scripts**:
+     - `npm run recompute:latest -- --dry`
+     - `npm run recompute:push`
+
+8. ✅ **Headless Operations** — Production-ready workflows
+   ```bash
+   export GUILD_ID="1176605506912141444"
+
+   # Ingest screenshots (dry-run + commit)
+   node scripts/ingest-club-screenshots.js \
+     --guild "$GUILD_ID" \
+     --dir "/opt/slimy/app/screenshots/test" \
+     --type both --dry --debug
+
+   node scripts/ingest-club-screenshots.js \
+     --guild "$GUILD_ID" \
+     --dir "/opt/slimy/app/screenshots/test" \
+     --type both --commit
+
+   # Verify aggregates
+   npm run verify:stats
+
+   # Recompute from snapshot
+   npm run recompute:latest -- --dry
+   npm run recompute:push
+   ```
+
+### Database Migrations Required
+```bash
+# Run migration script
+node scripts/run-migration.js migrations/2025-10-23-club-member-key.sql
+```
+
+### Dependencies Added
+```bash
+npm install luxon  # For week anchor calculations
+```
+
+### Commits (7 total)
+```
+6566449 - feat(numparse): robust power parser with anti-inflation heuristics + tests
+442df4e - feat(vision): page classifier + integrate parsePower with corrections
+d16f7d4 - feat(aggregate): one row/member with member_key + upsert metrics
+36fb380 - feat(guard): member-cap sanity check with force-commit override
+4030be1 - chore(verify): add week_id, distinct members, null sim count, CLI flags
+aade2a5 - feat(recompute): rebuild club_latest from snapshot without OCR
+[docs]  - docs: SIM/Total columns, anchor reminder, ingest/verify/recompute usage
+```
+
+### What Works Now
+- ✅ No more inflated power values (trailing digits fixed)
+- ✅ SIM and Total Power properly separated in database and sheets
+- ✅ One row per member with both metrics (union aggregation)
+- ✅ Member-cap guard prevents duplicate/alias noise
+- ✅ Recompute without re-running expensive OCR
+- ✅ Headless workflows for cron jobs/automation
 
 ---
+
+## 2025-10-23 — Usage costs + TPM budget + week anchor (Fri 04:30 PT)
+**Date:** 2025-10-23
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
+
+### Summary
+Implemented admin `/usage` command with OpenAI cost tracking, raised TPM budget to 2M with improved 429 backoff, and introduced week anchor utilities (Fri 04:30 PT) for consistent club analytics boundaries.
+
+### Features Delivered
+
+1. ✅ **`/usage` Command (Admin Only)** — OpenAI usage & cost tracking
+   - Time windows: today, 7d, 30d, this_month, custom ranges
+   - Fetches data from OpenAI `/v1/usage` API with graceful fallback
+   - **Cost calculation**:
+     - gpt-4o-mini: $0.15/M input + $0.60/M output tokens
+     - DALL-E 3: $0.04 standard, $0.08 HD per image
+   - Displays model breakdown, token counts, image counts, costs, and grand total
+   - Pricing env-overridable via `PRICE_4OMINI_IN/OUT`, `PRICE_DALLE3_STANDARD/HD`
+
+2. ✅ **DALL-E 3 Instrumentation** — Quality tracking for accurate costs
+   - Added `quality` and `model` columns to `image_generation_log` table
+   - Updated `generateImage()` to accept quality parameter (standard/hd)
+   - Logs all image generations with quality tier for cost breakdowns
+   - **Migration needed**: `ALTER TABLE image_generation_log ADD COLUMN quality VARCHAR(20) DEFAULT 'standard'; ADD COLUMN model VARCHAR(50) DEFAULT 'dall-e-3';`
+
+3. ✅ **OpenAI TPM Budget** — 2,000,000 TPM with improved 429 backoff
+   - Configurable via `OPENAI_TPM_BUDGET` env variable (default: 2M)
+   - Tracks token usage in sliding 1-minute window
+   - Respects `Retry-After` header from 429 responses
+   - Exponential backoff: 1.5x multiplier, capped at 60s
+   - Logs throttle warnings max once per minute
+   - Wraps all OpenAI client methods with automatic retry logic
+
+4. ✅ **Week Anchor Utilities** — Fri 04:30 PT for club analytics
+   - New `lib/week-anchor.js` with luxon-based datetime handling
+   - Default anchor: **Friday 04:30 America/Los_Angeles** (UTC-7)
+   - Env overrides: `CLUB_WEEK_ANCHOR_DAY`, `CLUB_WEEK_ANCHOR_TIME`, `CLUB_WEEK_ANCHOR_TZ`
+   - Functions: `getAnchor()`, `getLastAnchor()`, `getNextAnchor()`, `getWeekId()`, `formatAnchorDisplay()`
+   - Week ID format: `YYYY-Www` (e.g., "2025-W43")
+   - Integrated into `/club-stats` footer with timezone conversions (PT/Detroit/UTC)
 
 ### Environment Variables Added
-
 ```bash
-# Google Sheets Integration (optional)
-SHEETS_SPREADSHEET_ID=your_spreadsheet_id_here
-GOOGLE_APPLICATION_CREDENTIALS=./google-service-account.json
-# OR
-GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+# OpenAI Usage & Cost Tracking
+OPENAI_TPM_BUDGET=2000000  # Tokens per minute budget
+PRICE_4OMINI_IN=0.15       # gpt-4o-mini input cost per 1M tokens
+PRICE_4OMINI_OUT=0.6       # gpt-4o-mini output cost per 1M tokens
+PRICE_DALLE3_STANDARD=0.04 # DALL-E 3 standard quality per image
+PRICE_DALLE3_HD=0.08       # DALL-E 3 HD quality per image
+
+# Week Anchor (replaces CLUB_WEEKLY_BOUNDARY)
+CLUB_WEEK_ANCHOR_DAY=FRI
+CLUB_WEEK_ANCHOR_TIME=04:30
+CLUB_WEEK_ANCHOR_TZ=America/Los_Angeles
 ```
 
+### Commits (3 total)
+```
+8b4a5d9 - feat(usage): admin /usage with cost math (4o-mini tokens + DALL-E 3 per-image)
+f37d504 - chore(openai): raise TPM to 2,000,000 via OPENAI_TPM_BUDGET + improved 429 backoff
+7c6aae7 - feat(week): anchor utils + Fri 04:30 PT integration in stats/analyze
+```
+
+### Database Migrations Needed
+```sql
+-- Add quality and model tracking to image generation logs
+ALTER TABLE image_generation_log
+  ADD COLUMN quality VARCHAR(20) DEFAULT 'standard',
+  ADD COLUMN model VARCHAR(50) DEFAULT 'dall-e-3',
+  ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  ADD INDEX idx_image_created (created_at);
+```
+
+### What's Next
+- Multi-upload support for `/club analyze` (attachment collector + from_recent:N)
+- Message context command "Analyze Screenshots"
+- Per-guild week anchor overrides via `/club-admin`
+- Week ID integration into club_snapshots table
+
 ---
 
-## Session: Updated Vision Model to GPT-4o
-**Date:** 2025-10-06
-**Status:** ✅ DEPLOYED
+## 2025-10-23 — Sheets sync + totals fixed
+**Date:** 2025-10-23
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
+
+### Summary
+- Club stats now sum `club_latest.total_power` only, treat nulls safely, and format totals/averages with compact output (≈10.1B expectation).
+- `/club analyze` embeds report Google Sheets sync status; failures surface to callers and keep logs concise.
+- Google Sheets push honours per-guild IDs, auto-creates the `Club Latest` tab, and throws actionable errors when the service account lacks access.
+- Added QA helpers: `scripts/verify-club-stats.js` regression snapshot + warnings, harnessed test-mode stubs, and “No prior week yet” message for empty movers.
+
+## 2025-10-23 — Headless ingest + verifier
+**Date:** 2025-10-23
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
+
+### Summary
+- Added CLI pipeline `scripts/ingest-club-screenshots.js` to mirror `/club analyze` for automated runs (snapshot commit + Sheet sync).
+- Split reusable embed builder into `lib/club-stats-service.js` and introduced `scripts/post-stats-to-channel.js` for dev spot-checks.
+- Replaced stats verifier with guild-scoped tool that writes `out/verify-*.txt` and warns when totals fall outside the expected band (~1–30 B).
+- Wired npm helpers (`ingest:test`, `verify:stats`, `spotcheck:stats`) and ingested the latest `/opt/slimy/app/screenshots/test` batch via CLI.
+
+
+## 2025-10-22 — Bulletproof club analytics + admin console + SLOs
+**Date:** 2025-10-22
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
+
+### Summary
+Implemented Option C "Bulletproof" enhancements for club analytics, including two-model ensemble OCR, 100% coverage requirement, second approver system, admin console, cohort analysis, and volatility leaderboards. Significantly improved accuracy and safety of weekly club data commits.
+
+### Phase 1: Accuracy Hardening (Paranoid Mode)
+1. ✅ **Two-Model Ensemble OCR** — gpt-4o-mini + gpt-4o with digit-level reconciliation
+   - Parallel parsing with two models, cross-validation of every digit
+   - Disagreement tracking and automatic resolution (stronger model wins)
+   - Optional via `CLUB_USE_ENSEMBLE=1` flag
+
+2. ✅ **100% Coverage Requirement** — Block commits unless all last-week members present
+   - Coverage guard triggers if any members missing from previous week
+   - Shows coverage percentage in preview footer and embed
+   - Force commit still available for admins to override
+
+3. ✅ **Second Approver System** — Require 2 admins for risky commits
+   - Triggers when coverage <100% OR >5 members exceed ±40% WoW change
+   - Tracks approvals per session with audit trail
+   - Shows approval status in preview (1/2, 2/2 approvals)
+   - Admin/club role permission enforcement
+
+4. ✅ **Digit-Diff Highlights** — Visual comparison for changed numbers
+   - Shows digit-by-digit diff for extreme changes (±40%)
+   - Helps reviewers spot OCR errors quickly
+   - Format: Old/New values with caret indicators
+
+### Phase 2: Admin Console
+5. ✅ **New `/club admin` Command** — Management tools for club analytics
+   - `aliases view` — Show all member aliases for guild
+   - `snapshots` — View last N snapshots with metadata
+   - `rollback` — Rollback last commit (deletes snapshot, recomputes from previous)
+   - `export` — Export full club data to CSV
+   - Admin/club role permission checks on all subcommands
+
+### Phase 3: Deep Stats & Insights
+6. ✅ **Enhanced `/club stats`** — Cohort views and volatility
+   - Cohort breakdown: new members vs returning veterans
+   - Volatility leaderboard: top 5 most volatile members (by Total Power %)
+   - Weekly boundary display from `CLUB_WEEKLY_BOUNDARY` env var
+   - Member count summary in description
+
+### Environment Variables Added
+```bash
+CLUB_USE_ENSEMBLE=0  # Enable two-model ensemble OCR (2x API cost)
+CLUB_VISION_ENSEMBLE_A=gpt-4o-mini  # First model
+CLUB_VISION_ENSEMBLE_B=gpt-4o  # Second model (tiebreaker)
+CLUB_ROLE_ID=  # Optional role for club permissions
+```
+
+### Test Results
+- **ESLint**: ✅ 0 errors
+- **Syntax Checks**: ✅ All files valid
+- **Command Loading**: ✅ club-admin, club-analyze, club-stats
+
+### Commits (8 total)
+```
+c96a797 - feat(club): add two-model ensemble OCR with digit-level reconciliation
+43d45cf - feat(club): require 100% coverage before commit (paranoid mode)
+f305088 - feat(club): add second approver system for suspicious data
+01cee40 - feat(club): add digit-diff highlights for changed numbers
+46b888d - feat(club): add /club admin command with management tools
+fe4963f - feat(club): add cohorts and volatility leaderboard to /club stats
+99b14a2 - chore: add bulletproof features to .env.example
+```
+
+### What's Next
+- User guide generation (Discord-ready blocks)
+- Deploy commands with `npm run deploy`
+- Production testing with real screenshots
 
 ---
 
-### 1. UPDATED: Vision Model Migrated to GPT-4o ✅
+## 2025-10-22 — Hygiene pass & weekly boundary parameterization
+**Date:** 2025-10-22
+**Status:** ✅ COMPLETED
+**Branch:** chore/memory-audit-2025-10-12
 
-**STATUS:** DEPLOYED - gpt-4-vision-preview deprecated, now using gpt-4o
+### Summary
+Full-codebase health pass completed. Fixed 7 critical hygiene issues, parameterized weekly club boundary to Friday 00:00 America/Detroit, and validated all slash commands in TEST_MODE.
 
-#### Change Summary
-- OpenAI deprecated `gpt-4-vision-preview` model
-- Updated to `gpt-4o` (faster, cheaper, better quality)
-- Added model alternatives documentation in `.env`
+### Changes Applied
+1. ✅ **ESLint Configuration** — Fixed deprecated --ext flag, configured for CommonJS
+2. ✅ **jscpd Script** — Corrected --gitignore flag syntax
+3. ✅ **Missing Dependency** — Added undici as explicit dependency
+4. ✅ **Weekly Boundary Config** — Added CLUB_WEEKLY_BOUNDARY environment variable
+5. ✅ **Documentation Updates** — Updated DATABASE-SETUP.md and screenshot-to-sheet-mapping.md to reference Friday boundary
+6. ✅ **Code Formatting** — Applied Prettier to all JavaScript files (245 files)
 
-#### Files Changed
-- `.env` (lines 14-15): `VISION_MODEL=gpt-4o` with alternatives comment
-- `lib/vision.js` (line 43): Updated fallback model from `gpt-4-vision-preview` to `gpt-4o`
+### Test Results
+- **Slash Commands**: 33 tests, 31 PASS, 2 SKIP, 0 FAIL
+- **Circular Dependencies**: ✅ None found
+- **Missing Dependencies**: ✅ 0 (fixed undici)
+- **Duplicate Code**: ✅ 0 exact clones
 
-#### Deployment
-- ✅ Commands deployed: `node deploy-commands.js` (9 commands)
-- ✅ Bot restarted: `pm2 restart slimy-bot`
-- ✅ Status: Online and healthy
-- ✅ Vision system: Using gpt-4o
+### Commits
+```
+c74943b - fix(hygiene): correct ESLint config for CommonJS project
+a338d6b - fix(hygiene): correct jscpd script gitignore flag
+743eec0 - fix(deps): add undici as explicit dependency
+3b54c98 - feat(config): add CLUB_WEEKLY_BOUNDARY environment variable
+6325e62 - docs: update weekly boundary to Friday America/Detroit in DATABASE-SETUP.md
+2912517 - docs: update weekly boundary to Friday America/Detroit in screenshot-to-sheet-mapping.md
+f41921a - style: apply Prettier formatting to JavaScript files
+```
 
-#### Benefits
-- ⚡ Faster response times
-- 💰 Lower API costs (~50% cheaper)
-- 🎯 Better accuracy for stat extraction
-- 🔮 Future-proof (gpt-4o is actively maintained)
-
-#### Testing
-Ready to test with `/snail analyze` and super_snail mode auto-detection
+### Reports Generated
+- `command-test-report.txt` (overwritten with latest results)
+- `repo-hygiene-report.txt` (comprehensive summary)
+- `auto-codex-test-run-2025-10-22.md` (detailed execution log)
 
 ---
 
@@ -337,6 +689,11 @@ Ready to test with `/snail analyze` and super_snail mode auto-detection
 ### Testing
 - ✅ Image intent detection works with API key
 - ✅ Mention handler calls image generation
+
+## 2025-10-22 — QA Suite
+- Scripts: `refresh:commands`, `restart:bot`, `test:slash`, `qa:full`
+- Auto test runner produces `command-test-report.txt`
+- Manual checklist: `manual-tests-1022.txt`
 - ✅ DALL-E 3 size options validated
 
 ---
@@ -416,6 +773,16 @@ m.userId === userId && m.guildId === (guildId || null)
    /export
    # Should only show guild notes, not DM notes
    ```
+
+---
+
+## 2025-02-15 — Club Analytics (Confirm-before-commit)
+
+- New commands: `/club analyze` (with preview/QA/confirm) and `/club stats` (beautiful summary).
+- Vision extraction with confidence + OCR-boost retry flow.
+- Weekly WoW % change (Mon 00:00 UTC).
+- Sheet: "Club Latest" ⇒ Name | SIM Power | Total Power | Change % from last week.
+- Safety: compare against last week, flag missing names and suspicious jumps; manual fix modal; aliases table.
 
 ---
 

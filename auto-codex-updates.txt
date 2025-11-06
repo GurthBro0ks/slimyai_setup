@@ -1,0 +1,62 @@
+# AUTO-CODEX UPDATES PROMPT — Bulletproof Path (Option C) + Diagnostics (2025-10-22)
+
+You are a coding agent with WRITE access to the Discord bot repo. Implement **Option C (Bulletproof)** from the roadmap, then run diagnostics, refresh commands, restart the bot, and update documentation. Finally, generate a Discord-friendly **User Guide** in ~2000-character blocks.
+
+## Context
+- Current features: `/club analyze` with confirm-before-commit; `/club stats` with rich output; QA harness.
+- Test images for Week 1: **/opt/slimy/app/screenshots/test** (current as of Sunday). Weekly uploads expected **Fri/Sat/Sun**; club reset & updates happen on **Fridays**.
+- Timezone for weekly windows: **America/Detroit**; set weekly boundary to **Friday 00:00 America/Detroit** (parameterized, not hardcoded).
+
+## Implement — Option C (Bulletproof)
+1) **Accuracy Hardening (Paranoid)**
+   - Use a **two-model ensemble** for OCR (e.g., gpt-4o + secondary strict OCR). Perform **digit-level majority** reconciliation per value.
+   - Require **100% coverage** of last-week members before commit; otherwise block until fixed.
+   - If coverage <100% **or** >5 members exceed ±40% WoW, require a **second human approver** (admin override still possible).
+   - Show digit-diff highlights in preview for any changed numbers.
+
+2) **Analyze UX — Admin Console & Rollback**
+   - `/club admin` panel: manage aliases, merge members, view last N snapshots, **rollback** last commit, and export CSV.
+   - Keep the current wizard, but add an “Audit Trail” section with who approved (one or two approvers).
+
+3) **Stats & Insights — Deep Dive**
+   - Add cohort views (new vs veteran), volatility leaderboard, and **Personal Records (PR)** badges.
+   - `/club stats @member` profile: 4-week chart (sparkline or embed text graph), PR markers, and WoW deltas.
+
+4) **Observability — SLOs & Alerts**
+   - Define SLOs: Coverage ≥99%, Time-to-commit ≤3m, OCR error rate <0.5%.
+   - Alerting: if Coverage <95% or commit fails → DM admins; weekly digest failure → post incident note.
+   - Keep minimal cost by batching images and short-circuiting high-confidence pages.
+
+## Diagnostics & Ops
+- Run comprehensive tests:
+  - Lint, typecheck, unit/integration.
+  - **Dry-run** slash tests (TEST_MODE=1).
+  - One **live** smoke test in a dev guild (analyze preview only; do not commit).
+- Then **refresh commands**, **restart the bot** (pm2/systemd/docker-aware), and **verify health**.
+- Update docs and changelog.
+
+## Artifacts to Produce
+- `command-test-report.txt` — updated with this run.
+- `manual-tests-20251022.txt` — refreshed manual checklist for bulletproof features.
+- `UPDATES.md` — entry “2025-10-22 — Bulletproof club analytics + admin console + SLOs”.
+- `README.md` / `DATABASE-SETUP.md` / `supersnail-sheets-structure.md` / `screenshot-to-sheet-mapping.md` — updated accordingly.
+- `user-guide-discord-2025-10-22.md` — **Discord-friendly guide** in ~2000-character blocks (multiple blocks allowed), copy-paste ready. Include:
+  - How to upload screenshots (Fri–Sun), run `/club analyze`, resolve coverage, approve (1 or 2 approvers), and rollback.
+  - How to run `/club stats` (server and per-member), interpret arrows/% bars, and open the sheet.
+  - Troubleshooting (low coverage, suspicious jumps, permission errors).
+
+## Order of Work
+1. Implement Accuracy Hardening (ensemble + coverage gate + second approver + digit diffs).
+2. Implement Admin Console + rollback and audit trail.
+3. Implement deep stats & member profile.
+4. Add SLOs/alerts and minimal health dashboard or logs.
+5. Diagnostics: run test suites; fix errors until green.
+6. Refresh commands → restart bot → verify.
+7. Update all docs; generate the **User Guide** (Discord blocks).
+8. Append UPDATES entry; commit all artifacts.
+
+## Rules
+- Keep commits small and focused with clear messages.
+- Do not hardcode dates/timezones; parameterize with env. Weekly boundary must be **Friday 00:00 America/Detroit**.
+- Ensure the ensemble and second-approver logic do not degrade performance unreasonably (batch where possible).
+- Produce the listed artifacts with today’s date in filenames and within repo root.

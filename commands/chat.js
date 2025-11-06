@@ -1,17 +1,81 @@
 // commands/chat.js
-const { SlashCommandBuilder } = require('discord.js');
-const personaStore = require('../lib/persona');
-const { maybeReplyWithImage } = require('../lib/auto-image');
-const modeHelper = require('../lib/modes');
-const { formatChatDisplay } = require('../lib/text-format');
+const { SlashCommandBuilder, ChannelType } = require("discord.js");
+const TEST = process.env.TEST_MODE === "1";
+const stubs = TEST ? require("../test/mocks/stubs") : null;
+const personaStore = TEST ? stubs.persona : require("../lib/persona");
+const { maybeReplyWithImage } = TEST
+  ? stubs.autoImage
+  : require("../lib/auto-image");
+const modeHelper = TEST ? stubs.modes : require("../lib/modes");
+const { formatChatDisplay } = require("../lib/text-format");
+const rateLimiter = TEST ? stubs.rateLimiter : require("../lib/rate-limiter");
+const metrics = TEST ? stubs.metrics : require("../lib/metrics");
+const logger = require("../lib/logger");
+const openaiClient = TEST ? stubs.openai : require("../lib/openai");
+
+const THREAD_TYPES = new Set([
+  ChannelType.PublicThread,
+  ChannelType.PrivateThread,
+  ChannelType.AnnouncementThread,
+]);
+
+function buildEmptyModeState() {
+  const state = {};
+  for (const key of modeHelper.MODE_KEYS) state[key] = false;
+  return state;
+}
+
+function resolveModeContext(channel) {
+  if (!channel) return null;
+  const parents = [];
+  let targetType = "channel";
+  const channelType = channel.type;
+
+  if (channelType === ChannelType.GuildCategory) {
+    targetType = "category";
+  } else if (THREAD_TYPES.has(channelType)) {
+    targetType = "thread";
+    if (channel.parentId) {
+      parents.push({ targetId: channel.parentId, targetType: "channel" });
+      const parentChannel =
+        channel.guild?.channels?.cache?.get(channel.parentId) || channel.parent;
+      if (parentChannel?.parentId) {
+        parents.push({
+          targetId: parentChannel.parentId,
+          targetType: "category",
+        });
+      }
+    }
+  } else {
+    targetType = "channel";
+    if (channel.parentId) {
+      parents.push({ targetId: channel.parentId, targetType: "category" });
+    }
+  }
+
+  return { targetId: channel.id, targetType, parents };
+}
+
+function getEffectiveModesForChannel(guild, channel) {
+  if (!guild || !channel) return buildEmptyModeState();
+  const context = resolveModeContext(channel);
+  if (!context) return buildEmptyModeState();
+  const view = modeHelper.viewModes({
+    guildId: guild.id,
+    targetId: context.targetId,
+    targetType: context.targetType,
+    parents: context.parents,
+  });
+  return view.effective.modes;
+}
 
 // Short history per (channelId,userId)
 const histories = new Map();
 const MAX_TURNS = 8;
 
 // Lightweight auto-mode detect
-const MODES = ['mentor', 'partner', 'mirror', 'operator'];
-function autoDetect(text = '') {
+const MODES = ["mentor", "partner", "mirror", "operator"];
+function autoDetect(text = "") {
   const t = text.toLowerCase();
   const s = { mentor: 0, partner: 0, mirror: 0, operator: 0 };
   if (/\b(help|guide|teach|explain|stuck)\b/i.test(t)) s.mentor += 2;
@@ -19,25 +83,25 @@ function autoDetect(text = '') {
   if (/\b(brainstorm|idea|creative|wild|fun)\b/i.test(t)) s.partner += 2;
   if (/\b(evaluate|compare|option|choose|decide)\b/i.test(t)) s.mirror += 2;
   if (/\b(plan|organize|schedule|task|checklist)\b/i.test(t)) s.operator += 2;
-  const top = MODES.reduce((a, m) => (s[m] > s[a] ? m : a), 'mentor');
-  return s[top] > 0 ? top : 'mentor';
+  const top = MODES.reduce((a, m) => (s[m] > s[a] ? m : a), "mentor");
+  return s[top] > 0 ? top : "mentor";
 }
 
 async function runConversation({
   userId,
   channelId,
   guildId,
-  parentId,
+  parentId: _parentId,
   userMsg,
   reset = false,
-  context = 'slash',
+  context: _context = "slash",
   effectiveOverride = null,
 }) {
   const key = `${channelId}:${userId}`;
   if (reset) histories.delete(key);
 
   let history = histories.get(key) || [];
-  history.push({ role: 'user', content: userMsg });
+  history.push({ role: "user", content: userMsg });
   if (history.length > MAX_TURNS * 2) history = history.slice(-MAX_TURNS * 2);
   histories.set(key, history);
 
@@ -52,24 +116,23 @@ async function runConversation({
   }
 
   if (effectiveModes.personality) {
-    persona = personaStore.getPersona('personality');
+    persona = personaStore.getPersona("personality");
   } else if (effectiveModes.no_personality) {
-    persona = personaStore.getPersona('no_personality');
+    persona = personaStore.getPersona("no_personality");
   }
 
-  const systemPrompt = persona.prompt || 'You are a helpful assistant.';
-  const messages = [{ role: 'system', content: systemPrompt }, ...history];
+  const systemPrompt = persona.prompt || "You are a helpful assistant.";
+  const messages = [{ role: "system", content: systemPrompt }, ...history];
 
-  const openai = require('../lib/openai');
-  const completion = await openai.chat.completions.create({
-    model: process.env.OPENAI_MODEL || 'gpt-4o',
+  const completion = await openaiClient.chat.completions.create({
+    model: process.env.OPENAI_MODEL || "gpt-4o",
     messages,
     temperature: 0.8,
     max_tokens: 1000,
   });
 
-  const response = completion.choices[0]?.message?.content || 'No response.';
-  history.push({ role: 'assistant', content: response });
+  const response = completion.choices[0]?.message?.content || "No response.";
+  history.push({ role: "assistant", content: response });
   histories.set(key, history);
 
   return { response, persona: persona.name };
@@ -77,22 +140,34 @@ async function runConversation({
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('chat')
-    .setDescription('Chat with slimy.ai')
+    .setName("chat")
+    .setDescription("Chat with slimy.ai")
     .addStringOption((o) =>
-      o.setName('message').setDescription('Your message').setRequired(true),
+      o.setName("message").setDescription("Your message").setRequired(true),
     )
     .addBooleanOption((o) =>
-      o.setName('reset').setDescription('Start a fresh conversation'),
+      o.setName("reset").setDescription("Start a fresh conversation"),
     ),
 
   async execute(interaction) {
-    const userMsg = interaction.options.getString('message', true);
-    const reset = interaction.options.getBoolean('reset') || false;
+    const startTime = Date.now();
+    const userMsg = interaction.options.getString("message", true);
+    const reset = interaction.options.getBoolean("reset") || false;
+
+    // Rate limiting - 5 second cooldown
+    const check = rateLimiter.checkCooldown(interaction.user.id, "chat", 5);
+    if (check.limited) {
+      metrics.trackCommand("chat", Date.now() - startTime, false);
+      return interaction.reply({
+        content: `⏳ Slow down! Please wait ${check.remaining}s before chatting again.`,
+        ephemeral: true,
+      });
+    }
 
     if (!process.env.OPENAI_API_KEY) {
+      metrics.trackCommand("chat", Date.now() - startTime, false);
       return interaction.reply({
-        content: '❌ OPENAI_API_KEY is not set.',
+        content: "❌ OPENAI_API_KEY is not set.",
         ephemeral: true,
       });
     }
@@ -100,15 +175,19 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      const parentId = interaction.channel?.parentId || interaction.channel?.parent?.id;
-      const effectiveModes = modeHelper.getEffectiveModesForChannel(interaction.guild, interaction.channel);
-      
+      const parentId =
+        interaction.channel?.parentId || interaction.channel?.parent?.id;
+      const effectiveModes = getEffectiveModesForChannel(
+        interaction.guild,
+        interaction.channel,
+      );
+
       // FIX: Use the new mode keys
       const rating = effectiveModes.rating_unrated
-        ? 'unrated'
+        ? "unrated"
         : effectiveModes.rating_pg13
-        ? 'pg13'
-        : 'default';
+          ? "pg13"
+          : "default";
 
       const handledImage = await maybeReplyWithImage({
         interaction,
@@ -126,11 +205,12 @@ module.exports = {
         parentId,
         userMsg,
         reset,
-        context: 'slash',
+        context: "slash",
         effectiveOverride: effectiveModes,
       });
 
-      const userLabel = interaction.member?.displayName || interaction.user.username;
+      const userLabel =
+        interaction.member?.displayName || interaction.user.username;
       const content = formatChatDisplay({
         userLabel,
         userMsg,
@@ -138,9 +218,17 @@ module.exports = {
         response: result.response,
       });
       await interaction.editReply({ content });
+      metrics.trackCommand("chat", Date.now() - startTime, true);
     } catch (err) {
-      console.error('OpenAI error:', err);
-      const msg = err?.response?.data?.error?.message || err.message || String(err);
+      metrics.trackCommand("chat", Date.now() - startTime, false);
+      metrics.trackError("chat_command", err.message);
+      logger.error("Chat command failed", {
+        userId: interaction.user.id,
+        error: err.message,
+      });
+      console.error("OpenAI error:", err);
+      const msg =
+        err?.response?.data?.error?.message || err.message || String(err);
       await interaction.editReply({ content: `❌ OpenAI error: ${msg}` });
     }
   },

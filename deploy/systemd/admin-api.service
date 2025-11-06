@@ -1,0 +1,19 @@
+[Unit]
+Description=Slimy Admin API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/slimy/app
+EnvironmentFile=/opt/slimy/app/admin-api/.env.admin.production
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/env node admin-api/server.js
+Restart=always
+RestartSec=5
+User=slimy
+Group=slimy
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

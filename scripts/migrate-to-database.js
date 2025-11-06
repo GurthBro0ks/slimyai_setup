@@ -1,204 +1,125 @@
-#!/usr/bin/env node
-// scripts/migrate-to-database.js - Migrate data from file storage to database
-require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
-const db = require('../lib/database');
+// scripts/migrate-to-database.js
+require("dotenv").config();
+const fs = require("fs/promises");
+const path = require("path");
+const db = require("../lib/database");
 
-const DATA_FILE = path.join(process.cwd(), 'data_store.json');
-const BACKUP_DIR = path.join(process.cwd(), 'backups');
+async function migrate() {
+  console.log("🚀 Starting migration from data_store.json to database...");
 
-/**
- * Create backup of data_store.json
- */
-function createBackup() {
-  if (!fs.existsSync(DATA_FILE)) {
-    console.log('❌ data_store.json not found. Nothing to migrate.');
-    return null;
+  // 1. Initialize and test the database connection
+  db.initialize();
+  if (!db.isConfigured()) {
+    console.error(
+      "❌ Database is not configured. Please check your .env file.",
+    );
+    process.exit(1);
   }
 
-  // Create backups directory if it doesn't exist
-  if (!fs.existsSync(BACKUP_DIR)) {
-    fs.mkdirSync(BACKUP_DIR);
-  }
-
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupPath = path.join(BACKUP_DIR, `data_store.${timestamp}.json`);
-
-  fs.copyFileSync(DATA_FILE, backupPath);
-  console.log(`✅ Backup created: ${backupPath}`);
-
-  return backupPath;
-}
-
-/**
- * Load data from data_store.json
- */
-function loadDataStore() {
   try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf8');
-    const data = JSON.parse(raw);
-
-    return {
-      prefs: data.prefs || [],
-      memos: data.memos || [],
-      channelModes: data.channelModes || []
-    };
+    await db.testConnection();
+    console.log("✅ Database connection successful");
   } catch (err) {
-    console.error('❌ Error loading data_store.json:', err.message);
-    throw err;
+    console.error("❌ Database connection failed:", err.message);
+    process.exit(1);
   }
-}
 
-/**
- * Migrate consent preferences
- */
-async function migrateConsent(prefs) {
-  console.log('\n📋 Migrating consent preferences...');
+  // 2. Read the old JSON data file
+  const dataStorePath = path.join(__dirname, "..", "data_store.json");
+  let oldData;
+  try {
+    const fileContent = await fs.readFile(dataStorePath, "utf8");
+    oldData = JSON.parse(fileContent);
+    console.log("✅ Successfully read data_store.json");
+  } catch (err) {
+    console.error(`❌ Could not read or parse data_store.json: ${err.message}`);
+    process.exit(1);
+  }
 
-  let migrated = 0;
-  let skipped = 0;
+  // 3. Create a backup
+  const backupsDir = path.join(__dirname, "..", "backups");
+  await fs.mkdir(backupsDir, { recursive: true });
+  const backupFile = `data_store.backup.${new Date().toISOString().replace(/:/g, "-")}.json`;
+  await fs.copyFile(dataStorePath, path.join(backupsDir, backupFile));
+  console.log(`✅ Backup created: backups/${backupFile}`);
 
-  for (const pref of prefs) {
-    if (pref.key !== 'consent') continue;
+  // Migration counters
+  const summary = {
+    consent: 0,
+    memories: 0,
+    modes: 0,
+  };
 
-    try {
-      const enabled = pref.value === '1';
-      await db.setUserConsent(pref.userId, enabled);
-      migrated++;
-    } catch (err) {
-      console.error(`  ❌ Failed to migrate consent for user ${pref.userId}:`, err.message);
-      skipped++;
+  // 4. Migrate Data
+  // Migrate User Consent
+  if (oldData.prefs && Array.isArray(oldData.prefs)) {
+    console.log("📋 Migrating consent preferences...");
+    for (const pref of oldData.prefs) {
+      // Assuming pref has userId, guildId, and hasConsented properties
+      if (pref.userId && pref.guildId) {
+        await db.setUserConsent(pref.userId, pref.guildId, !!pref.hasConsented);
+        summary.consent++;
+      }
     }
+    console.log(`  -> Migrated ${summary.consent} consent records.`);
   }
 
-  console.log(`  ✅ Migrated: ${migrated}`);
-  console.log(`  ⚠️  Skipped: ${skipped}`);
-
-  return { migrated, skipped };
-}
-
-/**
- * Migrate memories
- */
-async function migrateMemories(memos) {
-  console.log('\n📝 Migrating memories...');
-
-  let migrated = 0;
-  let skipped = 0;
-
-  for (const memo of memos) {
-    try {
+  // Migrate Memories
+  if (oldData.memos && Array.isArray(oldData.memos)) {
+    console.log("📝 Migrating memories...");
+    for (const memo of oldData.memos) {
       await db.saveMemory(
         memo.userId,
         memo.guildId || null,
         memo.content,
         memo.tags || [],
-        {
-          channelId: memo.channelId || null,
-          channelName: memo.channelName || null,
-          timestamp: memo.createdAt || Date.now()
-        }
+        memo.context || {},
       );
-      migrated++;
-    } catch (err) {
-      console.error(`  ❌ Failed to migrate memory ${memo._id}:`, err.message);
-      skipped++;
+      summary.memories++;
     }
+    console.log(`  -> Migrated ${summary.memories} memories.`);
   }
 
-  console.log(`  ✅ Migrated: ${migrated}`);
-  console.log(`  ⚠️  Skipped: ${skipped}`);
+  // Migrate Channel Modes
+  if (oldData.channelModes && Array.isArray(oldData.channelModes)) {
+    console.log("🔧 Migrating channel modes...");
+    for (const modeData of oldData.channelModes) {
+      if (
+        modeData.targetId &&
+        modeData.guildId &&
+        modeData.targetType &&
+        modeData.modes
+      ) {
+        await db.setChannelModes(
+          modeData.targetId,
+          modeData.guildId,
+          modeData.targetType,
+          modeData.modes,
+        );
+        summary.modes++;
+      }
+    }
+    console.log(`  -> Migrated ${summary.modes} channel mode settings.`);
+  }
 
-  return { migrated, skipped };
+  // Final Summary
+  console.log(`
+📊 MIGRATION SUMMARY
+✅ Consent preferences migrated: ${summary.consent}
+✅ Memories migrated: ${summary.memories}
+✅ Channel modes migrated: ${summary.modes}
+💾 Backup saved to: backups/${backupFile}
+
+✅ Migration complete!
+    `);
 }
 
-/**
- * Main migration function
- */
-async function migrate() {
-  console.log('🚀 Starting migration from data_store.json to database...\n');
-
-  // Check database configuration
-  if (!db.isConfigured()) {
-    console.error('❌ Database not configured! Please set the following environment variables:');
-    console.error('   - DB_HOST');
-    console.error('   - DB_USER');
-    console.error('   - DB_PASSWORD');
-    console.error('   - DB_NAME');
-    process.exit(1);
-  }
-
-  // Test database connection
-  console.log('🔗 Testing database connection...');
-  try {
-    await db.testConnection();
-    console.log('✅ Database connection successful\n');
-  } catch (err) {
-    console.error('❌ Database connection failed:', err.message);
-    process.exit(1);
-  }
-
-  // Create database tables
-  console.log('📊 Creating database tables...');
-  try {
-    await db.createTables();
-    console.log('✅ Database tables created\n');
-  } catch (err) {
-    console.error('❌ Failed to create tables:', err.message);
-    process.exit(1);
-  }
-
-  // Create backup
-  const backupPath = createBackup();
-  if (!backupPath) {
-    console.log('\nℹ️  No data to migrate. You can start using the database directly.');
+migrate()
+  .then(() => {
+    console.log("Script finished successfully.");
     process.exit(0);
-  }
-
-  // Load data
-  console.log('\n📂 Loading data from data_store.json...');
-  const data = loadDataStore();
-
-  console.log(`  Found:`);
-  console.log(`  - ${data.prefs.filter(p => p.key === 'consent').length} consent preferences`);
-  console.log(`  - ${data.memos.length} memories`);
-  console.log(`  - ${data.channelModes.length} channel modes (not migrated)`);
-
-  // Migrate consent
-  const consentStats = await migrateConsent(data.prefs);
-
-  // Migrate memories
-  const memoryStats = await migrateMemories(data.memos);
-
-  // Summary
-  console.log('\n' + '='.repeat(60));
-  console.log('📊 MIGRATION SUMMARY');
-  console.log('='.repeat(60));
-  console.log(`✅ Consent preferences migrated: ${consentStats.migrated}`);
-  console.log(`✅ Memories migrated: ${memoryStats.migrated}`);
-  console.log(`⚠️  Items skipped: ${consentStats.skipped + memoryStats.skipped}`);
-  console.log(`💾 Backup saved to: ${backupPath}`);
-  console.log('='.repeat(60));
-
-  console.log('\n✅ Migration complete!');
-  console.log('\nℹ️  Note: Channel modes are NOT migrated as they are being replaced');
-  console.log('   with a new system in v2.0. You can delete data_store.json once');
-  console.log('   you\'ve verified the migration was successful.');
-
-  console.log('\n📝 Next steps:');
-  console.log('   1. Test the bot with the database');
-  console.log('   2. Verify all data was migrated correctly');
-  console.log('   3. Delete or archive data_store.json');
-  console.log('   4. Run: npm run deploy (to deploy new commands)');
-  console.log('   5. Restart the bot');
-
-  await db.close();
-  process.exit(0);
-}
-
-// Run migration
-migrate().catch(err => {
-  console.error('\n❌ Migration failed:', err);
-  process.exit(1);
-});
+  })
+  .catch((err) => {
+    console.error("❌ MIGRATION FAILED:", err);
+    process.exit(1);
+  });

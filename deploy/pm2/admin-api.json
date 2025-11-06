@@ -1,0 +1,14 @@
+{
+  "apps": [
+    {
+      "name": "admin-api",
+      "cwd": "/opt/slimy/app",
+      "script": "admin-api/server.js",
+      "interpreter": "node",
+      "env": {
+        "NODE_ENV": "production",
+        "ENV_FILE": "/opt/slimy/app/admin-api/.env.admin.production"
+      }
+    }
+  ]
+}
