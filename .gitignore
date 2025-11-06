@@ -35,6 +35,11 @@ lib/app-files-backup.tar.gz
 lib/app-files-backup.tar.gz.local
 test-outputs/
 
+# Build artifacts
+.next/
+dist/
+build/
+
 # PM2
 .pm2/
 *.log
