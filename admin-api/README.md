@@ -9,14 +9,14 @@ The service reads `.env.admin.production`. In production we currently use:
 
 ```bash
 PORT=3080
-SESSION_SECRET=2a19f2d27107fb83efcee2c1205c0fc4d92b9e3186339e0e095da36645290aa2
+SESSION_SECRET=your_session_secret_here
 COOKIE_DOMAIN=.slimyai.xyz
 CORS_ALLOW_ORIGIN=https://admin.slimyai.xyz,http://127.0.0.1:3000,http://localhost:3000
 
 # Discord OAuth (Slimy admin application)
-DISCORD_CLIENT_ID=1431075878586290377
-DISCORD_CLIENT_SECRET=lkKc7DQP_AH9s1m4T2YS1QqLP8N-duRK
-DISCORD_BOT_TOKEN=MTQzMTA3NTg3ODU4NjI5MDM3Nw.GGVf1t.H6p391cneIC1NVtKlykr-rHMHU5m7sUt8vu8eg
+DISCORD_CLIENT_ID=your_admin_client_id_here
+DISCORD_CLIENT_SECRET=your_admin_client_secret_here
+DISCORD_BOT_TOKEN=your_admin_bot_token_here
 
 # Optional role promotion (comma-separated IDs)
 ROLE_ADMIN_IDS=
@@ -46,4 +46,4 @@ curl -fsS https://admin.slimyai.xyz/api/health
 ## OAuth Redirects
 
 Ensure the Discord Developer Portal lists `https://admin.slimyai.xyz/api/auth/callback`
-in the OAuth redirect whitelist for application `slimy.ai admin` (ID `1431075878586290377`).
+in the OAuth redirect whitelist for application `slimy.ai admin`.
