@@ -1,143 +1,149 @@
-// commands/diag.js - V2
-const {
-  SlashCommandBuilder,
-  PermissionFlagsBits,
-  GatewayIntentBits,
-  Events,
-} = require('discord.js');
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+// commands/diag.js - V3 with Enhanced Metrics
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { exec } = require("child_process");
+const util = require("util");
+const execPromise = util.promisify(exec);
+const TEST = process.env.TEST_MODE === "1";
+const stubs = TEST ? require("../test/mocks/stubs") : null;
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('diag')
-    .setDescription('Slimy health check v2 (intents, perms, uptime, git commit)'),
+    .setName("diag")
+    .setDescription("Comprehensive health check and diagnostics"),
 
   async execute(interaction) {
-    const c = interaction.client;
+    await interaction.deferReply({ ephemeral: true });
 
-    // ---- V2 FEATURES: Git commit and uptime ----
-    let gitCommit = 'unknown';
+    const embed = new EmbedBuilder()
+      .setTitle("🔧 Slimy.AI Diagnostics v2.1")
+      .setColor(0x00ff00)
+      .setTimestamp();
+
+    // System uptime
+    const uptime = process.uptime();
+    const days = Math.floor(uptime / 86400);
+    const hours = Math.floor((uptime % 86400) / 3600);
+    const minutes = Math.floor((uptime % 3600) / 60);
+    embed.addFields({
+      name: "⏱️ Bot Uptime",
+      value: `${days}d ${hours}h ${minutes}m`,
+      inline: true,
+    });
+
+    // Memory usage
+    const mem = process.memoryUsage();
+    embed.addFields({
+      name: "💾 Memory Usage",
+      value: `Heap: ${(mem.heapUsed / 1024 / 1024).toFixed(2)} MB / ${(mem.heapTotal / 1024 / 1024).toFixed(2)} MB\nRSS: ${(mem.rss / 1024 / 1024).toFixed(2)} MB`,
+      inline: true,
+    });
+
+    // Database connection
     try {
-      gitCommit = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
-    } catch (e) {
-      // Fallback: try reading .git/HEAD directly
-      try {
-        const gitDir = path.join(process.cwd(), '.git');
-        const headFile = path.join(gitDir, 'HEAD');
-        if (fs.existsSync(headFile)) {
-          const head = fs.readFileSync(headFile, 'utf8').trim();
-          if (head.startsWith('ref:')) {
-            const ref = head.substring(5).trim();
-            const refFile = path.join(gitDir, ref);
-            if (fs.existsSync(refFile)) {
-              gitCommit = fs.readFileSync(refFile, 'utf8').trim().substring(0, 7);
-            }
-          } else {
-            gitCommit = head.substring(0, 7);
-          }
+      const database = TEST ? stubs.database : require("../lib/database");
+      if (database.isConfigured()) {
+        await database.testConnection();
+        const pool = database.getPool();
+
+        // Get database stats
+        try {
+          const [memoryCount] = await pool.query(
+            "SELECT COUNT(*) as count FROM memories",
+          );
+          const [imageCount] = await pool.query(
+            "SELECT COUNT(*) as count FROM image_generation_log",
+          );
+          const [snailCount] = await pool.query(
+            "SELECT COUNT(*) as count FROM snail_stats",
+          );
+
+          embed.addFields({
+            name: "🗄️ Database",
+            value: `✅ Connected\nMemories: ${memoryCount[0].count}\nImages: ${imageCount[0].count}\nSnails: ${snailCount[0].count}`,
+            inline: false,
+          });
+        } catch (statErr) {
+          embed.addFields({
+            name: "🗄️ Database",
+            value: `✅ Connected (stats unavailable)`,
+            inline: false,
+          });
         }
-      } catch (fallbackErr) {
-        gitCommit = 'unavailable';
-      }
-    }
-
-    // Calculate uptime
-    const stats = global.botStats || { startTime: Date.now(), errors: { count: 0 } };
-    const uptimeMs = Date.now() - stats.startTime;
-    const uptimeSec = Math.floor(uptimeMs / 1000);
-    const days = Math.floor(uptimeSec / 86400);
-    const hours = Math.floor((uptimeSec % 86400) / 3600);
-    const minutes = Math.floor((uptimeSec % 3600) / 60);
-    const seconds = uptimeSec % 60;
-
-    const uptimeStr = days > 0
-      ? `${days}d ${hours}h ${minutes}m ${seconds}s`
-      : hours > 0
-      ? `${hours}h ${minutes}m ${seconds}s`
-      : minutes > 0
-      ? `${minutes}m ${seconds}s`
-      : `${seconds}s`;
-
-    // Error tracking
-    const errorCount = stats.errors?.count || 0;
-    const lastError = stats.errors?.lastError || 'none';
-
-    // Format last error time (relative)
-    let lastErrorTimeStr = 'never';
-    if (stats.errors?.lastErrorTime) {
-      const errorAgoMs = Date.now() - stats.errors.lastErrorTime;
-      const errorAgoSec = Math.floor(errorAgoMs / 1000);
-      if (errorAgoSec < 60) {
-        lastErrorTimeStr = `${errorAgoSec}s ago`;
-      } else if (errorAgoSec < 3600) {
-        lastErrorTimeStr = `${Math.floor(errorAgoSec / 60)}m ago`;
-      } else if (errorAgoSec < 86400) {
-        lastErrorTimeStr = `${Math.floor(errorAgoSec / 3600)}h ago`;
       } else {
-        lastErrorTimeStr = `${Math.floor(errorAgoSec / 86400)}d ago`;
+        embed.addFields({
+          name: "🗄️ Database",
+          value: "⚠️ Not configured",
+          inline: false,
+        });
       }
+    } catch (err) {
+      embed.addFields({
+        name: "🗄️ Database",
+        value: `❌ Error: ${err.message}`,
+        inline: false,
+      });
     }
 
-    // Process start time (absolute timestamp)
-    const startTime = new Date(stats.startTime).toISOString().replace('T', ' ').substring(0, 19);
-    // ---- End V2 features ----
+    // Command metrics
+    try {
+      const metrics = TEST ? stubs.metrics : require("../lib/metrics");
+      const stats = metrics.getStats();
 
-    const intents = c.options?.intents;
-    const has = (bit) => intents && intents.has ? (intents.has(bit) ? '✅' : '❌') : '❓';
+      embed.addFields({
+        name: "📊 Command Statistics",
+        value: `Total: ${stats.summary.totalCommands}\nSuccess Rate: ${stats.summary.successRate}\nErrors: ${stats.summary.totalErrors}`,
+        inline: false,
+      });
 
-    const chanPerms = interaction.channel?.permissionsFor?.(c.user) || null;
-    const need = (flag) => chanPerms?.has?.(flag) ? '✅' : '❌';
+      // Top 3 most used commands
+      const topCommands =
+        Object.entries(stats.commands)
+          .sort((a, b) => b[1].count - a[1].count)
+          .slice(0, 3)
+          .map(([cmd, data]) => `\`/${cmd}\`: ${data.count} (${data.avgTime})`)
+          .join("\n") || "No commands executed yet";
 
-    const mentionListeners = c.listenerCount?.(Events.MessageCreate) ?? 0;
-    const mentionStatus = (() => {
-      if (mentionListeners <= 0) return '❌ not attached';
-      return c.mentionHandlerReady ? '✅ ready' : '⚠ attached (pending ready)';
-    })();
+      embed.addFields({
+        name: "🔥 Top Commands",
+        value: topCommands,
+        inline: false,
+      });
+    } catch (err) {
+      // Metrics not available - not critical
+      embed.addFields({
+        name: "📊 Metrics",
+        value: "⚠️ Metrics system unavailable",
+        inline: false,
+      });
+    }
 
-    // Check snail auto-detect handler
-    const snailAutoDetectStatus = c._snailAutoDetectAttached ? '✅ attached' : '❌ not attached';
+    // Git commit
+    try {
+      const { stdout } = await execPromise("git rev-parse --short HEAD");
+      const commit = stdout.trim();
+      embed.addFields({
+        name: "📝 Git Commit",
+        value: `\`${commit}\``,
+        inline: true,
+      });
+    } catch (err) {
+      // Git not available
+    }
 
-    const lines = [
-      `**🤖 Slimy.ai Diagnostics v2**`,
-      ``,
-      `**📊 Runtime**`,
-      `• Logged in as: ${c.user?.tag || '(not ready)'}`,
-      `• Node: ${process.version} | PID: ${process.pid}`,
-      `• Git commit: \`${gitCommit}\``,
-      `• Started: ${startTime} UTC`,
-      `• Uptime: ${uptimeStr}`,
-      `• Errors: ${errorCount} total`,
-      errorCount > 0 ? `  └─ Last: "${lastError}" (${lastErrorTimeStr})` : '',
-      ``,
-      `**🔑 Environment**`,
-      `• DISCORD_TOKEN: ${process.env.DISCORD_TOKEN ? '✅ set' : '❌ missing'}`,
-      `• OPENAI_API_KEY: ${process.env.OPENAI_API_KEY ? '✅ set' : '⚠ optional/empty'}`,
-      `• VISION_MODEL: ${process.env.VISION_MODEL || 'gpt-4o (default)'}`,
-      ``,
-      `**📡 Intents (client)**`,
-      `• Guilds: ${has(GatewayIntentBits.Guilds)}`,
-      `• GuildMessages: ${has(GatewayIntentBits.GuildMessages)} (required for @mentions)`,
-      `• MessageContent: ${has(GatewayIntentBits.MessageContent)} (must also be enabled in Dev Portal)`,
-      ``,
-      `**🔒 Channel permissions (@here)**`,
-      `• ViewChannel: ${need(PermissionFlagsBits.ViewChannel)}`,
-      `• SendMessages: ${need(PermissionFlagsBits.SendMessages)}`,
-      `• ReadMessageHistory: ${need(PermissionFlagsBits.ReadMessageHistory)}`,
-      ``,
-      `**⚙️ Handlers**`,
-      `• mention handler: ${mentionStatus} (listeners: ${mentionListeners})`,
-      `• snail auto-detect: ${snailAutoDetectStatus}`,
-      ``,
-      `**🧪 How to test @mention**`,
-      `1) In this channel, type:  @${c.user?.username} pingtest`,
-      `2) Expect a fast "🏓 pong!" reply. If no reply:`,
-      `   - Dev Portal → Bot → Message Content Intent = ON`,
-      `   - This channel's perms (see above)`,
-      `   - Intents here show ✅`,
-    ].filter(line => line !== ''); // Remove empty strings from conditional lines
+    // Discord.js info
+    embed.addFields({
+      name: "🤖 Bot Info",
+      value: `Ping: ${interaction.client.ws.ping}ms\nGuilds: ${interaction.client.guilds.cache.size}\nUsers: ${interaction.client.users.cache.size}`,
+      inline: true,
+    });
 
-    return interaction.reply({ content: lines.join('\n'), ephemeral: true });
-  }
+    // Health check endpoint
+    embed.addFields({
+      name: "🏥 Health Endpoints",
+      value: `http://localhost:${process.env.HEALTH_PORT || 3000}/health\nhttp://localhost:${process.env.HEALTH_PORT || 3000}/metrics`,
+      inline: false,
+    });
+
+    await interaction.editReply({ embeds: [embed] });
+  },
 };

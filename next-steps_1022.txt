@@ -1,0 +1,24 @@
+Next Steps (Oct 22)
+===================
+
+1. Configure club spreadsheet links per guild:
+   - Run `/club-admin stats url:<sheet link>` as an admin in each production server so the new `guild_settings` table stores the Google Sheets ID/URL.
+   - Optionally set `CLUB_SHEET_URL` or `GOOGLE_SHEETS_SPREADSHEET_ID` in `.env` as a global fallback.
+
+2. Double-check Google Sheets service account access:
+   - Share the spreadsheet with the service account email found in `google-service-account.json`.
+   - Confirm `/club-admin stats` shows the public embed after step 1.
+
+3. Monitor OpenAI usage after enabling retry logic:
+   - Set `CLUB_VISION_MAX_RETRIES`, `CLUB_VISION_RETRY_BASE_DELAY_MS`, or `CLUB_VISION_RETRY_JITTER_MS` if you need tighter control over GPT-4o TPM usage.
+   - Keep the rate-limit warning logs on hand to validate the backoff behaviour during heavy club uploads.
+
+4. Roll the guild_settings migration everywhere:
+   - Existing environments only need a bot restart; the table is created automatically on boot.
+   - For safety, take a backup (`./scripts/backup-database.sh`) before first restart.
+
+5. Optional QA checklist:
+   - `/club analyze` with 2-3 screenshots to confirm multi-upload + retry path.
+   - `/club-admin snapshots` to ensure public embed renders.
+   - `/club-admin stats` (without args) to show the stored sheet link to everyone.
+   - `/club stats` to verify the button uses the stored URL.

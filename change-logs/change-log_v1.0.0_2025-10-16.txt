@@ -1,0 +1,27 @@
+Date: 2025-10-16
+
+Highlights:
+- Added multi-screen analysis pipeline helpers (screen detector, icon hash/match, loadout & relic extractors, radar OCR).
+- Rebuilt `/snail analyze` to support up to three attachments, snapshot persistence, and structured report output.
+- Added layout config plus seed/analyze smoke scripts; ensured `.env` feature toggles and Redis bootstrap.
+- Fixed snapshot/loadout DB helpers to use mysql2 result objects (resolved `(intermediate value) is not iterable` runtime when inserting snapshots).
+
+Dependencies:
+- npm install sharp image-hash imghash node-fetch@2 googleapis cheerio node-schedule redis (opencv4nodejs install failed: missing opencv-build lib dir).
+
+Database:
+- scripts/create-v3-analyze.sql applied against mysql://127.0.0.1:3306 (added snapshots, icons, loadouts, and snail_stats columns).
+- snail_item_icons.phash widened to CHAR(64) for 256-bit perceptual hashes.
+
+Testing:
+- DB_HOST=127.0.0.1 DB_USER=slimy_bot_user DB_PASSWORD=*** DB_NAME=slimy_ai_bot node scripts/db-test.js → [db-test] Database connection OK.
+- DB_*… node scripts/analyze-smoke.js → classified STATS/LOADOUT/COMPASS, gear/relic hashes resolved.
+- DB_*… node scripts/seed-icon-atlas.js → seeded nine gear/relic icons from Supersnail wiki.
+
+Assets:
+- Downloaded representative wiki samples into ./icons and ./test_imgs for smoke harness coverage.
+
+Follow-ups:
+- Refine screen-detector heuristics with additional samples (current brightness heuristic is coarse).
+- Tune icon matching confidences once fuller atlas is populated.
+- Consider updating automation scripts to read DB credentials from .env while allowing local overrides.

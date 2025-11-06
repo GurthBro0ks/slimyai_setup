@@ -1,0 +1,37 @@
+# Slash Command Test Report — 2025-10-23T16:16:36.266Z
+
+Environment Summary
+-------------------
+Node.js: v18.19.1
+Platform: linux 6.8.0-85-generic
+Package Manager: npm/9.2.0 node/v18.19.1 linux x64 workspaces/false
+TEST_MODE: 1
+
+Results
+-------
+```
+Command               Variant      Status   ms   Notes                                                                           
+/chat                 default      PASS     2    **TestUser:** Hello from the QA harness! **slimy.ai:** Stub response: Hello f…  
+/club-admin           default      PASS     2    ❌ Subcommand not provided in mock interaction.                                  
+/club-analyze         preview      PASS     7    Review the parsed data below. Approve to commit or refine with OCR/manual fixes.
+/club-analyze         force-dry    PASS     2    Force commit complete.                                                          
+/club-analyze         no-perms     PASS     1    Denied as expected.                                                             
+/club-stats           both/embed   PASS     10   edit: 1 embed(s)                                                                
+/club-stats           both/csv     PASS     0    Club stats CSV export                                                           
+/club-stats           no-perms     PASS     0    Denied as expected.                                                             
+/consent              status       PASS     0    ✅ Memory ON here.                                                               
+/consent              set-allow    PASS     0    ✅ Memory ON for this server.                                                    
+/diag                 default      PASS     49   edit: 1 embed(s)                                                                
+/dream                anime        PASS     1    🎌 **Dream Created!** **Style:** Anime **Prompt:** A cheerful snail hero expl…  
+/export               default      PASS     17   edit: 1 embed(s)                                                                
+/forget               single       PASS     0    edit: 1 embed(s)                                                                
+/forget               all          PASS     9    edit: 1 embed(s)                                                                
+/mode                 view         PASS     1    📋 Mode configuration for <#channel-qa> **Direct:** chat, personality, rating…  
+/mode                 non-admin    SKIP     0    Discord permission gates this command before execution; mocked runs skip.       
+/personality-config   view         PASS     1    reply: 1 embed(s)                                                               
+/personality-config   analytics    PASS     0    reply: 1 embed(s)                                                               
+/personality-config   adjust       PASS     0    ✅ Adjusted **enthusiasm** to **6/10**. View overrides with `/personality-conf…  
+/personality-config   non-admin    PASS     0    Denied as expected.                                                             
+/remember             default      PASS     1    edit: 1 embed(s)                                                                
+/snail                skip         SKIP     0    Vision pipeline and OCR integrations skipped in dry-run mode.                   
+```

@@ -1,0 +1,21 @@
+Date: 2025-10-16 (Metrics + onboarding refresh)
+
+Highlights:
+- Hardened `/snail analyze` with first-run onboarding, readiness gating, AFFCT OCR guardrails, and footer disclaimer.
+- Switched icon hashing to 256-bit (64 hex) storage with new thresholds, fallback hook, and unknown-crop logging.
+- Added `/snail analyze help` subcommand plus analyze metrics logger (stdout + optional MySQL table).
+
+Ops & Migrations:
+- scripts/migrate-keep-64-phash.sql → ALTER snail_item_icons.phash CHAR(64) + optional analyze_metrics table.
+- `.env` enables FEATURE_ANALYZE_METRICS; new helper logs unknown crops under var/unknown_crops/.
+- Rebuilt slimy-bot image and redeployed guild commands (node deploy-commands.js; exits with timeout after success).
+
+Testing:
+- DB_* overrides npm run analyze-test → radar readable, icon confidences=40, unknown crops saved.
+- DB_* overrides npm run dbtest → `[db-test] Database connection OK`.
+- DB_* overrides node scripts/seed-icon-atlas.js → refreshed 9 wiki icons with 64-char hashes.
+
+Follow-ups:
+- Provide real Vision fallback once available (setVisionFallback currently returns null).
+- Curate logged crops in var/unknown_crops/ to expand atlas and increase confidences.
+- Investigate Redis connectivity inside container (still logs ECONNREFUSED when redis not running).
