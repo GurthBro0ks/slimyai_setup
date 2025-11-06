@@ -25,25 +25,25 @@
    Present: slimy_bot_user...
 
 ✅ **ENV: DB_PASSWORD**  
-   Present: PAw5zMUtPAw5zMUt...
+   Present: ***REDACTED***
 
 ✅ **ENV: DB_NAME**  
    Present: slimy_ai_bot...
 
 ✅ **ENV: DISCORD_TOKEN**  
-   Present: MTQxNTM4NzExNjU2NDkx...
+   Present: ***REDACTED***
 
 ✅ **ENV: DISCORD_CLIENT_ID**  
-   Present: 1415387116564910161...
+   Present: ***REDACTED***
 
 ✅ **ENV: OPENAI_API_KEY**  
-   Present: sk-proj-EEspKV5Et5CD...
+   Present: ***REDACTED***
 
 ✅ **ENV: GOOGLE_APPLICATION_CREDENTIALS**  
    Present: ./google-service-acc...
 
 ✅ **ENV: SHEETS_PARENT_FOLDER_ID**  
-   Present: 1ivR2dyxdQ1W3cNPOSKG...
+   Present: ***REDACTED***
 
 ✅ **ENV: VISION_MODEL**  
    Set to: gpt-4o

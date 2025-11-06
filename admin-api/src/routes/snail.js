@@ -1,5 +1,17 @@
 "use strict";
 
+/**
+ * Snail Tools Routes
+ * 
+ * Handles Super Snail game-related API endpoints including:
+ * - Screenshot analysis using OpenAI Vision
+ * - User stats retrieval
+ * - Secret codes fetching
+ * - Tier cost calculations
+ * 
+ * All routes require authentication, member role, and guild membership.
+ */
+
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
@@ -9,29 +21,37 @@ const mime = require("mime-types");
 const { analyzeSnailDataUrl } = require("../../../lib/snail-vision");
 const { readJson, writeJson } = require("../lib/store");
 const { UPLOADS_DIR } = require("../services/uploads");
-const metrics = require("../lib/metrics");
+const metrics = require("../lib/monitoring/metrics");
 const {
   requireAuth,
   requireRole,
   requireGuildMember,
 } = require("../middleware/auth");
+const { cacheGuildData, cacheStats } = require("../middleware/cache");
+const { snail, validateFileUploads } = require("../lib/validation/schemas");
+const { apiHandler } = require("../lib/errors");
 
 const router = express.Router({ mergeParams: true });
 
-const MAX_FILES = 8;
-const MAX_MB = Number(process.env.UPLOAD_MAX_MB || 10);
+// Upload configuration
+const MAX_FILES = 8;  // Maximum number of files per upload
+const MAX_MB = Number(process.env.UPLOAD_MAX_MB || 10);  // Max file size in MB
 const MAX_BYTES = MAX_MB * 1024 * 1024;
 const SNELP_CODES_URL =
   process.env.SNELP_CODES_URL || "https://snelp.com/api/codes";
 
+// Directory paths for file storage
 const UPLOAD_ROOT = path.join(UPLOADS_DIR, "snail");
 const DATA_ROOT = path.join(process.cwd(), "data", "snail");
 const CODES_ROOT = path.join(process.cwd(), "data", "codes");
 
+// Ensure directories exist
 fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 fs.mkdirSync(DATA_ROOT, { recursive: true });
 fs.mkdirSync(CODES_ROOT, { recursive: true });
 
+// Configure multer for file uploads
+// Files are stored in guild-specific directories
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
     try {
@@ -43,6 +63,7 @@ const storage = multer.diskStorage({
     }
   },
   filename: (_req, file, cb) => {
+    // Sanitize filename and add timestamp to prevent collisions
     const safe = (file.originalname || "upload.png").replace(
       /[^a-z0-9._-]/gi,
       "_",
@@ -61,12 +82,41 @@ const upload = multer({
   },
 });
 
+// All snail routes require authentication, member role, and guild membership
 router.use(requireAuth);
 router.use(requireRole("member"));
 router.use(requireGuildMember("guildId"));
 
+/**
+ * POST /api/snail/:guildId/analyze
+ * 
+ * Analyze Super Snail screenshots using OpenAI Vision API.
+ * 
+ * Requires: member role, guild membership
+ * 
+ * Request: multipart/form-data
+ *   - images: File[] (required) - Up to 8 image files, max 10MB each
+ *   - prompt: string (optional) - Additional context for analysis
+ * 
+ * Response:
+ *   - ok: boolean
+ *   - saved: boolean - Whether analysis was saved
+ *   - guildId: string
+ *   - userId: string
+ *   - prompt: string
+ *   - results: array - Analysis results for each image
+ *   - savedAt: string - ISO timestamp
+ * 
+ * Errors:
+ *   - 400: missing_images - No images provided
+ *   - 413: file_too_large - File exceeds size limit
+ *   - 503: vision_unavailable - OpenAI API key not configured
+ *   - 500: server_error - Internal server error
+ */
 router.post(
   "/analyze",
+  express.json(),
+  snail.upload,
   (req, res, next) => {
     upload.array("images", MAX_FILES)(req, res, (err) => {
       if (err) {
@@ -80,6 +130,7 @@ router.post(
       return next();
     });
   },
+  validateFileUploads,
   async (req, res) => {
     if (!process.env.OPENAI_API_KEY) {
       return res.status(503).json({ error: "vision_unavailable" });
@@ -141,13 +192,28 @@ router.post(
         savedAt: payload.uploadedAt,
       });
     } catch (err) {
-      console.error("[snail/analyze] failed", err);
-      res.status(500).json({ error: "server_error", message: err.message });
+      console.error("[snail/analyze] failed");
+      res.status(500).json({ error: "server_error" });
     }
   },
 );
 
-router.get("/stats", async (req, res) => {
+/**
+ * GET /api/snail/:guildId/stats
+ *
+ * Get user's latest stats analysis for the guild.
+ *
+ * Requires: member role, guild membership
+ *
+ * Response:
+ *   - ok: boolean
+ *   - record: object - Latest analysis record, or
+ *   - empty: boolean - true if no stats found
+ *
+ * Errors:
+ *   - 500: server_error - Internal server error
+ */
+router.get("/stats", snail.stats, cacheGuildData(300, 600), async (req, res) => {
   try {
     const guildId = String(req.params.guildId);
     const userId = req.user.id;
@@ -163,7 +229,18 @@ router.get("/stats", async (req, res) => {
   }
 });
 
-router.get("/analyze_help", (_req, res) => {
+/**
+ * GET /api/snail/:guildId/analyze_help
+ *
+ * Get help text and tips for screenshot analysis.
+ *
+ * Requires: member role, guild membership
+ *
+ * Response:
+ *   - ok: boolean
+ *   - help: array - Array of help text strings
+ */
+router.get("/analyze_help", snail.help, cacheStats(3600, 7200), (_req, res) => {
   res.json({
     ok: true,
     help: [
@@ -175,9 +252,25 @@ router.get("/analyze_help", (_req, res) => {
   });
 });
 
-router.post("/calc", express.json(), (req, res) => {
-  const sim = Number(req.body?.sim ?? 0);
-  const total = Number(req.body?.total ?? 0);
+/**
+ * POST /api/snail/:guildId/calc
+ *
+ * Calculate tier cost percentage.
+ *
+ * Requires: member role, guild membership
+ *
+ * Request body:
+ *   - sim: number (required) - SIM value
+ *   - total: number (required) - Total value
+ *
+ * Response:
+ *   - ok: boolean
+ *   - sim: number - SIM value
+ *   - total: number - Total value
+ *   - simPct: number - Calculated percentage (sim / total)
+ */
+router.post("/calc", express.json(), snail.calc, (req, res) => {
+  const { sim, total } = req.body;
   const simPct = total > 0 ? sim / total : 0;
   res.json({
     ok: true,
@@ -187,7 +280,26 @@ router.post("/calc", express.json(), (req, res) => {
   });
 });
 
-router.get("/codes", async (req, res) => {
+/**
+ * GET /api/snail/:guildId/codes
+ *
+ * Get secret codes for Super Snail game.
+ * Fetches from remote Snelp API with fallback to local cache.
+ *
+ * Requires: member role, guild membership
+ *
+ * Query parameters:
+ *   - scope: string (optional) - Filter scope: "active", "past7", or "all" (default: "active")
+ *
+ * Response:
+ *   - ok: boolean
+ *   - source: string - "remote" or "local"
+ *   - codes: array - Array of code objects
+ *
+ * Errors:
+ *   - Falls back to local cache if remote fails
+ */
+router.get("/codes", snail.codes, cacheGuildData(1800, 3600), async (req, res) => {
   const guildId = String(req.params.guildId);
   const scope = ["active", "past7", "all"].includes(req.query.scope)
     ? req.query.scope

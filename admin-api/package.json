@@ -8,19 +8,77 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon --watch server.js server.js",
-    "lint": "echo \"No lint step defined\""
+    "lint": "echo \"No lint step defined\"",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "setupFiles": [
+      "<rootDir>/jest.setup.js"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "lib/**/*.js",
+      "!**/node_modules/**",
+      "!**/tests/**"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html",
+      "json"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 60,
+        "functions": 60,
+        "lines": 60,
+        "statements": 60
+      }
+    },
+    "testMatch": [
+      "**/__tests__/**/*.test.js",
+      "**/?(*.)+(spec|test).js"
+    ]
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
+    "@googleapis/sheets": "^7.0.0",
+    "@prisma/client": "^5.15.0",
+    "@sentry/node": "^10.23.0",
+    "@sentry/profiling-node": "^10.23.0",
+    "bullmq": "^5.63.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "express-validator": "^7.3.0",
+    "google-auth-library": "^9.0.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
-    "morgan": "^1.10.1"
+    "mime-types": "^2.1.35",
+    "morgan": "^1.10.1",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.12.0",
+    "pino": "^10.1.0",
+    "pino-pretty": "^13.1.2",
+    "redis": "^4.6.8",
+    "uuid": "^13.0.0",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
-    "nodemon": "^3.1.9"
+    "jest": "^30.2.0",
+    "nodemon": "^3.1.9",
+    "prisma": "^5.15.0",
+    "supertest": "^7.1.4"
   }
 }

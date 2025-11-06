@@ -1,26 +1,40 @@
+# Node
 node_modules/
 logs/
-.env
 
-# slimy extras
+# Environment & Secrets (CRITICAL - NEVER COMMIT)
 .env
-logs/
-node_modules/
-data_*.db
+.env.*
+!.env.example
+*.env
+admin-api/.env*
+!admin-api/.env.example
+admin-ui/.env*
+!admin-ui/.env.example
+google-service-account.json
 slimy-ai-*.json
-test-outputs/
-
-# runtime files
-.slimy-singleton.lock
-data_store.json.tmp
 tokens.txt
+**/secrets.md
+**/*secret*
+**/*credentials*
+**/*key*.json
+**/*token*
+
+# Database & Data
+data_*.db
+data_store.json
+data_store.json.tmp
+/backups/
+*.sqlite3
+
+# Runtime files
+.slimy-singleton.lock
 *.zip
+*.tar.gz
 lib/app-files-backup.tar.gz
 lib/app-files-backup.tar.gz.local
+test-outputs/
 
-# legacy local store
-/backups/
-/data_store.json
-
-.env
-google-service-account.json
+# PM2
+.pm2/
+*.log

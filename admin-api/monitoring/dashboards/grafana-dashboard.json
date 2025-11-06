@@ -1,0 +1,363 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Slimy Admin API Monitoring",
+    "tags": ["slimy", "admin-api", "monitoring"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Service Health",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"slimy-admin-api\"}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {
+                "options": {
+                  "0": {
+                    "text": "DOWN",
+                    "color": "red"
+                  },
+                  "1": {
+                    "text": "UP",
+                    "color": "green"
+                  }
+                },
+                "type": "value"
+              }
+            ]
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": 2,
+        "title": "Uptime",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "slimy_admin_api_uptime_seconds / 3600",
+            "refId": "A",
+            "legendFormat": "Uptime (hours)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "h",
+            "decimals": 1
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 6,
+          "y": 0
+        }
+      },
+      {
+        "id": 3,
+        "title": "Error Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "slimy_admin_api_error_rate_percent",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "orange",
+                  "value": 5
+                },
+                {
+                  "color": "red",
+                  "value": 10
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 12,
+          "y": 0
+        }
+      },
+      {
+        "id": 4,
+        "title": "Active Connections",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "slimy_admin_api_active_connections",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 18,
+          "y": 0
+        }
+      },
+      {
+        "id": 5,
+        "title": "Response Time Percentiles",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "slimy_admin_api_response_time_p50_ms",
+            "refId": "A",
+            "legendFormat": "P50"
+          },
+          {
+            "expr": "slimy_admin_api_response_time_p95_ms",
+            "refId": "B",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "slimy_admin_api_response_time_p99_ms",
+            "refId": "C",
+            "legendFormat": "P99"
+          }
+        ],
+        "yAxes": [
+          {
+            "unit": "ms",
+            "label": "Response Time"
+          },
+          {
+            "unit": "short"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 4
+        }
+      },
+      {
+        "id": 6,
+        "title": "Request Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(slimy_admin_api_requests_total[5m])",
+            "refId": "A",
+            "legendFormat": "Requests/sec"
+          }
+        ],
+        "yAxes": [
+          {
+            "unit": "reqps",
+            "label": "Requests per second"
+          },
+          {
+            "unit": "short"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 4
+        }
+      },
+      {
+        "id": 7,
+        "title": "HTTP Status Codes",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "sum(slimy_admin_api_http_requests_total) by (status)",
+            "refId": "A",
+            "instant": true
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "displayMode": "color-background"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "status"
+              },
+              "properties": [
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-text"
+                }
+              ]
+            }
+          ]
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 0,
+          "y": 12
+        }
+      },
+      {
+        "id": 8,
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "slimy_admin_api_memory_heap_used_mb",
+            "refId": "A",
+            "legendFormat": "Used Heap"
+          },
+          {
+            "expr": "slimy_admin_api_memory_heap_total_mb",
+            "refId": "B",
+            "legendFormat": "Total Heap"
+          }
+        ],
+        "yAxes": [
+          {
+            "unit": "MB",
+            "label": "Memory"
+          },
+          {
+            "unit": "short"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 8,
+          "y": 12
+        }
+      },
+      {
+        "id": 9,
+        "title": "Database Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "slimy_admin_api_database_connections",
+            "refId": "A",
+            "legendFormat": "Connections"
+          },
+          {
+            "expr": "slimy_admin_api_database_query_time_average_ms",
+            "refId": "B",
+            "legendFormat": "Avg Query Time"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Connections"
+          },
+          {
+            "unit": "ms",
+            "label": "Query Time"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 16,
+          "y": 12
+        }
+      },
+      {
+        "id": 10,
+        "title": "Application Metrics",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "slimy_admin_api_images_processed_total",
+            "refId": "A",
+            "legendFormat": "Images Processed"
+          },
+          {
+            "expr": "slimy_admin_api_chat_messages_total",
+            "refId": "B",
+            "legendFormat": "Chat Messages"
+          },
+          {
+            "expr": "slimy_admin_api_sessions_active",
+            "refId": "C",
+            "legendFormat": "Active Sessions"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 20
+        }
+      },
+      {
+        "id": 11,
+        "title": "Error Trends",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(slimy_admin_api_errors_total[5m])",
+            "refId": "A",
+            "legendFormat": "Errors/sec"
+          }
+        ],
+        "yAxes": [
+          {
+            "unit": "errors/sec",
+            "label": "Error Rate"
+          },
+          {
+            "unit": "short"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 20
+        }
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {},
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": []
+    },
+    "refresh": "30s",
+    "schemaVersion": 27,
+    "version": 0,
+    "links": []
+  }
+}

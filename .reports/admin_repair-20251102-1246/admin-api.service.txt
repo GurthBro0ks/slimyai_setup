@@ -1,0 +1,224 @@
+● admin-api.service - Slimy Admin API
+     Loaded: loaded (/etc/systemd/system/admin-api.service; enabled; preset: enabled)
+     Active: active (running) since Sun 2025-11-02 12:03:10 UTC; 43min ago
+   Main PID: 388326 (node)
+      Tasks: 11 (limit: 4598)
+     Memory: 19.5M (peak: 46.9M)
+        CPU: 546ms
+     CGroup: /system.slice/admin-api.service
+             └─388326 /usr/bin/node server.js
+
+Nov 02 12:37:33 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:37:33 +0000] "GET /api/auth/login?_rsc=vusbg HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:37:33 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:37:33 +0000] "GET /api/auth/login HTTP/1.1" 302 269 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:37:41 ubuntu node[388326]: [session-store] Stored session for user: 427999592986968074
+Nov 02 12:37:41 ubuntu node[388326]: [jwt] Setting cookie: slimy_admin with options: {"httpOnly":true,"secure":true,"sameSite":"lax","domain":".slimyai.xyz","path":"/","maxAge":43200000}
+Nov 02 12:37:41 ubuntu node[388326]: [jwt] Token length: 327
+Nov 02 12:37:41 ubuntu node[388326]: [jwt] Cookie set successfully
+Nov 02 12:37:41 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:37:41 +0000] "GET /api/auth/callback?code=6dHGLnkfM042mZk0r50sWLStY6Mn0a&state=-tA_Xn05BJzkV6z9Gpk0mQ HTTP/1.1" 302 36 "https://discord.com/" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:37:41 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:37:41 +0000] "GET /api/auth/login?_rsc=r4s9b HTTP/1.1" 200 294 "https://admin.slimyai.xyz/guilds" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:38:13 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:38:13 +0000] "GET /api/auth/login?_rsc=r4s9b HTTP/1.1" 200 294 "https://admin.slimyai.xyz/guilds" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:38:14 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:38:14 +0000] "GET /api/auth/login?_rsc=3h94p HTTP/1.1" 200 294 "https://admin.slimyai.xyz/chat" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Oct 29 01:31:07 ubuntu systemd[1]: admin-api.service: Deactivated successfully.
+Oct 29 01:31:07 ubuntu systemd[1]: Stopped admin-api.service - Slimy Admin API.
+Oct 29 01:31:07 ubuntu systemd[1]: admin-api.service: Consumed 1.416s CPU time, 115.3M memory peak, 0B memory swap peak.
+Oct 29 01:31:07 ubuntu systemd[1]: Started admin-api.service - Slimy Admin API.
+Oct 29 01:31:07 ubuntu node[40136]: [openai] Missing OPENAI_API_KEY — /chat and /image will refuse.
+Oct 29 01:31:08 ubuntu node[40136]: [database] Connection pool initialized
+Oct 29 01:31:08 ubuntu node[40136]: [database] Initialization failed: Access denied for user 'user'@'172.18.0.1' (using password: YES)
+Oct 29 01:31:08 ubuntu node[40136]: [2025-10-29T01:31:08.537Z] INFO: [admin-api] Listening on http://127.0.0.1:3080
+Oct 29 01:31:23 ubuntu node[40136]: 127.0.0.1 - - [29/Oct/2025:01:31:23 +0000] "GET /api/debug/diagnostics HTTP/1.1" 404 160 "-" "curl/8.5.0"
+Oct 29 01:31:41 ubuntu node[40136]: 127.0.0.1 - - [29/Oct/2025:01:31:41 +0000] "GET /api/diagnostics HTTP/1.1" 200 197 "-" "curl/8.5.0"
+Oct 29 01:59:26 ubuntu systemd[1]: Stopping admin-api.service - Slimy Admin API...
+Oct 29 01:59:26 ubuntu systemd[1]: admin-api.service: Deactivated successfully.
+Oct 29 01:59:26 ubuntu systemd[1]: Stopped admin-api.service - Slimy Admin API.
+Oct 29 01:59:26 ubuntu systemd[1]: admin-api.service: Consumed 1.464s CPU time, 114.8M memory peak, 0B memory swap peak.
+Oct 29 01:59:26 ubuntu systemd[1]: Started admin-api.service - Slimy Admin API.
+Oct 29 01:59:26 ubuntu node[57010]: [openai] Missing OPENAI_API_KEY — /chat and /image will refuse.
+Oct 29 01:59:28 ubuntu node[57010]: [database] Connection pool initialized
+Oct 29 01:59:28 ubuntu node[57010]: [database] Initialization failed: Access denied for user 'user'@'172.18.0.1' (using password: YES)
+Oct 29 01:59:28 ubuntu node[57010]: [2025-10-29T01:59:28.521Z] INFO: [admin-api] Listening on http://127.0.0.1:3080
+Oct 29 02:08:17 ubuntu systemd[1]: Stopping admin-api.service - Slimy Admin API...
+Oct 29 02:08:17 ubuntu systemd[1]: admin-api.service: Deactivated successfully.
+Oct 29 02:08:17 ubuntu systemd[1]: Stopped admin-api.service - Slimy Admin API.
+Oct 29 02:08:17 ubuntu systemd[1]: admin-api.service: Consumed 1.773s CPU time, 155.2M memory peak, 0B memory swap peak.
+Oct 29 02:08:17 ubuntu systemd[1]: Started admin-api.service - Slimy Admin API.
+Oct 29 02:08:17 ubuntu node[61749]: [openai] Missing OPENAI_API_KEY — /chat and /image will refuse.
+Oct 29 02:08:19 ubuntu node[61749]: [database] Connection pool initialized
+Oct 29 02:08:19 ubuntu node[61749]: [database] Initialization failed: Access denied for user 'user'@'172.18.0.1' (using password: YES)
+Oct 29 02:08:19 ubuntu node[61749]: [2025-10-29T02:08:19.418Z] INFO: [admin-api] Listening on http://0.0.0.0:3080
+Oct 29 07:59:11 ubuntu node[61749]: 68.179.170.248 - - [29/Oct/2025:07:59:11 +0000] "GET /api/auth/login HTTP/1.1" 302 318 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Oct 29 07:59:21 ubuntu node[61749]: 68.179.170.248 - - [29/Oct/2025:07:59:21 +0000] "GET /api/auth/login HTTP/1.1" 302 318 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Oct 29 07:59:30 ubuntu node[61749]: [auth] DISCORD_BOT_TOKEN not configured; skipping guild intersection
+Oct 29 07:59:30 ubuntu node[61749]: [session-store] Stored session for user: 427999592986968074
+Oct 29 07:59:30 ubuntu node[61749]: [jwt] Setting cookie: slimy_admin with options: {"httpOnly":true,"secure":true,"sameSite":"lax","domain":"admin.slimyai.xyz","path":"/","maxAge":43200000}
+Oct 29 07:59:30 ubuntu node[61749]: [jwt] Token length: 20471
+Oct 29 07:59:30 ubuntu node[61749]: [jwt] Cookie set successfully
+Oct 29 07:59:30 ubuntu node[61749]: 68.179.170.248 - - [29/Oct/2025:07:59:30 +0000] "GET /api/auth/callback?code=bbIc2CyhY3wAFPoteq8Cg7r46mnODl&state=eyJub25jZSI6IjJHSU1kMC1WS1NEemxUY2lGdTFJR0EiLCJ0cyI6MTc2MTcyNDc2MTg0NX0 HTTP/1.1" 302 36 "https://discord.com/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Oct 29 10:45:09 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 29 10:45:09 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 29 10:45:14 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 29 10:45:15 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 29 10:45:15 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+-- Boot 9401d48d79da4091b880f4a75b73aaea --
+Oct 29 15:39:19 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 29 15:39:42 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 30 22:10:15 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 30 22:10:15 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 30 22:21:40 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 30 22:21:41 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 31 14:17:32 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 31 14:17:32 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 31 14:17:32 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 31 14:17:32 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 31 14:17:32 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 31 14:29:34 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 31 14:29:34 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 31 14:29:34 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 31 14:29:34 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 31 14:29:34 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Oct 31 14:29:34 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+-- Boot ee46116e4ae64082abb24cc4decd2001 --
+Nov 01 13:51:59 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Nov 01 14:10:10 ubuntu systemd[1]: /etc/systemd/system/admin-api.service:14: Unknown key name 'StartLimitIntervalSec' in section 'Service', ignoring.
+Nov 01 14:10:10 ubuntu systemd[1]: Started admin-api.service - Slimy Admin API.
+Nov 01 14:10:11 ubuntu node[294878]: [admin-api] Listening on port 3080
+Nov 01 14:10:19 ubuntu node[294878]: 127.0.0.1 - - [01/Nov/2025:14:10:19 +0000] "GET /api/health HTTP/1.1" 200 76 "-" "curl/8.5.0"
+Nov 01 14:10:23 ubuntu node[294878]: 127.0.0.1 - - [01/Nov/2025:14:10:23 +0000] "GET /api/diag HTTP/1.1" 401 70 "-" "curl/8.5.0"
+Nov 01 14:10:27 ubuntu node[294878]: 74.208.218.141 - - [01/Nov/2025:14:10:27 +0000] "GET /diag HTTP/1.1" 404 69 "-" "curl/8.5.0"
+Nov 01 14:10:47 ubuntu systemd[1]: Stopping admin-api.service - Slimy Admin API...
+Nov 01 14:10:47 ubuntu systemd[1]: admin-api.service: Deactivated successfully.
+Nov 01 14:10:47 ubuntu systemd[1]: Stopped admin-api.service - Slimy Admin API.
+Nov 01 14:10:47 ubuntu systemd[1]: Started admin-api.service - Slimy Admin API.
+Nov 01 14:10:47 ubuntu node[295025]: [admin-api] Listening on port 3080
+Nov 01 14:10:51 ubuntu node[295025]: 74.208.218.141 - - [01/Nov/2025:14:10:51 +0000] "GET /diag HTTP/1.1" 401 70 "-" "curl/8.5.0"
+Nov 01 14:10:56 ubuntu node[295025]: 172.20.0.2 - - [01/Nov/2025:14:10:56 +0000] "GET /diag HTTP/1.1" 401 70 "-" "slimyai-web/1.0 (+https://admin.slimyai.xyz)"
+Nov 01 14:11:06 ubuntu node[295025]: 172.20.0.2 - - [01/Nov/2025:14:11:06 +0000] "GET /auth/me HTTP/1.1" 401 60 "-" "slimyai-web/1.0 (+https://admin.slimyai.xyz)"
+Nov 01 14:11:23 ubuntu node[295025]: 74.208.218.141 - - [01/Nov/2025:14:11:23 +0000] "GET /diag HTTP/1.1" 401 70 "-" "curl/8.5.0"
+Nov 01 14:11:27 ubuntu node[295025]: 172.20.0.2 - - [01/Nov/2025:14:11:27 +0000] "GET /diag HTTP/1.1" 401 70 "-" "slimyai-web/1.0 (+https://admin.slimyai.xyz)"
+Nov 01 14:11:54 ubuntu systemd[1]: Stopping admin-api.service - Slimy Admin API...
+Nov 01 14:11:54 ubuntu systemd[1]: admin-api.service: Deactivated successfully.
+Nov 01 14:11:54 ubuntu systemd[1]: Stopped admin-api.service - Slimy Admin API.
+Nov 01 14:11:54 ubuntu systemd[1]: Started admin-api.service - Slimy Admin API.
+Nov 01 14:11:54 ubuntu node[295416]: [admin-api] Listening on port 3080
+Nov 01 14:12:08 ubuntu node[295416]: 172.20.0.2 - - [01/Nov/2025:14:12:08 +0000] "GET /diag HTTP/1.1" 401 70 "-" "slimyai-web/1.0 (+https://admin.slimyai.xyz)"
+Nov 01 14:12:13 ubuntu node[295416]: 74.208.218.141 - - [01/Nov/2025:14:12:13 +0000] "GET /codes HTTP/1.1" 404 70 "-" "curl/8.5.0"
+Nov 01 14:13:01 ubuntu node[295416]: 74.208.218.141 - - [01/Nov/2025:14:13:01 +0000] "HEAD /api/diag HTTP/1.1" 401 70 "-" "curl/8.5.0"
+Nov 01 14:13:06 ubuntu node[295416]: 74.208.218.141 - - [01/Nov/2025:14:13:06 +0000] "GET /api/health HTTP/1.1" 200 77 "-" "curl/8.5.0"
+Nov 01 14:13:11 ubuntu node[295416]: 74.208.218.141 - - [01/Nov/2025:14:13:11 +0000] "GET /api/health HTTP/1.1" 200 77 "-" "curl/8.5.0"
+Nov 01 14:13:11 ubuntu node[295416]: 74.208.218.141 - - [01/Nov/2025:14:13:11 +0000] "GET /api/diag HTTP/1.1" 401 70 "-" "curl/8.5.0"
+Nov 01 14:13:16 ubuntu node[295416]: 172.20.0.2 - - [01/Nov/2025:14:13:16 +0000] "GET /api/diag HTTP/1.1" 401 70 "-" "slimyai-web/1.0 (+https://admin.slimyai.xyz)"
+Nov 01 14:19:28 ubuntu systemd[1]: Stopping admin-api.service - Slimy Admin API...
+Nov 01 14:19:28 ubuntu systemd[1]: admin-api.service: Deactivated successfully.
+Nov 01 14:19:28 ubuntu systemd[1]: Stopped admin-api.service - Slimy Admin API.
+Nov 01 14:19:28 ubuntu systemd[1]: Started admin-api.service - Slimy Admin API.
+Nov 01 14:19:28 ubuntu node[297119]: [admin-api] Listening on port 3080
+Nov 01 14:19:36 ubuntu node[297119]: 127.0.0.1 - - [01/Nov/2025:14:19:36 +0000] "GET /api/health HTTP/1.1" 200 162 "-" "curl/8.5.0"
+Nov 01 14:19:41 ubuntu node[297119]: 74.208.218.141 - - [01/Nov/2025:14:19:41 +0000] "HEAD /api/diag HTTP/1.1" 401 70 "-" "curl/8.5.0"
+Nov 01 14:19:45 ubuntu node[297119]: 74.208.218.141 - - [01/Nov/2025:14:19:45 +0000] "GET /api/health HTTP/1.1" 200 163 "-" "curl/8.5.0"
+Nov 01 14:19:49 ubuntu node[297119]: 172.20.0.2 - - [01/Nov/2025:14:19:49 +0000] "GET /api/diag HTTP/1.1" 401 70 "-" "slimyai-web/1.0 (+https://admin.slimyai.xyz)"
+Nov 01 14:19:58 ubuntu node[297119]: 74.208.218.141 - - [01/Nov/2025:14:19:58 +0000] "GET /api/auth/login HTTP/1.1" 503 97 "-" "curl/8.5.0"
+Nov 01 14:20:03 ubuntu node[297119]: 74.208.218.141 - - [01/Nov/2025:14:20:03 +0000] "GET /api/auth/login HTTP/1.1" 503 97 "-" "curl/8.5.0"
+Nov 01 15:10:16 ubuntu systemd[1]: Stopping admin-api.service - Slimy Admin API...
+Nov 01 15:10:16 ubuntu systemd[1]: admin-api.service: Deactivated successfully.
+Nov 01 15:10:16 ubuntu systemd[1]: Stopped admin-api.service - Slimy Admin API.
+Nov 01 15:10:16 ubuntu systemd[1]: Started admin-api.service - Slimy Admin API.
+Nov 01 15:10:16 ubuntu node[310568]: [admin-api] Listening on port 3080
+Nov 01 15:10:31 ubuntu node[310568]: 74.208.218.141 - - [01/Nov/2025:15:10:31 +0000] "GET /api/health HTTP/1.1" 200 161 "-" "curl/8.5.0"
+Nov 01 15:44:17 ubuntu node[310568]: 74.208.218.141 - - [01/Nov/2025:15:44:17 +0000] "GET /api/health HTTP/1.1" 200 163 "-" "curl/8.5.0"
+Nov 01 15:44:55 ubuntu node[310568]: 74.208.218.141 - - [01/Nov/2025:15:44:55 +0000] "HEAD /api/diag HTTP/1.1" 401 70 "-" "curl/8.5.0"
+Nov 01 15:46:04 ubuntu node[310568]: 45.16.160.88 - - [01/Nov/2025:15:46:04 +0000] "GET /api/auth/login?_rsc=1r34m HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 15:46:06 ubuntu node[310568]: 45.16.160.88 - - [01/Nov/2025:15:46:06 +0000] "GET /api/auth/login?_rsc=vusbg HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 15:46:07 ubuntu node[310568]: 45.16.160.88 - - [01/Nov/2025:15:46:07 +0000] "GET /api/auth/login HTTP/1.1" 302 269 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 15:46:17 ubuntu node[310568]: [session-store] Stored session for user: 427999592986968074
+Nov 01 15:46:17 ubuntu node[310568]: [jwt] Setting cookie: slimy_admin with options: {"httpOnly":true,"secure":true,"sameSite":"lax","domain":".slimyai.xyz","path":"/","maxAge":43200000}
+Nov 01 15:46:17 ubuntu node[310568]: [jwt] Token length: 327
+Nov 01 15:46:17 ubuntu node[310568]: [jwt] Cookie set successfully
+Nov 01 15:46:17 ubuntu node[310568]: 45.16.160.88 - - [01/Nov/2025:15:46:17 +0000] "GET /api/auth/callback?code=UHEL2acrkJw51E1QFRAwwxt7ELNtLg&state=AGhy_rDe4mzfCnHjPtQ6Rg HTTP/1.1" 302 36 "https://discord.com/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 15:46:17 ubuntu node[310568]: 45.16.160.88 - - [01/Nov/2025:15:46:17 +0000] "GET /api/auth/login?_rsc=r4s9b HTTP/1.1" 200 294 "https://admin.slimyai.xyz/guilds" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+-- Boot a1a82f3b25c747a69e5b296f23831dbe --
+Nov 01 16:29:02 ubuntu systemd[1]: Started admin-api.service - Slimy Admin API.
+Nov 01 16:29:04 ubuntu node[704]: [admin-api] Listening on port 3080
+Nov 01 16:43:29 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:16:43:29 +0000] "GET /api/auth/login?_rsc=1r34m HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 16:43:32 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:16:43:32 +0000] "GET /api/auth/login?_rsc=1r34m HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 16:43:34 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:16:43:34 +0000] "GET /api/auth/login?_rsc=vusbg HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 16:43:34 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:16:43:34 +0000] "GET /api/auth/login HTTP/1.1" 302 269 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 16:43:43 ubuntu node[704]: [session-store] Stored session for user: 427999592986968074
+Nov 01 16:43:43 ubuntu node[704]: [jwt] Setting cookie: slimy_admin with options: {"httpOnly":true,"secure":true,"sameSite":"lax","domain":".slimyai.xyz","path":"/","maxAge":43200000}
+Nov 01 16:43:43 ubuntu node[704]: [jwt] Token length: 327
+Nov 01 16:43:43 ubuntu node[704]: [jwt] Cookie set successfully
+Nov 01 16:43:43 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:16:43:43 +0000] "GET /api/auth/callback?code=R2b17e0xwyRVxu0lE4SlYYzzZGmEJP&state=RW35MZe-TqKboDoQucZGyQ HTTP/1.1" 302 36 "https://discord.com/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 16:43:43 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:16:43:43 +0000] "GET /api/auth/login?_rsc=r4s9b HTTP/1.1" 200 294 "https://admin.slimyai.xyz/guilds" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 16:43:50 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:16:43:50 +0000] "GET /api/diag HTTP/1.1" 200 624 "https://admin.slimyai.xyz/status" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 16:43:50 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:16:43:50 +0000] "GET /api/auth/login?_rsc=yvikc HTTP/1.1" 200 294 "https://admin.slimyai.xyz/status" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 16:44:04 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:16:44:04 +0000] "GET /api/auth/login?_rsc=183ok HTTP/1.1" 200 294 "https://admin.slimyai.xyz/snail" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 16:44:47 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:16:44:47 +0000] "GET /api/auth/login?_rsc=3h94p HTTP/1.1" 200 294 "https://admin.slimyai.xyz/chat" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:08:49 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:08:49 +0000] "GET /api/auth/login?_rsc=3h94p HTTP/1.1" 200 294 "https://admin.slimyai.xyz/chat" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:08:52 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:08:52 +0000] "GET /api/auth/login?_rsc=3h94p HTTP/1.1" 200 294 "https://admin.slimyai.xyz/chat" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:08:54 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:08:54 +0000] "GET /api/auth/login?_rsc=1r34m HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:09:07 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:09:07 +0000] "GET /api/auth/login?_rsc=3h98k HTTP/1.1" 200 294 "https://admin.slimyai.xyz/club" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:09:11 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:09:11 +0000] "GET /api/auth/login?_rsc=183ok HTTP/1.1" 200 294 "https://admin.slimyai.xyz/snail" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:09:17 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:09:17 +0000] "GET /api/auth/login?_rsc=cruy7 HTTP/1.1" 200 294 "https://admin.slimyai.xyz/features" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:09:40 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:09:40 +0000] "GET /api/auth/login?_rsc=cruy7 HTTP/1.1" 200 294 "https://admin.slimyai.xyz/features" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:11:59 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:11:59 +0000] "GET /api/auth/login?_rsc=3ha2d HTTP/1.1" 200 294 "https://admin.slimyai.xyz/docs" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:12:00 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:12:00 +0000] "GET /api/auth/login?_rsc=18kon HTTP/1.1" 200 294 "https://admin.slimyai.xyz/docs/getting-started" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:12:09 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:12:09 +0000] "GET /api/auth/login?_rsc=mvjv3 HTTP/1.1" 200 294 "https://admin.slimyai.xyz/docs/snail-tools" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:12:15 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:12:15 +0000] "GET /api/auth/login?_rsc=1g516 HTTP/1.1" 200 294 "https://admin.slimyai.xyz/docs/club-analytics" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:12:20 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:12:20 +0000] "GET /api/auth/login?_rsc=mvjv3 HTTP/1.1" 200 294 "https://admin.slimyai.xyz/docs/snail-tools" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:12:22 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:12:22 +0000] "GET /api/auth/login?_rsc=18kon HTTP/1.1" 200 294 "https://admin.slimyai.xyz/docs/getting-started" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:12:47 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:12:47 +0000] "GET /api/auth/login?_rsc=1g516 HTTP/1.1" 200 294 "https://admin.slimyai.xyz/docs/club-analytics" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:12:59 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:12:59 +0000] "GET /api/auth/login?_rsc=1g516 HTTP/1.1" 200 294 "https://admin.slimyai.xyz/docs/club-analytics" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:13:59 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:13:59 +0000] "GET /api/auth/login?_rsc=1r34m HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:14:48 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:14:48 +0000] "GET /api/auth/login?_rsc=183ok HTTP/1.1" 200 294 "https://admin.slimyai.xyz/snail" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:15:12 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:15:12 +0000] "GET /api/auth/login?_rsc=cruy7 HTTP/1.1" 200 294 "https://admin.slimyai.xyz/features" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:15:19 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:15:19 +0000] "GET /api/auth/login?_rsc=3h98k HTTP/1.1" 200 294 "https://admin.slimyai.xyz/club" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:44:18 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:44:18 +0000] "GET /api/auth/login?_rsc=3h98k HTTP/1.1" 200 294 "https://admin.slimyai.xyz/club" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:44:25 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:44:25 +0000] "GET /api/auth/login?_rsc=cruy7 HTTP/1.1" 200 294 "https://admin.slimyai.xyz/features" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 17:51:32 ubuntu node[704]: 45.16.160.88 - - [01/Nov/2025:17:51:32 +0000] "GET /api/auth/login?_rsc=cruy7 HTTP/1.1" 200 294 "https://admin.slimyai.xyz/features" "Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0"
+Nov 01 20:33:30 ubuntu node[704]: 68.179.170.248 - - [01/Nov/2025:20:33:30 +0000] "GET /api/auth/login?_rsc=cruy7 HTTP/1.1" 200 294 "https://admin.slimyai.xyz/features" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 01 23:07:34 ubuntu node[704]: 54.156.251.192 - - [01/Nov/2025:23:07:34 +0000] "GET /api/auth/callback HTTP/1.1" 400 74 "-" "Mozilla/5.0 (compatible)"
+Nov 01 23:07:34 ubuntu node[704]: 34.235.48.77 - - [01/Nov/2025:23:07:34 +0000] "GET /api/auth/callback HTTP/1.1" 400 74 "-" "Mozilla/5.0 (compatible)"
+Nov 01 23:07:37 ubuntu node[704]: 34.235.48.77 - - [01/Nov/2025:23:07:37 +0000] "GET /api/auth/callback HTTP/1.1" 400 74 "-" "Mozilla/5.0 (compatible)"
+Nov 01 23:07:52 ubuntu node[704]: 54.198.55.229 - - [01/Nov/2025:23:07:52 +0000] "GET /api/auth/callback HTTP/1.1" 400 74 "-" "Mozilla/5.0 (compatible)"
+Nov 01 23:07:55 ubuntu node[704]: 54.198.55.229 - - [01/Nov/2025:23:07:55 +0000] "GET /api/auth/callback HTTP/1.1" 400 74 "-" "Mozilla/5.0 (compatible)"
+Nov 01 23:45:23 ubuntu systemd[1]: Stopping admin-api.service - Slimy Admin API...
+Nov 01 23:45:23 ubuntu systemd[1]: admin-api.service: Deactivated successfully.
+Nov 01 23:45:23 ubuntu systemd[1]: Stopped admin-api.service - Slimy Admin API.
+-- Boot fdf068a8ef794919a3e744ff1a05ca4e --
+Nov 01 23:45:48 ubuntu systemd[1]: Started admin-api.service - Slimy Admin API.
+Nov 01 23:45:49 ubuntu node[702]: [admin-api] Listening on port 3080
+Nov 01 23:47:40 ubuntu node[702]: 68.179.170.248 - - [01/Nov/2025:23:47:40 +0000] "GET /api/auth/login?_rsc=1r34m HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Brave/1 Mobile/15E148 Safari/604.1"
+Nov 01 23:47:50 ubuntu node[702]: 68.179.170.248 - - [01/Nov/2025:23:47:50 +0000] "GET /api/auth/login?_rsc=vusbg HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Brave/1 Mobile/15E148 Safari/604.1"
+Nov 01 23:47:50 ubuntu node[702]: 68.179.170.248 - - [01/Nov/2025:23:47:50 +0000] "GET /api/auth/login HTTP/1.1" 302 269 "https://admin.slimyai.xyz/" "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Brave/1 Mobile/15E148 Safari/604.1"
+Nov 01 23:48:00 ubuntu node[702]: [session-store] Stored session for user: 427999592986968074
+Nov 01 23:48:00 ubuntu node[702]: [jwt] Setting cookie: slimy_admin with options: {"httpOnly":true,"secure":true,"sameSite":"lax","domain":".slimyai.xyz","path":"/","maxAge":43200000}
+Nov 01 23:48:00 ubuntu node[702]: [jwt] Token length: 327
+Nov 01 23:48:00 ubuntu node[702]: [jwt] Cookie set successfully
+Nov 01 23:48:00 ubuntu node[702]: 68.179.170.248 - - [01/Nov/2025:23:48:00 +0000] "GET /api/auth/callback?code=KLAtCwt9vjN49IfmBhXDEpNfJR95ys&state=YMitELHo8vw-1eEDgNRmug HTTP/1.1" 302 36 "https://discord.com/" "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Brave/1 Mobile/15E148 Safari/604.1"
+Nov 01 23:48:01 ubuntu node[702]: 68.179.170.248 - - [01/Nov/2025:23:48:01 +0000] "GET /api/auth/login?_rsc=r4s9b HTTP/1.1" 200 294 "https://admin.slimyai.xyz/guilds" "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Brave/1 Mobile/15E148 Safari/604.1"
+Nov 01 23:48:14 ubuntu node[702]: 68.179.170.248 - - [01/Nov/2025:23:48:14 +0000] "GET /api/auth/login?_rsc=3h94p HTTP/1.1" 200 294 "https://admin.slimyai.xyz/chat" "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Brave/1 Mobile/15E148 Safari/604.1"
+Nov 02 01:29:16 ubuntu node[702]: 74.7.227.132 - - [02/Nov/2025:01:29:16 +0000] "GET /api/auth/login HTTP/1.1" 200 294 "-" "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)"
+Nov 02 12:03:10 ubuntu systemd[1]: Stopping admin-api.service - Slimy Admin API...
+Nov 02 12:03:10 ubuntu systemd[1]: admin-api.service: Deactivated successfully.
+Nov 02 12:03:10 ubuntu systemd[1]: Stopped admin-api.service - Slimy Admin API.
+Nov 02 12:03:10 ubuntu systemd[1]: Started admin-api.service - Slimy Admin API.
+Nov 02 12:03:10 ubuntu node[388326]: [admin-api] Listening on port 3080
+Nov 02 12:36:23 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:36:23 +0000] "GET /api/auth/login?_rsc=1r34m HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:36:25 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:36:25 +0000] "GET /api/auth/login?_rsc=vusbg HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:36:25 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:36:25 +0000] "GET /api/auth/login HTTP/1.1" 302 269 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:36:31 ubuntu node[388326]: [session-store] Stored session for user: 427999592986968074
+Nov 02 12:36:31 ubuntu node[388326]: [jwt] Setting cookie: slimy_admin with options: {"httpOnly":true,"secure":true,"sameSite":"lax","domain":".slimyai.xyz","path":"/","maxAge":43200000}
+Nov 02 12:36:31 ubuntu node[388326]: [jwt] Token length: 327
+Nov 02 12:36:31 ubuntu node[388326]: [jwt] Cookie set successfully
+Nov 02 12:36:31 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:36:31 +0000] "GET /api/auth/callback?code=CTwjQGJ6h2pitmRhwU7ai1BvwhiuB5&state=NN0GM8wMT5Wd4dtxGUo_Ig HTTP/1.1" 302 36 "https://discord.com/" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:36:32 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:36:32 +0000] "GET /api/auth/login?_rsc=r4s9b HTTP/1.1" 200 294 "https://admin.slimyai.xyz/guilds" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:37:29 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:37:29 +0000] "GET /api/auth/login?_rsc=1r34m HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:37:33 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:37:33 +0000] "GET /api/auth/login?_rsc=vusbg HTTP/1.1" 200 294 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:37:33 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:37:33 +0000] "GET /api/auth/login HTTP/1.1" 302 269 "https://admin.slimyai.xyz/" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:37:41 ubuntu node[388326]: [session-store] Stored session for user: 427999592986968074
+Nov 02 12:37:41 ubuntu node[388326]: [jwt] Setting cookie: slimy_admin with options: {"httpOnly":true,"secure":true,"sameSite":"lax","domain":".slimyai.xyz","path":"/","maxAge":43200000}
+Nov 02 12:37:41 ubuntu node[388326]: [jwt] Token length: 327
+Nov 02 12:37:41 ubuntu node[388326]: [jwt] Cookie set successfully
+Nov 02 12:37:41 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:37:41 +0000] "GET /api/auth/callback?code=6dHGLnkfM042mZk0r50sWLStY6Mn0a&state=-tA_Xn05BJzkV6z9Gpk0mQ HTTP/1.1" 302 36 "https://discord.com/" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:37:41 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:37:41 +0000] "GET /api/auth/login?_rsc=r4s9b HTTP/1.1" 200 294 "https://admin.slimyai.xyz/guilds" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:38:13 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:38:13 +0000] "GET /api/auth/login?_rsc=r4s9b HTTP/1.1" 200 294 "https://admin.slimyai.xyz/guilds" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+Nov 02 12:38:14 ubuntu node[388326]: 45.16.160.88 - - [02/Nov/2025:12:38:14 +0000] "GET /api/auth/login?_rsc=3h94p HTTP/1.1" 200 294 "https://admin.slimyai.xyz/chat" "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"

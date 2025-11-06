@@ -1,0 +1,451 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Discord users
+model User {
+  id          String   @id @default(cuid())
+  discordId   String   @unique @map("discord_id")
+  username    String?
+  globalName  String?  @map("global_name")
+  avatar      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  sessions      Session[]
+  userGuilds    UserGuild[]
+  conversations Conversation[]
+  stats         Stat[]
+  chatMessages  ChatMessage[]
+  clubAnalyses  ClubAnalysis[]
+  screenshotAnalyses ScreenshotAnalysis[]
+  screenshotComparisons ScreenshotComparison[]
+  auditLogs     AuditLog[]
+
+  // Performance indexes
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([discordId, createdAt])
+
+  @@map("users")
+}
+
+// User authentication sessions
+model Session {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Performance indexes
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([token])
+  @@index([userId, expiresAt])
+
+  @@map("sessions")
+}
+
+// Discord guilds (servers)
+model Guild {
+  id        String   @id @default(cuid())
+  discordId String   @unique @map("discord_id")
+  name      String
+  settings  Json?    // JSON object for guild-specific settings
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  userGuilds    UserGuild[]
+  stats         Stat[]
+  chatMessages  ChatMessage[]
+  clubAnalyses  ClubAnalysis[]
+
+  // Performance indexes
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([discordId, createdAt])
+
+  @@map("guilds")
+}
+
+// Many-to-many relationship between users and guilds with roles
+model UserGuild {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  guildId String @map("guild_id")
+  roles  Json?  // JSON array of role strings
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  // Performance indexes
+  @@index([userId])
+  @@index([guildId])
+  @@index([userId, guildId])
+
+  @@unique([userId, guildId])
+  @@map("user_guilds")
+}
+
+// Chat conversations
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  title     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@map("conversations")
+}
+
+// Individual chat messages
+model ChatMessage {
+  id             String   @id @default(cuid())
+  conversationId String?  @map("conversation_id")
+  userId         String   @map("user_id")
+  guildId        String?  @map("guild_id")
+  text           String
+  adminOnly      Boolean  @default(false) @map("admin_only")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  // Relations
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guild        Guild?        @relation(fields: [guildId], references: [id], onDelete: SetNull)
+
+  // Performance indexes
+  @@index([userId])
+  @@index([guildId])
+  @@index([conversationId])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([guildId, createdAt])
+  @@index([conversationId, createdAt])
+  @@index([adminOnly, createdAt])
+
+  @@map("chat_messages")
+}
+
+// Statistics and analytics
+model Stat {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  guildId   String?  @map("guild_id")
+  type      String   // Type of statistic (e.g., 'message_count', 'command_usage', etc.)
+  value     Json     // JSON value - can be number, string, object, etc.
+  timestamp DateTime @default(now())
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guild Guild? @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  // Performance indexes
+  @@index([userId])
+  @@index([guildId])
+  @@index([type])
+  @@index([timestamp])
+  @@index([userId, timestamp])
+  @@index([guildId, timestamp])
+  @@index([type, timestamp])
+  @@index([userId, type, timestamp])
+  @@index([guildId, type, timestamp])
+
+  @@map("stats")
+}
+
+// Club analytics results
+model ClubAnalysis {
+  id          String   @id @default(cuid())
+  guildId     String   @map("guild_id")
+  userId      String   @map("user_id") // User who initiated the analysis
+  title       String?  // Optional title for the analysis
+  summary     String   // AI-generated summary
+  confidence  Float    // Confidence score (0-1)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  guild       Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  images      ClubAnalysisImage[]
+  metrics     ClubMetric[]
+
+  // Performance indexes
+  @@index([guildId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([confidence])
+  @@index([guildId, createdAt])
+  @@index([userId, createdAt])
+  @@index([guildId, confidence])
+  @@index([userId, confidence])
+
+  @@map("club_analyses")
+}
+
+// Images associated with club analyses
+model ClubAnalysisImage {
+  id            String   @id @default(cuid())
+  analysisId    String   @map("analysis_id")
+  imageUrl      String   @map("image_url") // URL to the uploaded image
+  originalName  String   @map("original_name") // Original filename
+  fileSize      Int      @map("file_size") // File size in bytes
+  uploadedAt    DateTime @default(now()) @map("uploaded_at")
+
+  // Relations
+  analysis ClubAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  // Performance indexes
+  @@index([analysisId])
+  @@index([uploadedAt])
+  @@index([fileSize])
+
+  @@map("club_analysis_images")
+}
+
+// Individual metrics extracted from analyses
+model ClubMetric {
+  id          String  @id @default(cuid())
+  analysisId  String  @map("analysis_id")
+  name        String  // Metric name (e.g., 'totalMembers', 'performanceScore')
+  value       Json    // Metric value (can be number, string, object)
+  unit        String? // Optional unit (e.g., 'count', 'percentage', 'score')
+  category    String  // Category (e.g., 'membership', 'performance', 'activity')
+
+  // Relations
+  analysis ClubAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  // Performance indexes
+  @@index([analysisId])
+  @@index([name])
+  @@index([category])
+  @@index([analysisId, name])
+  @@index([analysisId, category])
+  @@index([category, name])
+
+  @@unique([analysisId, name])
+  @@map("club_metrics")
+}
+
+// Screenshot analysis results
+model ScreenshotAnalysis {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  screenshotType  String   @map("screenshot_type") // Type of screenshot (game-stats, leaderboard, etc.)
+  imageUrl        String   @map("image_url") // URL to the screenshot
+  title           String   // Analysis title
+  description     String   // Brief description
+  summary         String   // AI-generated summary
+  confidence      Float    // Confidence score (0-1)
+  processingTime  Int      @map("processing_time") // Processing time in milliseconds
+  modelUsed       String   @map("model_used") // AI model used for analysis
+  rawResponse     Json?    @map("raw_response") // Raw AI response data
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  data            ScreenshotData[]
+  tags            ScreenshotTag[]
+  insights        ScreenshotInsight[]
+  recommendations  ScreenshotRecommendation[]
+  comparisons1    ScreenshotComparison[] @relation("ScreenshotComparisonAnalysis1")
+  comparisons2    ScreenshotComparison[] @relation("ScreenshotComparisonAnalysis2")
+
+  // Performance indexes
+  @@index([userId])
+  @@index([screenshotType])
+  @@index([createdAt])
+  @@index([confidence])
+  @@index([userId, screenshotType])
+  @@index([userId, createdAt])
+  @@index([screenshotType, createdAt])
+
+  @@map("screenshot_analyses")
+}
+
+// Extracted data from screenshot analysis
+model ScreenshotData {
+  id          String   @id @default(cuid())
+  analysisId  String   @map("analysis_id")
+  key         String   // Data key (e.g., 'level', 'score', 'rank')
+  value       Json     // Data value (can be string, number, object, array)
+  dataType    String   @map("data_type") // Type of data (string, number, object, array)
+  category    String   // Category (stats, metadata, ui-elements, etc.)
+  confidence  Float?   // Confidence score for this specific data point
+
+  // Relations
+  analysis ScreenshotAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  // Performance indexes
+  @@index([analysisId])
+  @@index([key])
+  @@index([category])
+  @@index([analysisId, key])
+  @@index([analysisId, category])
+  @@index([category, key])
+
+  @@unique([analysisId, key])
+  @@map("screenshot_data")
+}
+
+// Tags associated with screenshot analyses
+model ScreenshotTag {
+  id         String   @id @default(cuid())
+  analysisId String   @map("analysis_id")
+  tag        String   // Tag name
+  category   String?  // Tag category (content, feature, quality, etc.)
+
+  // Relations
+  analysis ScreenshotAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  // Performance indexes
+  @@index([analysisId])
+  @@index([tag])
+  @@index([category])
+  @@index([analysisId, tag])
+  @@index([category, tag])
+
+  @@unique([analysisId, tag])
+  @@map("screenshot_tags")
+}
+
+// Screenshot comparison results
+model ScreenshotComparison {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  analysisId1   String   @map("analysis_id_1")
+  analysisId2   String   @map("analysis_id_2")
+  comparisonType String  @map("comparison_type") // Type of comparison (difference, trend, similarity)
+  summary       String   // Comparison summary
+  trend         String   // Overall trend (improving, declining, stable, unknown)
+  differences   Json     // Detailed differences between analyses
+  insights      Json     // Key insights from comparison
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis1     ScreenshotAnalysis @relation("ScreenshotComparisonAnalysis1", fields: [analysisId1], references: [id], onDelete: Cascade)
+  analysis2     ScreenshotAnalysis @relation("ScreenshotComparisonAnalysis2", fields: [analysisId2], references: [id], onDelete: Cascade)
+
+  // Performance indexes
+  @@index([userId])
+  @@index([analysisId1])
+  @@index([analysisId2])
+  @@index([comparisonType])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+
+  @@unique([analysisId1, analysisId2, comparisonType])
+  @@map("screenshot_comparisons")
+}
+
+// Insights extracted from screenshot analyses
+model ScreenshotInsight {
+  id          String   @id @default(cuid())
+  analysisId  String   @map("analysis_id")
+  type        String   // Type of insight (performance, ui, content, etc.)
+  priority    String   // Priority level (high, medium, low)
+  title       String   // Insight title
+  description String   // Detailed description
+  confidence  Float    // Confidence score for this insight
+  actionable  Boolean  @default(false) // Whether this insight suggests action
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  analysis ScreenshotAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  // Performance indexes
+  @@index([analysisId])
+  @@index([type])
+  @@index([priority])
+  @@index([actionable])
+  @@index([analysisId, type])
+  @@index([analysisId, priority])
+
+  @@map("screenshot_insights")
+}
+
+// Recommendations based on screenshot analysis
+model ScreenshotRecommendation {
+  id          String   @id @default(cuid())
+  analysisId  String   @map("analysis_id")
+  type        String   // Type of recommendation (improvement, optimization, feature, etc.)
+  priority    String   // Priority level (high, medium, low)
+  title       String   // Recommendation title
+  description String   // Detailed description
+  impact      String   // Expected impact (high, medium, low)
+  effort      String   // Implementation effort (high, medium, low)
+  actionable  Boolean  @default(true) // Whether this is actionable
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  analysis ScreenshotAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  // Performance indexes
+  @@index([analysisId])
+  @@index([type])
+  @@index([priority])
+  @@index([impact])
+  @@index([effort])
+  @@index([analysisId, priority])
+  @@index([analysisId, type])
+
+  @@map("screenshot_recommendations")
+}
+
+// Audit logs for event sourcing and compliance
+model AuditLog {
+  id            String   @id @default(cuid())
+  userId        String?  @map("user_id") // User who performed the action (null for system actions)
+  action        String   // Action performed (e.g., 'login', 'chat_message', 'create_conversation')
+  resourceType  String   @map("resource_type") // Type of resource (e.g., 'user', 'chat', 'guild')
+  resourceId    String   @map("resource_id") // ID of the affected resource
+  details       Json?    // Additional details about the action
+  ipAddress     String?  @map("ip_address") // IP address of the user
+  userAgent     String?  @map("user_agent") // User agent string
+  sessionId     String?  @map("session_id") // Session ID for tracking
+  requestId     String?  @map("request_id") // Request ID for correlation
+  timestamp     DateTime @default(now())
+  success       Boolean  @default(true) // Whether the action was successful
+  errorMessage  String?  @map("error_message") // Error message if action failed
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Performance indexes
+  @@index([userId])
+  @@index([action])
+  @@index([resourceType])
+  @@index([resourceId])
+  @@index([timestamp])
+  @@index([success])
+  @@index([userId, timestamp])
+  @@index([action, timestamp])
+  @@index([resourceType, timestamp])
+  @@index([userId, action, timestamp])
+  @@index([resourceType, resourceId])
+  @@index([requestId])
+
+  @@map("audit_logs")
+}

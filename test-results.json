@@ -38,7 +38,7 @@
         {
           "name": "ENV: DB_PASSWORD",
           "passed": true,
-          "message": "Present: PAw5zMUtPAw5zMUt...",
+          "message": "Present: ***REDACTED***",
           "data": {
             "category": "database",
             "value": "SET"
@@ -58,7 +58,7 @@
         {
           "name": "ENV: DISCORD_TOKEN",
           "passed": true,
-          "message": "Present: MTQxNTM4NzExNjU2NDkx...",
+          "message": "Present: ***REDACTED***",
           "data": {
             "category": "discord",
             "value": "SET"
@@ -68,7 +68,7 @@
         {
           "name": "ENV: DISCORD_CLIENT_ID",
           "passed": true,
-          "message": "Present: 1415387116564910161...",
+          "message": "Present: ***REDACTED***",
           "data": {
             "category": "discord",
             "value": "SET"
@@ -78,7 +78,7 @@
         {
           "name": "ENV: OPENAI_API_KEY",
           "passed": true,
-          "message": "Present: sk-proj-EEspKV5Et5CD...",
+          "message": "Present: ***REDACTED***",
           "data": {
             "category": "openai",
             "value": "SET"

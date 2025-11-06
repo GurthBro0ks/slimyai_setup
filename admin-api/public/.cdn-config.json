@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0",
+  "cache": {
+    "static": {
+      "maxAge": 31536000,
+      "cacheControl": "public, max-age=31536000, immutable",
+      "vary": "Accept-Encoding"
+    },
+    "uploads": {
+      "maxAge": 86400,
+      "cacheControl": "public, max-age=86400",
+      "vary": "Accept-Encoding"
+    },
+    "api": {
+      "maxAge": 0,
+      "cacheControl": "private, no-cache",
+      "staleWhileRevalidate": true
+    }
+  },
+  "cors": {
+    "origins": ["*"],
+    "methods": ["GET", "HEAD", "OPTIONS"],
+    "headers": ["Range", "Accept-Encoding"],
+    "maxAge": 86400
+  },
+  "compression": {
+    "enabled": true,
+    "types": ["text/*", "application/json", "application/javascript", "application/xml"]
+  },
+  "optimization": {
+    "etag": true,
+    "lastModified": true,
+    "contentTypeSniffing": false
+  }
+}

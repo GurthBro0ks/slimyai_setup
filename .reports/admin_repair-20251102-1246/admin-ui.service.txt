@@ -1,0 +1,216 @@
+● admin-ui.service - Slimy Admin UI (Next.js)
+     Loaded: loaded (/etc/systemd/system/admin-ui.service; enabled; preset: enabled)
+     Active: active (running) since Sun 2025-11-02 12:06:12 UTC; 40min ago
+   Main PID: 391273 (next-server (v1)
+      Tasks: 11 (limit: 4598)
+     Memory: 17.8M (peak: 31.4M)
+        CPU: 370ms
+     CGroup: /system.slice/admin-ui.service
+             └─391273 "next-server (v14.2.5)"
+
+Nov 02 12:06:12 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:06:13 ubuntu node[391273]:   ▲ Next.js 14.2.5
+Nov 02 12:06:13 ubuntu node[391273]:   - Local:        http://localhost:3081
+Nov 02 12:06:13 ubuntu node[391273]:   - Network:      http://0.0.0.0:3081
+Nov 02 12:06:13 ubuntu node[391273]:  ✓ Starting...
+Nov 02 12:06:13 ubuntu node[391273]:  ✓ Ready in 70ms
+Nov 02 12:05:06 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 21.
+Nov 02 12:05:06 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:06 ubuntu npm[390123]: npm error code ENOENT
+Nov 02 12:05:06 ubuntu npm[390123]: npm error syscall open
+Nov 02 12:05:06 ubuntu npm[390123]: npm error path /opt/slimy/app/admin-ui/package.json
+Nov 02 12:05:06 ubuntu npm[390123]: npm error errno -2
+Nov 02 12:05:06 ubuntu npm[390123]: npm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/opt/slimy/app/admin-ui/package.json'
+Nov 02 12:05:06 ubuntu npm[390123]: npm error enoent This is related to npm not being able to find a file.
+Nov 02 12:05:06 ubuntu npm[390123]: npm error enoent
+Nov 02 12:05:06 ubuntu npm[390123]: npm error A complete log of this run can be found in: /home/slimy/.npm/_logs/2025-11-02T12_05_06_536Z-debug-0.log
+Nov 02 12:05:06 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=254/n/a
+Nov 02 12:05:06 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:05:11 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 22.
+Nov 02 12:05:11 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:11 ubuntu npm[390216]: npm error code ENOENT
+Nov 02 12:05:11 ubuntu npm[390216]: npm error syscall open
+Nov 02 12:05:11 ubuntu npm[390216]: npm error path /opt/slimy/app/admin-ui/package.json
+Nov 02 12:05:11 ubuntu npm[390216]: npm error errno -2
+Nov 02 12:05:11 ubuntu npm[390216]: npm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/opt/slimy/app/admin-ui/package.json'
+Nov 02 12:05:11 ubuntu npm[390216]: npm error enoent This is related to npm not being able to find a file.
+Nov 02 12:05:11 ubuntu npm[390216]: npm error enoent
+Nov 02 12:05:11 ubuntu npm[390216]: npm error A complete log of this run can be found in: /home/slimy/.npm/_logs/2025-11-02T12_05_11_787Z-debug-0.log
+Nov 02 12:05:11 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=254/n/a
+Nov 02 12:05:11 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:05:16 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 23.
+Nov 02 12:05:16 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:17 ubuntu npm[390322]: npm error code ENOENT
+Nov 02 12:05:17 ubuntu npm[390322]: npm error syscall open
+Nov 02 12:05:17 ubuntu npm[390322]: npm error path /opt/slimy/app/admin-ui/package.json
+Nov 02 12:05:17 ubuntu npm[390322]: npm error errno -2
+Nov 02 12:05:17 ubuntu npm[390322]: npm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/opt/slimy/app/admin-ui/package.json'
+Nov 02 12:05:17 ubuntu npm[390322]: npm error enoent This is related to npm not being able to find a file.
+Nov 02 12:05:17 ubuntu npm[390322]: npm error enoent
+Nov 02 12:05:17 ubuntu npm[390322]: npm error A complete log of this run can be found in: /home/slimy/.npm/_logs/2025-11-02T12_05_17_039Z-debug-0.log
+Nov 02 12:05:17 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=254/n/a
+Nov 02 12:05:17 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:05:22 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 24.
+Nov 02 12:05:22 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:22 ubuntu npm[390389]: npm error code ENOENT
+Nov 02 12:05:22 ubuntu npm[390389]: npm error syscall open
+Nov 02 12:05:22 ubuntu npm[390389]: npm error path /opt/slimy/app/admin-ui/package.json
+Nov 02 12:05:22 ubuntu npm[390389]: npm error errno -2
+Nov 02 12:05:22 ubuntu npm[390389]: npm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/opt/slimy/app/admin-ui/package.json'
+Nov 02 12:05:22 ubuntu npm[390389]: npm error enoent This is related to npm not being able to find a file.
+Nov 02 12:05:22 ubuntu npm[390389]: npm error enoent
+Nov 02 12:05:22 ubuntu npm[390389]: npm error A complete log of this run can be found in: /home/slimy/.npm/_logs/2025-11-02T12_05_22_286Z-debug-0.log
+Nov 02 12:05:22 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=254/n/a
+Nov 02 12:05:22 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:05:27 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 25.
+Nov 02 12:05:27 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:27 ubuntu npm[390441]: npm error code ENOENT
+Nov 02 12:05:27 ubuntu npm[390441]: npm error syscall open
+Nov 02 12:05:27 ubuntu npm[390441]: npm error path /opt/slimy/app/admin-ui/package.json
+Nov 02 12:05:27 ubuntu npm[390441]: npm error errno -2
+Nov 02 12:05:27 ubuntu npm[390441]: npm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/opt/slimy/app/admin-ui/package.json'
+Nov 02 12:05:27 ubuntu npm[390441]: npm error enoent This is related to npm not being able to find a file.
+Nov 02 12:05:27 ubuntu npm[390441]: npm error enoent
+Nov 02 12:05:27 ubuntu npm[390441]: npm error A complete log of this run can be found in: /home/slimy/.npm/_logs/2025-11-02T12_05_27_533Z-debug-0.log
+Nov 02 12:05:27 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=254/n/a
+Nov 02 12:05:27 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:05:32 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 26.
+Nov 02 12:05:32 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:32 ubuntu npm[390477]: npm error code ENOENT
+Nov 02 12:05:32 ubuntu npm[390477]: npm error syscall open
+Nov 02 12:05:32 ubuntu npm[390477]: npm error path /opt/slimy/app/admin-ui/package.json
+Nov 02 12:05:32 ubuntu npm[390477]: npm error errno -2
+Nov 02 12:05:32 ubuntu npm[390477]: npm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/opt/slimy/app/admin-ui/package.json'
+Nov 02 12:05:32 ubuntu npm[390477]: npm error enoent This is related to npm not being able to find a file.
+Nov 02 12:05:32 ubuntu npm[390477]: npm error enoent
+Nov 02 12:05:32 ubuntu npm[390477]: npm error A complete log of this run can be found in: /home/slimy/.npm/_logs/2025-11-02T12_05_32_790Z-debug-0.log
+Nov 02 12:05:32 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=254/n/a
+Nov 02 12:05:32 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:05:35 ubuntu systemd[1]: Stopped admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:35 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:35 ubuntu node[390672]:  ⨯ Failed to start server
+Nov 02 12:05:35 ubuntu node[390672]: Error: listen EADDRINUSE: address already in use 0.0.0.0:3081
+Nov 02 12:05:35 ubuntu node[390672]:     at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+Nov 02 12:05:35 ubuntu node[390672]:     at listenInCluster (node:net:1965:12)
+Nov 02 12:05:35 ubuntu node[390672]:     at doListen (node:net:2139:7)
+Nov 02 12:05:35 ubuntu node[390672]:     at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+Nov 02 12:05:35 ubuntu node[390672]:   code: 'EADDRINUSE',
+Nov 02 12:05:35 ubuntu node[390672]:   errno: -98,
+Nov 02 12:05:35 ubuntu node[390672]:   syscall: 'listen',
+Nov 02 12:05:35 ubuntu node[390672]:   address: '0.0.0.0',
+Nov 02 12:05:35 ubuntu node[390672]:   port: 3081
+Nov 02 12:05:35 ubuntu node[390672]: }
+Nov 02 12:05:35 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=1/FAILURE
+Nov 02 12:05:35 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:05:40 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 27.
+Nov 02 12:05:40 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:41 ubuntu node[390748]:  ⨯ Failed to start server
+Nov 02 12:05:41 ubuntu node[390748]: Error: listen EADDRINUSE: address already in use 0.0.0.0:3081
+Nov 02 12:05:41 ubuntu node[390748]:     at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+Nov 02 12:05:41 ubuntu node[390748]:     at listenInCluster (node:net:1965:12)
+Nov 02 12:05:41 ubuntu node[390748]:     at doListen (node:net:2139:7)
+Nov 02 12:05:41 ubuntu node[390748]:     at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+Nov 02 12:05:41 ubuntu node[390748]:   code: 'EADDRINUSE',
+Nov 02 12:05:41 ubuntu node[390748]:   errno: -98,
+Nov 02 12:05:41 ubuntu node[390748]:   syscall: 'listen',
+Nov 02 12:05:41 ubuntu node[390748]:   address: '0.0.0.0',
+Nov 02 12:05:41 ubuntu node[390748]:   port: 3081
+Nov 02 12:05:41 ubuntu node[390748]: }
+Nov 02 12:05:41 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=1/FAILURE
+Nov 02 12:05:41 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:05:46 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 28.
+Nov 02 12:05:46 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:46 ubuntu node[390824]:  ⨯ Failed to start server
+Nov 02 12:05:46 ubuntu node[390824]: Error: listen EADDRINUSE: address already in use 0.0.0.0:3081
+Nov 02 12:05:46 ubuntu node[390824]:     at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+Nov 02 12:05:46 ubuntu node[390824]:     at listenInCluster (node:net:1965:12)
+Nov 02 12:05:46 ubuntu node[390824]:     at doListen (node:net:2139:7)
+Nov 02 12:05:46 ubuntu node[390824]:     at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+Nov 02 12:05:46 ubuntu node[390824]:   code: 'EADDRINUSE',
+Nov 02 12:05:46 ubuntu node[390824]:   errno: -98,
+Nov 02 12:05:46 ubuntu node[390824]:   syscall: 'listen',
+Nov 02 12:05:46 ubuntu node[390824]:   address: '0.0.0.0',
+Nov 02 12:05:46 ubuntu node[390824]:   port: 3081
+Nov 02 12:05:46 ubuntu node[390824]: }
+Nov 02 12:05:46 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=1/FAILURE
+Nov 02 12:05:46 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:05:51 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 29.
+Nov 02 12:05:51 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:51 ubuntu node[390901]:  ⨯ Failed to start server
+Nov 02 12:05:51 ubuntu node[390901]: Error: listen EADDRINUSE: address already in use 0.0.0.0:3081
+Nov 02 12:05:51 ubuntu node[390901]:     at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+Nov 02 12:05:51 ubuntu node[390901]:     at listenInCluster (node:net:1965:12)
+Nov 02 12:05:51 ubuntu node[390901]:     at doListen (node:net:2139:7)
+Nov 02 12:05:51 ubuntu node[390901]:     at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+Nov 02 12:05:51 ubuntu node[390901]:   code: 'EADDRINUSE',
+Nov 02 12:05:51 ubuntu node[390901]:   errno: -98,
+Nov 02 12:05:51 ubuntu node[390901]:   syscall: 'listen',
+Nov 02 12:05:51 ubuntu node[390901]:   address: '0.0.0.0',
+Nov 02 12:05:51 ubuntu node[390901]:   port: 3081
+Nov 02 12:05:51 ubuntu node[390901]: }
+Nov 02 12:05:51 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=1/FAILURE
+Nov 02 12:05:51 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:05:56 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 30.
+Nov 02 12:05:56 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:05:56 ubuntu node[390951]:  ⨯ Failed to start server
+Nov 02 12:05:56 ubuntu node[390951]: Error: listen EADDRINUSE: address already in use 0.0.0.0:3081
+Nov 02 12:05:56 ubuntu node[390951]:     at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+Nov 02 12:05:56 ubuntu node[390951]:     at listenInCluster (node:net:1965:12)
+Nov 02 12:05:56 ubuntu node[390951]:     at doListen (node:net:2139:7)
+Nov 02 12:05:56 ubuntu node[390951]:     at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+Nov 02 12:05:56 ubuntu node[390951]:   code: 'EADDRINUSE',
+Nov 02 12:05:56 ubuntu node[390951]:   errno: -98,
+Nov 02 12:05:56 ubuntu node[390951]:   syscall: 'listen',
+Nov 02 12:05:56 ubuntu node[390951]:   address: '0.0.0.0',
+Nov 02 12:05:56 ubuntu node[390951]:   port: 3081
+Nov 02 12:05:56 ubuntu node[390951]: }
+Nov 02 12:05:56 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=1/FAILURE
+Nov 02 12:05:56 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:06:01 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 31.
+Nov 02 12:06:01 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:06:02 ubuntu node[391066]:  ⨯ Failed to start server
+Nov 02 12:06:02 ubuntu node[391066]: Error: listen EADDRINUSE: address already in use 0.0.0.0:3081
+Nov 02 12:06:02 ubuntu node[391066]:     at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+Nov 02 12:06:02 ubuntu node[391066]:     at listenInCluster (node:net:1965:12)
+Nov 02 12:06:02 ubuntu node[391066]:     at doListen (node:net:2139:7)
+Nov 02 12:06:02 ubuntu node[391066]:     at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+Nov 02 12:06:02 ubuntu node[391066]:   code: 'EADDRINUSE',
+Nov 02 12:06:02 ubuntu node[391066]:   errno: -98,
+Nov 02 12:06:02 ubuntu node[391066]:   syscall: 'listen',
+Nov 02 12:06:02 ubuntu node[391066]:   address: '0.0.0.0',
+Nov 02 12:06:02 ubuntu node[391066]:   port: 3081
+Nov 02 12:06:02 ubuntu node[391066]: }
+Nov 02 12:06:02 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=1/FAILURE
+Nov 02 12:06:02 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:06:07 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 32.
+Nov 02 12:06:07 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:06:07 ubuntu node[391113]:  ⨯ Failed to start server
+Nov 02 12:06:07 ubuntu node[391113]: Error: listen EADDRINUSE: address already in use 0.0.0.0:3081
+Nov 02 12:06:07 ubuntu node[391113]:     at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+Nov 02 12:06:07 ubuntu node[391113]:     at listenInCluster (node:net:1965:12)
+Nov 02 12:06:07 ubuntu node[391113]:     at doListen (node:net:2139:7)
+Nov 02 12:06:07 ubuntu node[391113]:     at process.processTicksAndRejections (node:internal/process/task_queues:83:21) {
+Nov 02 12:06:07 ubuntu node[391113]:   code: 'EADDRINUSE',
+Nov 02 12:06:07 ubuntu node[391113]:   errno: -98,
+Nov 02 12:06:07 ubuntu node[391113]:   syscall: 'listen',
+Nov 02 12:06:07 ubuntu node[391113]:   address: '0.0.0.0',
+Nov 02 12:06:07 ubuntu node[391113]:   port: 3081
+Nov 02 12:06:07 ubuntu node[391113]: }
+Nov 02 12:06:07 ubuntu systemd[1]: admin-ui.service: Main process exited, code=exited, status=1/FAILURE
+Nov 02 12:06:07 ubuntu systemd[1]: admin-ui.service: Failed with result 'exit-code'.
+Nov 02 12:06:12 ubuntu systemd[1]: admin-ui.service: Scheduled restart job, restart counter is at 33.
+Nov 02 12:06:12 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:06:12 ubuntu node[391232]:   ▲ Next.js 14.2.5
+Nov 02 12:06:12 ubuntu node[391232]:   - Local:        http://localhost:3081
+Nov 02 12:06:12 ubuntu node[391232]:   - Network:      http://0.0.0.0:3081
+Nov 02 12:06:12 ubuntu node[391232]:  ✓ Starting...
+Nov 02 12:06:12 ubuntu node[391232]:  ✓ Ready in 56ms
+Nov 02 12:06:12 ubuntu systemd[1]: Stopping admin-ui.service - Slimy Admin UI (Next.js)...
+Nov 02 12:06:12 ubuntu systemd[1]: admin-ui.service: Deactivated successfully.
+Nov 02 12:06:12 ubuntu systemd[1]: Stopped admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:06:12 ubuntu systemd[1]: Started admin-ui.service - Slimy Admin UI (Next.js).
+Nov 02 12:06:13 ubuntu node[391273]:   ▲ Next.js 14.2.5
+Nov 02 12:06:13 ubuntu node[391273]:   - Local:        http://localhost:3081
+Nov 02 12:06:13 ubuntu node[391273]:   - Network:      http://0.0.0.0:3081
+Nov 02 12:06:13 ubuntu node[391273]:  ✓ Starting...
+Nov 02 12:06:13 ubuntu node[391273]:  ✓ Ready in 70ms

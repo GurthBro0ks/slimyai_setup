@@ -1,0 +1,30 @@
+## /opt/slimy/app/admin-api/.env.admin.production
+PORT=3080
+SESSION_SECRET=***
+CORS_ALLOW_ORIGIN=https://admin.slimyai.xyz,http://127.0.0.1:3000,http://localhost:3000
+ADMIN_API_SERVICE_NAME=slimy-admin-api
+ADMIN_API_VERSION=2025-11-01
+COOKIE_DOMAIN=.slimyai.xyz
+# Discord OAuth configuration=
+DISCORD_CLIENT_ID=1431075878586290377
+DISCORD_CLIENT_SECRET=***
+DISCORD_REDIRECT_URI=https://admin.slimyai.xyz/api/auth/callback
+DISCORD_OAUTH_SCOPES=identify guilds
+# Optional: allow the bot token to verify install status=***
+DISCORD_BOT_TOKEN=***
+# Optional: elevate specific users (Discord user IDs)=
+ADMIN_USER_IDS=
+CLUB_USER_IDS=
+
+## /opt/slimy/app/admin-ui/.env.production
+# API Base URL - empty string for production (Caddy proxies /api/* to backend)=
+NEXT_PUBLIC_ADMIN_API_BASE=""
+# Bot invite configuration (uses bot app, not admin OAuth app)=
+NEXT_PUBLIC_BOT_CLIENT_ID=1415387116564910161
+NEXT_PUBLIC_BOT_INVITE_SCOPES=bot applications.commands
+NEXT_PUBLIC_BOT_PERMISSIONS=274878286848
+# Stats dashboard configuration=
+NEXT_PUBLIC_BASELINE_TITLE=Baseline (10-24-25)
+
+## Key Settings Check
+NEXT_PUBLIC_ADMIN_API_BASE=""

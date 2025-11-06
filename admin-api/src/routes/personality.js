@@ -1,7 +1,8 @@
 "use strict";
 const express = require("express");
-const { z } = require("zod");
 const { requireRole, requireGuildMember, requireAuth } = require("../middleware/auth");
+const { cacheGuildData, cacheStats, getAPICache } = require("../middleware/cache");
+const { personality } = require("../lib/validation/schemas");
 const {
   PRESETS,
   getGuildPersona,
@@ -15,7 +16,7 @@ router.use(requireAuth);
 router.use(requireRole("admin"));
 
 // Get available presets
-router.get("/:guildId/personality/presets", (_req, res) => {
+router.get("/:guildId/personality/presets", personality.presets, cacheStats(3600, 7200), (_req, res) => {
   res.json({
     ok: true,
     presets: PRESETS.map(p => ({
@@ -27,7 +28,7 @@ router.get("/:guildId/personality/presets", (_req, res) => {
 });
 
 // Get current personality
-router.get("/:guildId/personality", requireGuildMember("guildId"), async (req, res) => {
+router.get("/:guildId/personality", requireGuildMember("guildId"), cacheGuildData(600, 1200), async (req, res) => {
   const { guildId } = req.params;
   try {
     const persona = await getGuildPersona(guildId);
@@ -42,30 +43,16 @@ router.get("/:guildId/personality", requireGuildMember("guildId"), async (req, r
   }
 });
 
-const PatchSchema = z.object({
-  preset: z.string().optional(),
-  system_prompt: z.string().min(1).optional(),
-  temperature: z.number().min(0).max(2).optional(),
-  top_p: z.number().min(0).max(1).optional(),
-  tone: z.enum(["neutral", "friendly", "playful", "serious"]).optional(),
-  formality: z.enum(["casual", "neutral", "formal"]).optional(),
-  humor: z.boolean().optional(),
-  emojis: z.boolean().optional()
-});
-
 // Update personality
-router.put("/:guildId/personality", requireGuildMember("guildId"), express.json(), async (req, res) => {
+router.put("/:guildId/personality", requireGuildMember("guildId"), express.json(), personality.update, async (req, res) => {
   const { guildId } = req.params;
   try {
-    const parsed = PatchSchema.safeParse(req.body || {});
-    if (!parsed.success) {
-      console.warn("[personality PUT] invalid_input", parsed.error.issues);
-      return res.status(400).json({
-        error: "invalid_input",
-        details: parsed.error.issues
-      });
-    }
-    const updated = await upsertGuildPersona(guildId, parsed.data, req.user?.id);
+    const updated = await upsertGuildPersona(guildId, req.body, req.user?.id);
+
+    // Invalidate cache for this guild's personality
+    const cache = getAPICache();
+    await cache.invalidate(`api:*guild_${guildId}*personality*`);
+
     return res.json({ ok: true, personality: updated });
   } catch (e) {
     console.error("[personality PUT] server_error", { guildId, err: e && e.message });
@@ -78,14 +65,18 @@ router.put("/:guildId/personality", requireGuildMember("guildId"), express.json(
 });
 
 // Reset to default or specific preset
-router.post("/:guildId/personality/reset", requireGuildMember("guildId"), express.json(), async (req, res) => {
+router.post("/:guildId/personality/reset", requireGuildMember("guildId"), express.json(), personality.reset, async (req, res) => {
   const { guildId } = req.params;
-  const { preset } = req.body || {};
+  const { preset } = req.body;
 
   try {
     const saved = preset
       ? await resetToPreset(guildId, preset, req.user?.id)
       : await upsertGuildPersona(guildId, defaultsFor(guildId), req.user?.id);
+
+    // Invalidate cache for this guild's personality
+    const cache = getAPICache();
+    await cache.invalidate(`api:*guild_${guildId}*personality*`);
 
     return res.json({ ok: true, personality: saved });
   } catch (e) {
@@ -98,9 +89,9 @@ router.post("/:guildId/personality/reset", requireGuildMember("guildId"), expres
 });
 
 // Test output - generate sample response
-router.post("/:guildId/personality/test", requireGuildMember("guildId"), express.json(), async (req, res) => {
+router.post("/:guildId/personality/test", requireGuildMember("guildId"), express.json(), personality.test, async (req, res) => {
   const { guildId } = req.params;
-  const { prompt } = req.body || {};
+  const { prompt } = req.body;
 
   try {
     const openaiApiKey = process.env.OPENAI_API_KEY;

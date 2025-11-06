@@ -3,29 +3,30 @@
 const fs = require("fs");
 const { sheets } = require("@googleapis/sheets");
 const { GoogleAuth } = require("google-auth-library");
+const config = require("../src/lib/config");
 
 async function getAuth() {
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
-    const creds = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+  if (config.google.credentialsJson) {
+    const creds = JSON.parse(config.google.credentialsJson);
     const auth = new GoogleAuth({
       credentials: creds,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+      scopes: config.google.sheetsScopes,
     });
     return auth;
   }
   // fall back to GOOGLE_APPLICATION_CREDENTIALS path or instance creds
-  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const credPath = config.google.credentialsPath;
   if (credPath && fs.existsSync(credPath)) {
     const creds = JSON.parse(fs.readFileSync(credPath, "utf8"));
     const auth = new GoogleAuth({
       credentials: creds,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+      scopes: config.google.sheetsScopes,
     });
     return auth;
   }
   // fallback to default credentials
   const auth = new GoogleAuth({
-    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    scopes: config.google.sheetsScopes,
   });
   return auth;
 }
