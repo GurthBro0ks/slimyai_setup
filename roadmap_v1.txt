@@ -1,0 +1,34 @@
+# roadmap v1 (living)
+
+_Last updated: 2025-09-11_
+
+## phase 1 — conversational core
+- Commands: `/ask`, `/mode`, `/remember`, `/forget`, `/export`
+- Memory: SQLite; auto-mode detection with jitter
+- Goal: ship scaffold + baseline safety
+
+**status:** building / early testing
+
+## phase 2 — personality & community
+- Per-channel personas (`/channel_config`), admin locks
+- Auto mode switching by context
+
+**status:** design in progress
+
+## phase 3 — image generation
+- `/imagine` + style presets, neon-blue watermark (bottom-left)
+- Safety filters, rate limits
+
+**status:** prototyping
+
+## phase 4 — super snail analysis
+- OCR screenshots → structured stats/resources → Google Sheets
+- Enrich with wiki/snelp; math tools for optimization
+
+**status:** research + data plumbing
+
+---
+
+### change log
+- 2025-09-11: initial publish of v1 roadmap
+- (append notable changes here)roadmap_v1

@@ -1,0 +1,26 @@
+[dotenv@17.2.2] injecting env (35) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+[database] Connection pool initialized
+[scheduler] File is not defined
+[32m[2025-10-16T17:39:47.927Z] INFO:[0m Health check server started successfully
+✅ Loaded command: chat
+[memory] json-store ready (FIXED VERSION with locking & UUID): /opt/slimy/app/data/data_store.json
+✅ Loaded command: consent
+✅ Loaded command: diag
+✅ Loaded command: dream
+✅ Loaded command: export
+✅ Loaded command: forget
+✅ Loaded command: mode
+✅ Loaded command: personality-config
+✅ Loaded command: remember
+✅ Loaded command: snail
+[mention-handler] ATTACHING NOW
+✅ Mention handler attached
+✅ Snail auto-detect handler attached
+[32m[2025-10-16T17:39:48.249Z] INFO:[0m Starting Slimy.AI bot...
+✅ Health check server running on port 3000
+   - Health: http://localhost:3000/health
+   - Metrics: http://localhost:3000/metrics
+⚠️  Port 3000 already in use. Health server not started.
+[database] Initialization failed: getaddrinfo EAI_AGAIN db
+✅ Logged in as slimy.ai#0630
+📡 Connected to 2 server(s)

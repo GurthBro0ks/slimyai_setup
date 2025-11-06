@@ -1,232 +1,103 @@
-// index.js - PRODUCTION READY
+// index.js — slimy.ai entrypoint (CommonJS)
+// - Loads .env
+// - Wires @mention handler (handlers/mention.js)
+// - Loads slash commands from ./commands (expects { data, execute })
+// - Uses flags (MessageFlags.Ephemeral) instead of deprecated `ephemeral: true`
+
 require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
+
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   Client,
+  Collection,
   GatewayIntentBits,
   Partials,
-  Collection,
   Events,
-  MessageFlags
+  MessageFlags,
 } = require('discord.js');
-const { validateEnvironment } = require('./lib/env-validation');
 
-// ---- Singleton guard ----
-const LOCK_FILE = path.join(__dirname, '.slimy-singleton.lock');
+// ----- Env sanity (non-fatal warnings if missing) -----
+['DISCORD_TOKEN', 'DISCORD_CLIENT_ID', 'DISCORD_GUILD_ID', 'OPENAI_API_KEY'].forEach((k) => {
+  if (!process.env[k]) console.warn(`[env] ${k} not set`);
+});
 
-function ensureSingleInstance() {
-  const cleanup = () => {
-    try {
-      fs.unlinkSync(LOCK_FILE);
-    } catch (err) {
-      if (err?.code !== 'ENOENT') {
-        console.warn('[WARN] Failed to remove singleton lock:', err.message);
-      }
-    }
-  };
-
-  const writeLock = () => {
-    const fd = fs.openSync(LOCK_FILE, 'wx');
-    fs.writeSync(fd, String(process.pid));
-    fs.closeSync(fd);
-  };
-
-  try {
-    writeLock();
-  } catch (err) {
-    if (err?.code === 'EEXIST') {
-      try {
-        const existingPid = parseInt(fs.readFileSync(LOCK_FILE, 'utf8'), 10);
-        if (existingPid && existingPid !== process.pid) {
-          try {
-            process.kill(existingPid, 0);
-            console.error(`❌ Another slimy-bot instance is already running (pid ${existingPid}). Exiting.`);
-            process.exit(1);
-          } catch (killErr) {
-            if (killErr?.code === 'ESRCH') {
-              fs.unlinkSync(LOCK_FILE);
-              return ensureSingleInstance();
-            }
-            console.error('[ERROR] Could not verify existing PID:', killErr.message);
-            process.exit(1);
-          }
-        } else {
-          fs.unlinkSync(LOCK_FILE);
-          return ensureSingleInstance();
-        }
-      } catch (readErr) {
-        console.warn('[WARN] Corrupt singleton lock detected, resetting:', readErr.message);
-        try {
-          fs.unlinkSync(LOCK_FILE);
-        } catch (unlinkErr) {
-          console.error('[ERROR] Failed to reset singleton lock:', unlinkErr.message);
-          process.exit(1);
-        }
-        return ensureSingleInstance();
-      }
-    } else {
-      console.error('[ERROR] Unable to create singleton lock:', err.message);
-      process.exit(1);
-    }
-  }
-
-  process.once('exit', cleanup);
-  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-    process.once(signal, () => {
-      cleanup();
-      process.exit(0);
-    });
-  }
-  process.on('uncaughtException', (err) => {
-    console.error('Uncaught exception:', err);
-    if (global.botStats) recordError(err);
-    cleanup();
-    process.exit(1);
-  });
-}
-
-ensureSingleInstance();
-
-// ---- Client ----
+// ----- Client -----
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages
+    GatewayIntentBits.GuildMessages,     // required for @mentions
+    GatewayIntentBits.MessageContent,    // must also be enabled in Dev Portal
   ],
   partials: [Partials.Channel],
 });
 
-global.client = client;
-
-// ---- Bot statistics (for /diag v2) ----
-global.botStats = {
-  startTime: Date.now(),
-  errors: {
-    count: 0,
-    lastError: null,
-    lastErrorTime: null,
-  },
-};
-
-/**
- * Record an error in bot stats
- */
-function recordError(err) {
-  global.botStats.errors.count++;
-  global.botStats.errors.lastError = err.message || String(err);
-  global.botStats.errors.lastErrorTime = Date.now();
-}
-
-// ---- Command loader ----
 client.commands = new Collection();
+client.mentionHandlerReady = false;
+
+// ----- Load slash commands from ./commands -----
 const commandsPath = path.join(__dirname, 'commands');
 
 if (fs.existsSync(commandsPath)) {
-  const files = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
+  const files = fs.readdirSync(commandsPath).filter((f) => f.endsWith('.js'));
   for (const file of files) {
-    const fp = path.join(commandsPath, file);
     try {
-      const cmd = require(fp);
-      if (cmd?.data && cmd?.execute) {
-        client.commands.set(cmd.data.name, cmd);
-        console.log(`✅ Loaded command: ${cmd.data.name}`);
+      const mod = require(path.join(commandsPath, file));
+      const name = mod?.data?.name || mod?.name;
+      if (name && typeof mod.execute === 'function') {
+        client.commands.set(name, mod);
+        console.log(`↳ loaded /${name}`);
       } else {
-        console.warn(`[WARN] Skipping ${file}: missing data/execute`);
+        console.warn(`⚠️ skipped ${file} (missing data.name or execute)`);
       }
-    } catch (err) {
-      console.error(`[ERROR] Failed to load ${file}:`, err.message);
+    } catch (e) {
+      console.warn(`⚠️ failed loading ${file}: ${e.message}`);
     }
   }
 } else {
-  console.warn('[WARN] ./commands directory not found');
+  console.warn('⚠️ ./commands not found');
 }
 
-// ---- Ready (only fires ONCE) ----
+// ----- Wire handlers (mention) -----
+try {
+  require('./handlers/mention')(client);
+  console.log('✅ mention handler attached');
+} catch (e) {
+  console.warn(`⚠️ mention handler not attached: ${e.message}`);
+}
+
+// ----- Ready -----
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Logged in as ${c.user.tag}`);
   console.log(`📡 Connected to ${c.guilds.cache.size} server(s)`);
 });
 
-// ---- Slash command dispatcher ----
+// ----- Slash command router -----
 client.on(Events.InteractionCreate, async (interaction) => {
-  try {
-    if (!interaction.isChatInputCommand()) return;
-    
-    const command = client.commands.get(interaction.commandName);
-    if (!command) {
-      return interaction.reply({ 
-        content: '❌ Unknown command.', 
-        flags: MessageFlags.Ephemeral 
-      }).catch(() => {});
-    }
-    
-    await command.execute(interaction);
-  } catch (err) {
-    console.error('Command error:', err);
-    recordError(err); // Track error in stats
+  if (!interaction.isChatInputCommand()) return;
 
-    // Safe error handling
-    try {
-      if (interaction.deferred) {
-        await interaction.editReply('❌ Command failed.');
-      } else if (interaction.replied) {
-        await interaction.followUp({
-          content: '❌ Command failed.',
-          flags: MessageFlags.Ephemeral
-        });
-      } else {
-        await interaction.reply({
-          content: '❌ Command failed.',
-          flags: MessageFlags.Ephemeral
-        });
-      }
-    } catch (innerErr) {
-      console.error('Could not send error message:', innerErr.message);
-      recordError(innerErr);
+  const cmd = client.commands.get(interaction.commandName);
+  if (!cmd) {
+    return interaction
+      .reply({ content: 'Command not found.', flags: MessageFlags.Ephemeral })
+      .catch(() => {});
+  }
+
+  try {
+    await cmd.execute(interaction);
+  } catch (err) {
+    console.error(`❌ /${interaction.commandName} error:`, err);
+    const payload = {
+      content: 'Something went sideways executing that command.',
+      flags: MessageFlags.Ephemeral,
+    };
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp(payload).catch(() => {});
+    } else {
+      await interaction.reply(payload).catch(() => {});
     }
   }
 });
 
-// ---- Mention handler (graceful loading) ----
-try {
-  const mentionHandlerPath = path.join(__dirname, 'handlers', 'mention.js');
-  if (fs.existsSync(mentionHandlerPath)) {
-    const { attachMentionHandler } = require('./handlers/mention');
-    if (typeof attachMentionHandler === 'function') {
-      attachMentionHandler(client);
-      console.log('✅ Mention handler attached');
-    }
-  }
-} catch (err) {
-  console.warn('[WARN] Mention handler not loaded:', err.message);
-}
-
-// ---- Snail auto-detect handler (graceful loading) ----
-try {
-  const snailHandlerPath = path.join(__dirname, 'handlers', 'snail-auto-detect.js');
-  if (fs.existsSync(snailHandlerPath)) {
-    const { attachSnailAutoDetect } = require('./handlers/snail-auto-detect');
-    if (typeof attachSnailAutoDetect === 'function') {
-      attachSnailAutoDetect(client);
-      console.log('✅ Snail auto-detect handler attached');
-    }
-  }
-} catch (err) {
-  console.warn('[WARN] Snail auto-detect handler not loaded:', err.message);
-}
-
-// ---- Login (ONLY ONCE) ----
-console.log('🔍 Validating environment configuration...');
-try {
-  validateEnvironment();
-  console.log('✅ Environment validation passed');
-} catch (error) {
-  console.error('❌ Environment validation failed:', error.message);
-  process.exit(1);
-}
-
-console.log('🚀 Starting Discord bot...');
+// ----- Boot -----
 client.login(process.env.DISCORD_TOKEN);

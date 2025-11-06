@@ -1,32 +1,38 @@
-**slimy.ai** is a Discord-native AI that adapts to your crew’s rhythm (remembers conversations, adapts over time, and slowly evolves with server participation). 
+# about slimy.ai
 
-It has **four modes** that can be turned on/off independently per *channel* or *category*.
+**slimy.ai** is a Discord-native AI that adapts to your crew’s rhythm. It has four working modes and an opinionated focus on fast iteration, ADHD-friendly workflows, and creative tooling (image gen + game analysis).
 
-### Modes
-- **1) admin** — locks admin panel/commands for server settings (gated by channel perms or admin-only visibility).  
-  • Keep mode, channel, and general settings accessible for admins while other modes run.
+Change this to:
+“**slimy.ai** is a Discord-native AI that adapts to your crew’s rhythm, (Remembers members conversations and adapts. Can slowly evolve with server participation). 
 
-- **2) personality** — playful sparks, big ideas, dopamine fuel. Optional photo generator; uses sheets or a temp cache for user-specific data and chat memory. Attitude grows with users.  
-  _Examples_: “show me a snail wearing sunglasses, Picasso style, Discord-ready (not Mike from yesterday).” “Make me a meme (remember my inside jokes).”
+It has 4 modes that can be turned on/off independently by channel or category in the discord server. 
+**modes**
+- **1. admin** – lock admin panel/commands for server settings (will be behind locked channel permissions or only viewable messages to admin only).
+        - Keep mode, channel  and general settings accessible for admin on other modes.
+        - Open to other simplier suggestions. 
 
-- **3) no_personality** — straight answers and image generation; minimal voice.
+- **2. personality** – playful sparks, big ideas, dopamine fuel. photo generator mode on/off, uses sheets or temp cache for user specific data and their chat memory. Attitude and personality grow with users.
+*examples*- “show me a snail wearing sunglasses, Picasso style, discord ready. Don’t make it Mike the one from yesterday.” Or “Make me a meme. (Use chat memory to remember user specific jokes)
+        - Second most important mode. 
 
-- **4) super_snail** — listens for Super Snail chat data, organizes, plans, and uses Google Sheets.  
-  • Listens to assigned channels in this mode.  
-  • Personality can still adapt via member chat.  
-  • Sources: Super Snail wiki, subreddit, and snelp.com; plus Google Sheets + image refs.  
-  • Players can upload stat screenshots; slimy.ai asks for any missing details and proposes upgrade paths.  
-  • Admins can upload Species War screenshots to a weekly sheet for club-wide stats (participation, etc.).
+- **3. No Personality** – just for simple questions and image generation. the simplist of modes. 
 
-### Scope
-- Conversational core with memory  
-- Per-channel personas (modes) + admin controls  
-- Image generation with safety filters  
-- Super Snail specialist flow: screenshot → OCR → Sheets → wiki/snelp enrichment; @mention for chat
+- **4. super_snail** – listens for data in chat, organizes, plans, uses Google sheets (for supersnail the mobile game). 
+        - Listens to channels assigned AND in this mode for supersnail info. 
+        - Personality grows and adapts to member’s chat in this mode.
+        - Most important mode. Uses supersnail wiki, supersnail reddit, and snelp.com for searching, a database of google sheets and pictures for references.
+        - Players can upload screenshot of stats, ask for guidance in areas of the game and slimy.ai generates any needed questions to fill in blanks and provides options for upgrades and focuses. 
+        - Admin can upload screenshots of Species War stats from the club and upload to weekly spreadsheet- using to calculate war stats for whole club. (participation, ect.)
 
-### Design values
-- Phase-by-phase plan  
-- Small loops > long lectures  
-- Clear status, crisp tags, humane defaults  
+**scope**
+- Conversational core with memory
+- Per-channel adaptable personas (modes)+ admin controls
+- Image generation with safety filters
+- Super Snail by QCPlay specialist mode: Screenshot Analysis, OCR → Sheets → wiki/snelp enrichment. Uses @mention to chat with members. and more. 
+- Only hide important messages and settings messages in discord. Example: Only you can see this. 
+
+**design values**
+- use phase plan
+- Small loops > long lectures
+- Clear status, crisp tags, humane defaults
 - “Repo” feel: channels as files, forums as folders
-

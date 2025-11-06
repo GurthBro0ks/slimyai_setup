@@ -1,11 +1,7 @@
 // commands/snail.js
 // CommonJS – discord.js v14
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-const costs = require('../supersnail-costs.js');
-const { analyzeSnailScreenshot } = require('../lib/snail-vision');
-const database = require('../lib/database');
-const sheetsCreator = require('../lib/sheets-creator');
-const mcpClient = require('../services/mcp-client');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+// lazy-load in execute()
 
 // Small helper to pick the right tier function
 function pickCalc(tier) {
@@ -200,6 +196,12 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    // normalized lazy-load of supersnail-costs
+    let costs = { levelCostCalc: ()=>0, nodeTimeCostSum: ()=>0 };
+    try {
+      costs = require("../supersnail-costs");
+    } catch (e) { /* stub fallback */ }
+
     try {
       if (interaction.options.getSubcommand() === 'test') {
         // A simple, known-good T6 example:
@@ -214,7 +216,7 @@ module.exports = {
             `**Form Cells:** ${formCells.toLocaleString()}\n` +
             `**BTADs:** ${btads.toLocaleString()}\n` +
             `**Hours:** ${hours.toLocaleString()}`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -523,7 +525,7 @@ module.exports = {
       if (!in01(r3, 10)) bad.push('r3');
       if (!in01(ritual, 1)) bad.push('ritual(0-1)');
       if (bad.length) {
-        return interaction.reply({ content: `❌ Invalid values: ${bad.join(', ')}`, ephemeral: true });
+        return interaction.reply({ content: `❌ Invalid values: ${bad.join(', ')}`, flags: MessageFlags.Ephemeral });
       }
 
       const calc = pickCalc(tier);
@@ -557,12 +559,12 @@ module.exports = {
           `• **Hours:** ${hours.toLocaleString()}`;
       }
 
-      return interaction.reply({ content: reply, ephemeral: true });
+      return interaction.reply({ content: reply, flags: MessageFlags.Ephemeral });
     } catch (err) {
       console.error('[snail] error:', err);
       return interaction.reply({
         content: `❌ Error: ${err.message || err}`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   },
