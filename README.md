@@ -228,8 +228,8 @@ Provide reassurance and a small next step.
 ### Required Environment Variables
 ```bash
 # Discord
-DISCORD_TOKEN=MTQxNTM4NzExNjU2NDkxMDE2MQ.GvInmG.CDqWEBZx2p4upRZHnlC7Al4Ot8bpPv-5Kw4DZQ
-DISCORD_CLIENT_ID=1415387116564910161
+DISCORD_TOKEN=your_discord_bot_token_here
+DISCORD_CLIENT_ID=your_discord_client_id_here
 
 # Database (REQUIRED for v2.0)
 DB_HOST=127.0.0.1
@@ -255,9 +255,9 @@ SHEETS_PARENT_FOLDER_ID=your_drive_folder_id
 PERSONALITY_CONFIG=./bot-personality.md
 
 # Admin API (Discord OAuth backend)
-ADMIN_DISCORD_CLIENT_ID=1431075878586290377
-ADMIN_DISCORD_CLIENT_SECRET=lkKc7DQP_AH9s1m4T2YS1QqLP8N-duRK
-ADMIN_DISCORD_BOT_TOKEN=MTQzMTA3NTg3ODU4NjI5MDM3Nw.GGVf1t.H6p391cneIC1NVtKlykr-rHMHU5m7sUt8vu8eg
+ADMIN_DISCORD_CLIENT_ID=your_admin_client_id_here
+ADMIN_DISCORD_CLIENT_SECRET=your_admin_client_secret_here
+ADMIN_DISCORD_BOT_TOKEN=your_admin_bot_token_here
 ROLE_ADMIN_IDS=
 ROLE_CLUB_IDS=
 ```

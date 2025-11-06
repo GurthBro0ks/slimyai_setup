@@ -1,31 +1,62 @@
+# Docker Compose Override for Development
+# This file extends the base docker-compose.yml with development-specific settings
+# Copy this to docker-compose.override.yml and customize for your environment
+
+version: '3.8'
+
+# Override environment files for development
 services:
-  slimy-admin-ui:
-    image: node:lts
-    working_dir: /app
-    volumes:
-    - ./admin-ui:/app
+  postgres:
+    env_file:
+      - .env
     environment:
-    - PORT=3081
-    - ADMIN_API_ORIGIN=http://172.19.0.1:3080
-    - NEXT_PUBLIC_ADMIN_API_BASE=http://172.19.0.1:3080
-    - PORT=3081
-    - HOST=0.0.0.0
-    - HOSTNAME=0.0.0.0
-    - ADMIN_API_ORIGIN=http://172.19.0.1:3080
-    - NEXT_PUBLIC_ADMIN_API_BASE=http://172.19.0.1:3080
-    ports:
-    - 3081:3081
-    command:
-    - sh
-    - -lc
-    - PORT=3081 node .next/standalone/server.js
-    healthcheck:
-      test:
-      - CMD-SHELL
-      - 'node -e "require(''http'').get(''http://127.0.0.1:3081/'', res => process.exit(res.statusCode
-        === 200 ? 0 : 1)).on(''error'', () => process.exit(1));"'
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 180s
-    restart: unless-stopped
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-dev_password_123}
+
+  admin-api:
+    env_file:
+      - admin-api/.env
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+    volumes:
+      # Mount source for development
+      - ./admin-api/src:/app/src
+      - ./admin-api/lib:/app/lib
+    # Override command for development
+    command: ["npm", "run", "dev"]
+
+  web:
+    env_file:
+      - ../web/.env.local
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_APP_URL=http://localhost:3001
+    volumes:
+      # Mount source for development
+      - ../web:/app
+      - /app/node_modules
+      - /app/.next
+    # Override command for development
+    command: ["npm", "run", "dev"]
+
+  # MCP Services (uncomment if needed for development)
+  # club-analytics:
+  #   env_file:
+  #     - ../mcp/.env
+  #   environment:
+  #     - NODE_ENV=development
+  #     - LOG_LEVEL=debug
+
+  # google-sheets:
+  #   env_file:
+  #     - ../mcp/.env
+  #   environment:
+  #     - NODE_ENV=development
+  #     - LOG_LEVEL=debug
+
+  # mysql-data:
+  #   env_file:
+  #     - ../mcp/.env
+  #   environment:
+  #     - NODE_ENV=development
+  #     - LOG_LEVEL=debug

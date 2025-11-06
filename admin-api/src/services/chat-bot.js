@@ -1,5 +1,7 @@
 "use strict";
 
+const config = require("../lib/config");
+
 const fallbackReply =
   "OpenAI integration is not configured yet, but your message was received.";
 
@@ -16,7 +18,7 @@ async function askChatBot({ prompt, guildId }) {
     throw error;
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = config.openai.apiKey;
   if (!apiKey) {
     return { reply: fallbackReply, usedFallback: true };
   }
@@ -28,7 +30,7 @@ async function askChatBot({ prompt, guildId }) {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      model: config.openai.model,
       messages: [
         { role: "system", content: MENTION_PROMPT(guildId) },
         { role: "user", content: text },

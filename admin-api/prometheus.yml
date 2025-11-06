@@ -1,0 +1,51 @@
+# Prometheus configuration for Slimy Admin API monitoring
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "alert_rules.yml"
+
+scrape_configs:
+  - job_name: 'slimy-admin-api'
+    static_configs:
+      - targets: ['admin-api:3080']
+    metrics_path: '/api/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Docker container metrics
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['docker.for.mac.host.internal:9323']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#   - static_configs:
+#     - targets:
+#       - alertmanager:9093
+
+# Alert rules (can be separate file)
+# groups:
+# - name: slimy_admin_api_alerts
+#   rules:
+#   - alert: HighErrorRate
+#     expr: slimy_admin_api_error_rate_percent > 5
+#     for: 5m
+#     labels:
+#       severity: warning
+#     annotations:
+#       summary: "High error rate detected"
+#       description: "Error rate is {{ $value }}% (threshold: 5%)"
+#
+#   - alert: CriticalErrorRate
+#     expr: slimy_admin_api_error_rate_percent > 10
+#     for: 2m
+#     labels:
+#       severity: critical
+#     annotations:
+#       summary: "Critical error rate detected"
+#       description: "Error rate is {{ $value }}% (threshold: 10%)"

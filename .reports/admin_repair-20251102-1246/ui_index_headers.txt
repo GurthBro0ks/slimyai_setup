@@ -1,0 +1,16 @@
+
+
+=== Testing UI index page ===
+HTTP/2 200 
+alt-svc: h3=":443"; ma=2592000
+content-type: text/html; charset=utf-8
+date: Sun, 02 Nov 2025 12:50:29 GMT
+etag: "ub0egcejfo4zu"
+referrer-policy: strict-origin-when-cross-origin
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+vary: Accept-Encoding
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-powered-by: Next.js
+x-xss-protection: 1; mode=block
+

@@ -1,7 +1,7 @@
 "use strict";
 const path = require("path");
 const fs = require("fs");
-const { query, getPool, isConfigured } = require("./database");
+const database = require("../../lib/database");
 
 const DEFAULT_PERSONA_PATH = process.env.PERSONALITY_DEFAULT_PATH || path.join(__dirname, "../bot-personality.md");
 
@@ -72,10 +72,10 @@ function readDefaultFile() {
 }
 
 async function ensureTableColumns() {
-  if (!isConfigured()) return;
+  if (!database.isConfigured()) return;
   try {
     const sql = fs.readFileSync(path.join(__dirname, "guild-personality.sql"), "utf8");
-    await query(sql);
+    await database.query(sql);
   } catch (e) {
     console.warn("[guild-personality] Could not alter table:", e.message);
   }
@@ -97,13 +97,13 @@ function defaultsFor(guildId) {
 }
 
 async function getGuildPersona(guildId) {
-  if (!isConfigured()) {
+  if (!database.isConfigured()) {
     return defaultsFor(guildId);
   }
 
   await ensureTableColumns();
 
-  const rows = await query(
+  const rows = await database.query(
     `SELECT * FROM guild_personality WHERE guild_id = ? LIMIT 1`,
     [guildId]
   );
@@ -138,7 +138,7 @@ async function getGuildPersona(guildId) {
 }
 
 async function upsertGuildPersona(guildId, patch, updatedBy) {
-  if (!isConfigured()) {
+  if (!database.isConfigured()) {
     throw new Error("Database not configured");
   }
 
@@ -180,7 +180,7 @@ async function upsertGuildPersona(guildId, patch, updatedBy) {
       updated_at = CURRENT_TIMESTAMP
   `;
 
-  await query(sql, [
+  await database.query(sql, [
     next.guild_id,
     next.updated_by,
     next.preset || null,

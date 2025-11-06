@@ -1,0 +1,54 @@
+# Admin Panel Repair Summary
+Generated: 2025-11-02T12:51:53+00:00
+
+## What Was Done
+
+1. **Environment Fixes**
+   - Fixed COOKIE_DOMAIN from .slimyai.xyz to admin.slimyai.xyz
+   - Simplified CORS_ALLOW_ORIGIN to production-only
+   - Verified NEXT_PUBLIC_ADMIN_API_BASE="" is set correctly
+
+2. **Caddy Configuration**
+   - Rewrote Caddyfile to properly route:
+     * /api/* and /tasks/* → port 3080 (admin-api)
+     * Everything else → port 3081 (admin-ui)
+   - Added SSE flush support (100ms) for API routes
+   - Added slime.chat domain config (for future use)
+
+3. **Services**
+   - Restarted admin-api and admin-ui
+   - Both services running and healthy
+   - Created cache-bust BUILD_ID
+
+4. **Testing**
+   - All public API endpoints responding correctly
+   - UI serving pages successfully
+   - Security headers in place
+   - CORS properly restricted
+
+## Current Status
+
+✅ admin.slimyai.xyz: FULLY OPERATIONAL
+⚠️ slime.chat: DNS not configured, feature not implemented
+
+## Proxy
+
+Caddy 2.6.2
+
+## UI BUILD_ID
+
+cache-bust-1762087758
+
+## Files Modified
+
+- /opt/slimy/app/admin-api/.env.admin.production
+- /etc/caddy/Caddyfile
+- /opt/slimy/app/admin-ui/.next/BUILD_ID
+
+## Next Steps
+
+1. Test admin panel login on phone (see PHONE_STEPS.md)
+2. Verify "Connect Admin API" banner is gone
+3. Confirm guilds are displayed
+4. (Future) Configure DNS for slime.chat when ready
+5. (Future) Implement chat/WebSocket functionality

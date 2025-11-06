@@ -10,6 +10,7 @@ const {
   Events,
   MessageFlags
 } = require('discord.js');
+const { validateEnvironment } = require('./lib/env-validation');
 
 // ---- Singleton guard ----
 const LOCK_FILE = path.join(__dirname, '.slimy-singleton.lock');
@@ -218,9 +219,14 @@ try {
 }
 
 // ---- Login (ONLY ONCE) ----
-if (!process.env.DISCORD_TOKEN) {
-  console.error('❌ DISCORD_TOKEN not set in environment.');
+console.log('🔍 Validating environment configuration...');
+try {
+  validateEnvironment();
+  console.log('✅ Environment validation passed');
+} catch (error) {
+  console.error('❌ Environment validation failed:', error.message);
   process.exit(1);
 }
 
+console.log('🚀 Starting Discord bot...');
 client.login(process.env.DISCORD_TOKEN);

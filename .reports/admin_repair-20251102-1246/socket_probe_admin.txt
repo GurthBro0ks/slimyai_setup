@@ -1,0 +1,13 @@
+=== Socket.IO probe on admin.slimyai.xyz ===
+HTTP/2 308 
+alt-svc: h3=":443"; ma=2592000
+date: Sun, 02 Nov 2025 12:50:41 GMT
+location: /socket.io?EIO=4&transport=polling
+referrer-policy: strict-origin-when-cross-origin
+refresh: 0;url=/socket.io?EIO=4&transport=polling
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-xss-protection: 1; mode=block
+
+/socket.io?EIO=4&transport=polling
