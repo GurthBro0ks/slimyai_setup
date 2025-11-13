@@ -1,6 +1,7 @@
 "use strict";
 const express = require("express");
 const { requireRole, requireGuildMember, requireAuth } = require("../middleware/auth");
+const { requireCsrf } = require("../middleware/csrf");
 const { cacheGuildData, cacheStats, getAPICache } = require("../middleware/cache");
 const { personality } = require("../lib/validation/schemas");
 const {
@@ -44,7 +45,7 @@ router.get("/:guildId/personality", requireGuildMember("guildId"), cacheGuildDat
 });
 
 // Update personality
-router.put("/:guildId/personality", requireGuildMember("guildId"), express.json(), personality.update, async (req, res) => {
+router.put("/:guildId/personality", requireCsrf, requireGuildMember("guildId"), express.json(), personality.update, async (req, res) => {
   const { guildId } = req.params;
   try {
     const updated = await upsertGuildPersona(guildId, req.body, req.user?.id);
@@ -65,7 +66,7 @@ router.put("/:guildId/personality", requireGuildMember("guildId"), express.json(
 });
 
 // Reset to default or specific preset
-router.post("/:guildId/personality/reset", requireGuildMember("guildId"), express.json(), personality.reset, async (req, res) => {
+router.post("/:guildId/personality/reset", requireCsrf, requireGuildMember("guildId"), express.json(), personality.reset, async (req, res) => {
   const { guildId } = req.params;
   const { preset } = req.body;
 
@@ -89,7 +90,7 @@ router.post("/:guildId/personality/reset", requireGuildMember("guildId"), expres
 });
 
 // Test output - generate sample response
-router.post("/:guildId/personality/test", requireGuildMember("guildId"), express.json(), personality.test, async (req, res) => {
+router.post("/:guildId/personality/test", requireCsrf, requireGuildMember("guildId"), express.json(), personality.test, async (req, res) => {
   const { guildId } = req.params;
   const { prompt } = req.body;
 

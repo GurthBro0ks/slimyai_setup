@@ -4,6 +4,7 @@ const express = require("express");
 const { z } = require("zod");
 const path = require("path");
 const { requireRole, requireGuildMember } = require("../middleware/auth");
+const { requireCsrf } = require("../middleware/csrf");
 const { readJson, writeJson } = require("../lib/store");
 
 const SETTINGS_ROOT = path.join(process.cwd(), "data", "settings");
@@ -86,6 +87,7 @@ router.get(
 
 router.put(
   "/:guildId/settings",
+  requireCsrf,
   requireRole("admin"), // Only admin can write settings
   requireGuildMember("guildId"),
   express.json(),
@@ -135,6 +137,7 @@ router.put(
 
 router.post(
   "/:guildId/settings/screenshot-channel",
+  requireCsrf,
   requireRole("admin"), // Only admin can write settings
   requireGuildMember("guildId"),
   express.json(),

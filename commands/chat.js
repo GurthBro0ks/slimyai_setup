@@ -69,9 +69,29 @@ function getEffectiveModesForChannel(guild, channel) {
   return view.effective.modes;
 }
 
-// Short history per (channelId,userId)
+// Short history per (channelId,userId) with TTL-based cleanup
 const histories = new Map();
 const MAX_TURNS = 8;
+const HISTORY_TTL_MS = 60 * 60 * 1000; // 1 hour
+const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // Cleanup every 10 minutes
+
+// Cleanup old history entries to prevent memory leaks
+function cleanupOldHistories() {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [key, entry] of histories.entries()) {
+    if (now - entry.lastAccess > HISTORY_TTL_MS) {
+      histories.delete(key);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    logger.info(`[chat] Cleaned up ${cleaned} expired conversation histories`);
+  }
+}
+
+// Start periodic cleanup
+setInterval(cleanupOldHistories, CLEANUP_INTERVAL_MS);
 
 // Lightweight auto-mode detect
 const MODES = ["mentor", "partner", "mirror", "operator"];
@@ -100,10 +120,18 @@ async function runConversation({
   const key = `${channelId}:${userId}`;
   if (reset) histories.delete(key);
 
-  let history = histories.get(key) || [];
+  // Get history entry with lastAccess tracking
+  let historyEntry = histories.get(key);
+  let history = historyEntry ? historyEntry.messages : [];
+
   history.push({ role: "user", content: userMsg });
   if (history.length > MAX_TURNS * 2) history = history.slice(-MAX_TURNS * 2);
-  histories.set(key, history);
+
+  // Update with new lastAccess timestamp
+  histories.set(key, {
+    messages: history,
+    lastAccess: Date.now()
+  });
 
   const detectedMode = autoDetect(userMsg);
   let persona = personaStore.getPersona(detectedMode);
@@ -133,7 +161,10 @@ async function runConversation({
 
   const response = completion.choices[0]?.message?.content || "No response.";
   history.push({ role: "assistant", content: response });
-  histories.set(key, history);
+  histories.set(key, {
+    messages: history,
+    lastAccess: Date.now()
+  });
 
   return { response, persona: persona.name };
 }

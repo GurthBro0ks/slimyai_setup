@@ -2,12 +2,13 @@
 
 const express = require("express");
 const { requireAuth } = require("../middleware/auth");
+const { requireCsrf } = require("../middleware/csrf");
 
 const router = express.Router();
 
 const BOT_RESCAN_URL = process.env.BOT_RESCAN_URL || null;
 
-router.post("/rescan", requireAuth, async (req, res) => {
+router.post("/rescan", requireAuth, requireCsrf, async (req, res) => {
   if (!BOT_RESCAN_URL) {
     return res.status(501).json({ error: "rescan_unconfigured" });
   }

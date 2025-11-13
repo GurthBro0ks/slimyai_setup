@@ -8,6 +8,7 @@ const multer = require("multer");
 const sharp = require("sharp");
 const mime = require("mime-types");
 const { requireAuth } = require("../middleware/auth");
+const { requireCsrf } = require("../middleware/csrf");
 const withUploader = require("../middleware/withUploader");
 const {
   UPLOADS_DIR,
@@ -120,6 +121,7 @@ router.get("/:guildId", requireAuth, async (req, res) => {
 router.post(
   "/:guildId",
   requireAuth,
+  requireCsrf,
   withUploader,
   (req, res, next) => {
     upload.array("files", MAX_FILES)(req, res, (err) => {
