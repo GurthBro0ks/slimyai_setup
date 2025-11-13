@@ -14,6 +14,7 @@
 
 const express = require("express");
 const { requireAuth, requireRole } = require("../middleware/auth");
+const { requireCsrf } = require("../middleware/csrf");
 const { getSession } = require("../../lib/session-store");
 const metrics = require("../lib/monitoring/metrics");
 const { queueManager } = require("../lib/queues");
@@ -49,7 +50,7 @@ router.use(requireAuth);
  *   - 503: queues_unavailable - Job queues not available
  *   - 500: server_error - Internal server error
  */
-router.post("/bot", requireRole("member"), express.json(), chat.bot, apiHandler(async (req, res) => {
+router.post("/bot", requireCsrf, requireRole("member"), express.json(), chat.bot, apiHandler(async (req, res) => {
   const { prompt, guildId } = req.body;
   const userId = req.user.id;
 
@@ -360,7 +361,7 @@ router.get("/:guildId/history", chat.history, apiHandler(async (req, res) => {
  *   - 503: queues_unavailable - Job queues not available
  *   - 500: server_error - Internal server error
  */
-router.post("/conversations", express.json(), chat.createConversation, apiHandler(async (req, res) => {
+router.post("/conversations", requireCsrf, express.json(), chat.createConversation, apiHandler(async (req, res) => {
   const { title, personalityMode } = req.body;
   const userId = req.user.id;
 
@@ -511,7 +512,7 @@ router.get("/conversations/:conversationId", chat.getConversation, apiHandler(as
  * Errors:
  *   - 404: conversation_not_found - Conversation doesn't exist or user doesn't have access
  */
-router.delete("/conversations/:conversationId", chat.deleteConversation, apiHandler(async (req, res) => {
+router.delete("/conversations/:conversationId", requireCsrf, chat.deleteConversation, apiHandler(async (req, res) => {
   const { conversationId } = req.params;
   const userId = req.user.id;
 
@@ -554,7 +555,7 @@ router.delete("/conversations/:conversationId", chat.deleteConversation, apiHand
  * Errors:
  *   - 404: conversation_not_found - Conversation doesn't exist or user doesn't have access
  */
-router.patch("/conversations/:conversationId", express.json(), chat.updateConversation, apiHandler(async (req, res) => {
+router.patch("/conversations/:conversationId", requireCsrf, express.json(), chat.updateConversation, apiHandler(async (req, res) => {
   const { conversationId } = req.params;
   const userId = req.user.id;
   const { title } = req.body;
@@ -601,7 +602,7 @@ router.patch("/conversations/:conversationId", express.json(), chat.updateConver
  * Errors:
  *   - 503: queues_unavailable - Job queues not available
  */
-router.post("/messages", express.json(), chat.addMessage, apiHandler(async (req, res) => {
+router.post("/messages", requireCsrf, express.json(), chat.addMessage, apiHandler(async (req, res) => {
   const { conversationId, message } = req.body;
   const userId = req.user.id;
 

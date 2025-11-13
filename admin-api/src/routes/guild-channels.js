@@ -1,6 +1,7 @@
 "use strict";
 const express = require("express");
 const { requireAuth } = require("../middleware/auth");
+const { requireCsrf } = require("../middleware/csrf");
 const fs = require("fs");
 const path = require("path");
 const DISCORD_API = "https://discord.com/api/v10";
@@ -50,7 +51,7 @@ router.get("/:guildId/channels", (req, res) => {
 });
 
 /** POST overrides (manual save) */
-router.post("/:guildId/channels", express.json(), (req, res) => {
+router.post("/:guildId/channels", requireCsrf, express.json(), (req, res) => {
   const { guildId } = req.params;
   const items = Array.isArray(req.body?.overrides) ? req.body.overrides : [];
   const cleaned = items.map(x => ({ id: String(x.id || ""), name: String(x.name || "") }))

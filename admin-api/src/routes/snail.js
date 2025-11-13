@@ -27,6 +27,7 @@ const {
   requireRole,
   requireGuildMember,
 } = require("../middleware/auth");
+const { requireCsrf } = require("../middleware/csrf");
 const { cacheGuildData, cacheStats } = require("../middleware/cache");
 const { snail, validateFileUploads } = require("../lib/validation/schemas");
 const { apiHandler } = require("../lib/errors");
@@ -115,6 +116,7 @@ router.use(requireGuildMember("guildId"));
  */
 router.post(
   "/analyze",
+  requireCsrf,
   express.json(),
   snail.upload,
   (req, res, next) => {
@@ -269,7 +271,7 @@ router.get("/analyze_help", snail.help, cacheStats(3600, 7200), (_req, res) => {
  *   - total: number - Total value
  *   - simPct: number - Calculated percentage (sim / total)
  */
-router.post("/calc", express.json(), snail.calc, (req, res) => {
+router.post("/calc", requireCsrf, express.json(), snail.calc, (req, res) => {
   const { sim, total } = req.body;
   const simPct = total > 0 ? sim / total : 0;
   res.json({

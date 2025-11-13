@@ -29,6 +29,7 @@
     "discord.js": "^14.23.2",
     "googleapis": "^164.1.0",
     "luxon": "^3.7.2",
+    "mysql2": "^3.15.3",
     "openai": "^6.7.0",
     "proper-lockfile": "^4.1.2",
     "uuid": "^13.0.0"

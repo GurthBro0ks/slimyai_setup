@@ -28,11 +28,9 @@ function requiredEnv(name) {
 
 const CLIENT_ID = requiredEnv("DISCORD_CLIENT_ID");
 const CLIENT_SECRET = requiredEnv("DISCORD_CLIENT_SECRET");
-const REDIRECT_URI =
-  process.env.DISCORD_REDIRECT_URI ||
-  "https://admin.slimyai.xyz/api/auth/callback";
+const REDIRECT_URI = requiredEnv("DISCORD_REDIRECT_URI");
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || null;
-const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || ".slimyai.xyz";
+const COOKIE_DOMAIN = requiredEnv("COOKIE_DOMAIN");
 const SCOPES = "identify guilds";
 
 const ROLE_ORDER = { member: 0, club: 1, admin: 2 };

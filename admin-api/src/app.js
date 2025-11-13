@@ -12,11 +12,16 @@ const app = express();
 app.set("trust proxy", 1);
 app.disable("etag");
 
+const CORS_ORIGIN = process.env.CORS_ORIGIN;
+if (!CORS_ORIGIN) {
+  throw new Error("Missing required environment variable: CORS_ORIGIN");
+}
+
 app.use(helmet());
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 app.use(cors({
-  origin: "https://admin.slimyai.xyz",
+  origin: CORS_ORIGIN,
   credentials: true
 }));
 app.use(morgan("combined"));

@@ -1,6 +1,7 @@
 "use strict";
 
 const express = require("express");
+const { requireCsrf } = require("../middleware/csrf");
 const router = express.Router();
 const { getStatsTracker } = require("../../lib/stats/tracker");
 const Database = require("../../lib/database");
@@ -86,7 +87,7 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/stats - Record stats events
-router.post("/", async (req, res) => {
+router.post("/", requireCsrf, async (req, res) => {
   try {
     const tracker = await getStatsTrackerInstance();
     const body = req.body;
@@ -213,7 +214,7 @@ router.post("/", async (req, res) => {
 });
 
 // PUT /api/stats - Update operations
-router.put("/", async (req, res) => {
+router.put("/", requireCsrf, async (req, res) => {
   try {
     const tracker = await getStatsTrackerInstance();
     const body = req.body;
