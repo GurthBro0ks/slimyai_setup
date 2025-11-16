@@ -7,7 +7,7 @@ const { getCache, CacheUtils } = require("../../lib/cache/redis");
  */
 class APICache {
   constructor() {
-    this.cache = getCache({
+    this.store = getCache({
       keyPrefix: 'api:',
       ttl: 300, // 5 minutes default
     });
@@ -17,7 +17,7 @@ class APICache {
    * Initialize cache connection
    */
   async init() {
-    await this.cache.connect();
+    await this.store.connect();
   }
 
   /**
@@ -34,7 +34,7 @@ class APICache {
       useStaleWhileRevalidate = true, // Enable stale-while-revalidate
     } = options;
 
-    return async (req, res, next) => {
+    return (async (req, res, next) => {
       try {
         // Check if caching is enabled for this request
         if (!condition(req, res)) {
@@ -51,7 +51,7 @@ class APICache {
         }
 
         // Try to get cached response
-        const cached = await this.cache.get(cacheKey);
+        const cached = await this.store.get(cacheKey);
         if (cached) {
           // Return cached response
           const cacheStatus = cached.isStale ? 'STALE' : 'HIT';
@@ -71,7 +71,7 @@ class APICache {
         res.json = function(data) {
           // Only cache successful responses
           if (res.statusCode >= 200 && res.statusCode < 300) {
-            this.cache.set(cacheKey, data, ttl, staleTtl).catch(err => {
+            this.store.set(cacheKey, data, ttl, staleTtl).catch(err => {
               console.warn('Failed to cache API response:', err);
             });
           }
@@ -86,7 +86,7 @@ class APICache {
         console.warn('API cache middleware error:', error);
         next();
       }
-    }.bind(this);
+    }).bind(this);
   }
 
   /**
@@ -103,7 +103,7 @@ class APICache {
       fetcher, // Required: function to fetch fresh data
     } = options;
 
-    return async (req, res, next) => {
+    return (async (req, res, next) => {
       try {
         if (!condition(req, res) || !fetcher) {
           return next();
@@ -119,7 +119,7 @@ class APICache {
         }
 
         // Use stale-while-revalidate pattern
-        const data = await this.cache.staleWhileRevalidate(
+        const data = await this.store.staleWhileRevalidate(
           cacheKey,
           () => fetcher(req),
           ttl,
@@ -127,7 +127,7 @@ class APICache {
         );
 
         // Determine cache status for headers
-        const cached = await this.cache.get(cacheKey);
+        const cached = await this.store.get(cacheKey);
         const cacheStatus = cached && cached.isStale ? 'STALE' : 'HIT';
         res.set('X-Cache-Status', cacheStatus);
 
@@ -142,7 +142,7 @@ class APICache {
         console.warn('Stale-while-revalidate middleware error:', error);
         next();
       }
-    }.bind(this);
+    }).bind(this);
   }
 
   /**
@@ -150,7 +150,7 @@ class APICache {
    */
   async invalidate(pattern) {
     try {
-      await this.cache.invalidatePattern(pattern);
+      await this.store.invalidatePattern(pattern);
     } catch (error) {
       console.warn('Failed to invalidate cache pattern:', error);
     }
@@ -161,7 +161,7 @@ class APICache {
    */
   async clear() {
     try {
-      await this.cache.clear();
+      await this.store.clear();
     } catch (error) {
       console.warn('Failed to clear API cache:', error);
     }

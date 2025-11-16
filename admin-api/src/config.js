@@ -106,4 +106,19 @@ const config = {
   },
 };
 
+const REQUIRED_AUTH_ENV = [
+  ["DISCORD_CLIENT_ID", config.discord.clientId],
+  ["DISCORD_CLIENT_SECRET", config.discord.clientSecret],
+  ["DISCORD_REDIRECT_URI", config.discord.redirectUri],
+  ["SESSION_SECRET", process.env.SESSION_SECRET],
+  ["JWT_SECRET", config.jwt.secret],
+];
+
+const missingAuthEnv = REQUIRED_AUTH_ENV.filter(([, value]) => !value);
+if (missingAuthEnv.length && process.env.NODE_ENV !== "test") {
+  console.warn("[admin-config] Missing auth/session env vars", {
+    missing: missingAuthEnv.map(([name]) => name),
+  });
+}
+
 module.exports = config;

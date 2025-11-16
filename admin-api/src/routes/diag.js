@@ -20,7 +20,11 @@ function buildAdminSnapshot() {
   };
 }
 
-router.get("/", requireAuth, async (_req, res) => {
+router.get("/", requireAuth, async (req, res) => {
+  console.info("[admin-api] /api/diag called", {
+    hasUser: Boolean(req.user),
+    userId: req.user?.id || null,
+  });
   try {
     const uploads = await summarizeUploads().catch(() => ({
       total: 0,

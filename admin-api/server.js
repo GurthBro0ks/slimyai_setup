@@ -7,7 +7,6 @@ const dotenv = require("dotenv");
 
 const database = require("../lib/database");
 const { applyDatabaseUrl } = require("./src/utils/apply-db-url");
-const { createApp } = require("./src/app");
 const logger = require("../lib/logger");
 
 function loadEnv() {
@@ -47,7 +46,7 @@ async function start() {
     await database.initialize();
   }
 
-  const app = createApp();
+  const app = require("./src/app");
   const port = Number(process.env.PORT || process.env.ADMIN_API_PORT || 3080);
   const host = process.env.HOST || process.env.ADMIN_API_HOST || "127.0.0.1";
 
@@ -69,5 +68,6 @@ async function start() {
 
 start().catch((err) => {
   logger.error("[admin-api] Failed to start", { err: err?.message || err });
+  console.error(err);
   process.exit(1);
 });

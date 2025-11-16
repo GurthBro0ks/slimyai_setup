@@ -3,12 +3,9 @@
 const express = require("express");
 const crypto = require("crypto");
 const { signSession, setAuthCookie, clearAuthCookie } = require("../../lib/jwt");
-const {
-  storeSession,
-  clearSession,
-  getSession,
-} = require("../../lib/session-store");
+const { storeSession, clearSession, getSession } = require("../../lib/session-store");
 const { resolveRoleLevel } = require("../lib/roles");
+const config = require("../config");
 
 const router = express.Router();
 
@@ -18,20 +15,58 @@ const DISCORD = {
   AUTH_URL: "https://discord.com/oauth2/authorize",
 };
 
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
-  return value;
+const {
+  clientId: CLIENT_ID,
+  clientSecret: CLIENT_SECRET,
+  redirectUri: CONFIG_REDIRECT_URI,
+  scopes: CONFIG_SCOPES,
+} = config.discord;
+
+const REDIRECT_URI =
+  CONFIG_REDIRECT_URI ||
+  process.env.DISCORD_REDIRECT_URI ||
+  "https://admin.slimyai.xyz/api/auth/callback";
+const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || null;
+const COOKIE_DOMAIN =
+  config.jwt.cookieDomain ||
+  process.env.COOKIE_DOMAIN ||
+  process.env.ADMIN_COOKIE_DOMAIN ||
+  (process.env.NODE_ENV === "production" ? ".slimyai.xyz" : undefined);
+const SCOPES = Array.isArray(CONFIG_SCOPES)
+  ? CONFIG_SCOPES.join(" ")
+  : CONFIG_SCOPES || "identify guilds";
+
+const oauthStateCookieOptions = {
+  httpOnly: true,
+  secure: Boolean(
+    config.jwt.cookieSecure ?? process.env.NODE_ENV === "production",
+  ),
+  sameSite: "lax",
+  path: "/",
+};
+if (COOKIE_DOMAIN) {
+  oauthStateCookieOptions.domain = COOKIE_DOMAIN;
 }
 
-const CLIENT_ID = requiredEnv("DISCORD_CLIENT_ID");
-const CLIENT_SECRET = requiredEnv("DISCORD_CLIENT_SECRET");
-const REDIRECT_URI = requiredEnv("DISCORD_REDIRECT_URI");
-const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || null;
-const COOKIE_DOMAIN = requiredEnv("COOKIE_DOMAIN");
-const SCOPES = "identify guilds";
+const missingAuthConfig = [];
+if (!CLIENT_ID) missingAuthConfig.push("DISCORD_CLIENT_ID");
+if (!CLIENT_SECRET) missingAuthConfig.push("DISCORD_CLIENT_SECRET");
+if (!REDIRECT_URI) missingAuthConfig.push("DISCORD_REDIRECT_URI");
+if (!COOKIE_DOMAIN && process.env.NODE_ENV === "production") {
+  missingAuthConfig.push("COOKIE_DOMAIN");
+}
+if (
+  !config.jwt.secret &&
+  !process.env.JWT_SECRET &&
+  !process.env.SESSION_SECRET
+) {
+  missingAuthConfig.push("JWT_SECRET");
+}
+if (missingAuthConfig.length && process.env.NODE_ENV !== "test") {
+  console.warn("[auth] Missing env vars for Discord auth", {
+    missing: missingAuthConfig,
+  });
+}
 
 const ROLE_ORDER = { member: 0, club: 1, admin: 2 };
 
@@ -41,11 +76,7 @@ function issueState(res) {
     ts: Date.now(),
   };
   res.cookie("oauth_state", payload.nonce, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    domain: COOKIE_DOMAIN,
-    path: "/",
+    ...oauthStateCookieOptions,
     maxAge: 5 * 60 * 1000,
   });
   return Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -90,6 +121,9 @@ router.get("/login", (_req, res) => {
 router.get("/callback", async (req, res) => {
   try {
     const { code, state } = req.query;
+    console.info("[admin-api] /api/auth/callback start", {
+      hasCode: Boolean(code),
+    });
     const savedNonce = req.cookies?.oauth_state;
     const parsed = parseState(state);
     if (
@@ -302,21 +336,27 @@ router.get("/callback", async (req, res) => {
       guilds: lightweightGuilds,
     };
 
-    storeSession(user.id, {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      guilds: enrichedGuilds,
-      role: userRole,
-    });
+    try {
+      await storeSession(user.id, {
+        token: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        guilds: enrichedGuilds,
+        role: userRole,
+      });
+    } catch (sessionErr) {
+      console.warn("[auth] failed to persist session data", {
+        userId: user.id,
+        error: sessionErr.message,
+      });
+    }
 
     const signed = signSession({ user });
     setAuthCookie(res, signed);
-    res.clearCookie("oauth_state", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      domain: COOKIE_DOMAIN,
-      path: "/",
+    res.clearCookie("oauth_state", oauthStateCookieOptions);
+
+    console.info("[admin-api] /api/auth/callback created session", {
+      userId: user.id,
+      guildCount: lightweightGuilds.length,
     });
 
     // Role-based redirect
@@ -334,6 +374,10 @@ router.get("/callback", async (req, res) => {
 });
 
 router.get("/me", (req, res) => {
+  console.info("[admin-api] /api/auth/me called", {
+    hasUser: Boolean(req.user),
+    userId: req.user?.id || null,
+  });
   if (!req.user) {
     return res.status(401).json({ error: "unauthorized" });
   }

@@ -15,6 +15,14 @@ const snailRoutes = require("./snail");
 const chatRoutes = require("./chat");
 
 router.get("/api/", (_req, res) => res.json({ ok: true }));
+router.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "admin-api",
+    env: process.env.NODE_ENV || "development",
+    timestamp: new Date().toISOString(),
+  });
+});
 router.use("/api", debugRoutes);
 router.use("/api/auth", authRoutes);
 router.use("/api/guilds/:guildId/snail", snailRoutes);
