@@ -11,7 +11,11 @@ const { formatChatDisplay } = require("../lib/text-format");
 const rateLimiter = TEST ? stubs.rateLimiter : require("../lib/rate-limiter");
 const metrics = TEST ? stubs.metrics : require("../lib/metrics");
 const logger = require("../lib/logger");
-const openaiClient = TEST ? stubs.openai : require("../lib/openai");
+const {
+  callWithFallback,
+  hasConfiguredProvider,
+} = require("../lib/llm-fallback");
+const messageQueue = require("../lib/message-queue");
 
 const THREAD_TYPES = new Set([
   ChannelType.PublicThread,
@@ -124,14 +128,14 @@ async function runConversation({
   const systemPrompt = persona.prompt || "You are a helpful assistant.";
   const messages = [{ role: "system", content: systemPrompt }, ...history];
 
-  const completion = await openaiClient.chat.completions.create({
+  const completion = await callWithFallback({
     model: process.env.OPENAI_MODEL || "gpt-4o",
     messages,
     temperature: 0.8,
     max_tokens: 1000,
   });
 
-  const response = completion.choices[0]?.message?.content || "No response.";
+  const response = completion.response || "No response.";
   history.push({ role: "assistant", content: response });
   histories.set(key, history);
 
@@ -164,10 +168,10 @@ module.exports = {
       });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!hasConfiguredProvider()) {
       metrics.trackCommand("chat", Date.now() - startTime, false);
       return interaction.reply({
-        content: "❌ OPENAI_API_KEY is not set.",
+        content: "❌ No LLM provider is configured.",
         ephemeral: true,
       });
     }
@@ -175,49 +179,51 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      const parentId =
-        interaction.channel?.parentId || interaction.channel?.parent?.id;
-      const effectiveModes = getEffectiveModesForChannel(
-        interaction.guild,
-        interaction.channel,
-      );
+      await messageQueue.enqueue(async () => {
+        const parentId =
+          interaction.channel?.parentId || interaction.channel?.parent?.id;
+        const effectiveModes = getEffectiveModesForChannel(
+          interaction.guild,
+          interaction.channel,
+        );
 
-      // FIX: Use the new mode keys
-      const rating = effectiveModes.rating_unrated
-        ? "unrated"
-        : effectiveModes.rating_pg13
-          ? "pg13"
-          : "default";
+        // FIX: Use the new mode keys
+        const rating = effectiveModes.rating_unrated
+          ? "unrated"
+          : effectiveModes.rating_pg13
+            ? "pg13"
+            : "default";
 
-      const handledImage = await maybeReplyWithImage({
-        interaction,
-        prompt: userMsg,
-        rating,
+        const handledImage = await maybeReplyWithImage({
+          interaction,
+          prompt: userMsg,
+          rating,
+        });
+        if (handledImage) {
+          return;
+        }
+
+        const result = await runConversation({
+          userId: interaction.user.id,
+          channelId: interaction.channelId,
+          guildId: interaction.guildId || undefined,
+          parentId,
+          userMsg,
+          reset,
+          context: "slash",
+          effectiveOverride: effectiveModes,
+        });
+
+        const userLabel =
+          interaction.member?.displayName || interaction.user.username;
+        const content = formatChatDisplay({
+          userLabel,
+          userMsg,
+          persona: result.persona,
+          response: result.response,
+        });
+        await interaction.editReply({ content });
       });
-      if (handledImage) {
-        return;
-      }
-
-      const result = await runConversation({
-        userId: interaction.user.id,
-        channelId: interaction.channelId,
-        guildId: interaction.guildId || undefined,
-        parentId,
-        userMsg,
-        reset,
-        context: "slash",
-        effectiveOverride: effectiveModes,
-      });
-
-      const userLabel =
-        interaction.member?.displayName || interaction.user.username;
-      const content = formatChatDisplay({
-        userLabel,
-        userMsg,
-        persona: result.persona,
-        response: result.response,
-      });
-      await interaction.editReply({ content });
       metrics.trackCommand("chat", Date.now() - startTime, true);
     } catch (err) {
       metrics.trackCommand("chat", Date.now() - startTime, false);
@@ -226,10 +232,10 @@ module.exports = {
         userId: interaction.user.id,
         error: err.message,
       });
-      console.error("OpenAI error:", err);
+      console.error("LLM error:", err);
       const msg =
         err?.response?.data?.error?.message || err.message || String(err);
-      await interaction.editReply({ content: `❌ OpenAI error: ${msg}` });
+      await interaction.editReply({ content: `❌ LLM error: ${msg}` });
     }
   },
 

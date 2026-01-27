@@ -16,8 +16,27 @@ const stubs = require("../test/mocks/stubs");
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const REPORT_FILE = path.join(PROJECT_ROOT, "command-test-report.txt");
 const DEFAULT_TIMEOUT_MS = 30_000;
+const MOCK_EXTERNAL = process.env.MOCK_EXTERNAL === "1";
+const MOCK_ASSISTANT_REPLY = "MOCK_ASSISTANT_REPLY";
+const MOCK_PROOF_DIR =
+  process.env.PROOF_DIR ||
+  path.join(
+    os.tmpdir(),
+    `proof_llm_e2e_mocked_${new Date()
+      .toISOString()
+      .replace(/[-:.TZ]/g, "")}`,
+  );
+
+let mockLogStream = null;
+let originalConsole = null;
+let externalNetworkAttempts = 0;
 
 process.env.TEST_MODE = process.env.TEST_MODE || "1";
+
+if (MOCK_EXTERNAL) {
+  setupMockProofPack();
+  installMockExternalStubs();
+}
 
 installTestStubs();
 
@@ -43,6 +62,10 @@ async function main() {
     console.error(`[slash-tests] ${failures.length} test(s) failed.`);
     process.exit(1);
   }
+
+  if (MOCK_EXTERNAL) {
+    await finalizeMockProofPack();
+  }
 }
 
 function installTestStubs() {
@@ -63,6 +86,18 @@ function installTestStubs() {
     "lib/personality-store.js": stubs.personalityStore,
   };
 
+  if (MOCK_EXTERNAL) {
+    stubBindings["lib/usage-openai.js"] = {
+      async getUsageSummary() {
+        return {
+          usage: null,
+          images: [],
+          cost: 0,
+        };
+      },
+    };
+  }
+
   for (const [relativePath, exportsValue] of Object.entries(stubBindings)) {
     const fullPath = path.join(PROJECT_ROOT, relativePath);
     require.cache[fullPath] = {
@@ -71,6 +106,175 @@ function installTestStubs() {
       loaded: true,
       exports: exportsValue,
     };
+  }
+}
+
+function setupMockProofPack() {
+  fs.mkdirSync(MOCK_PROOF_DIR, { recursive: true });
+  const logFile = path.join(MOCK_PROOF_DIR, "run-slash-tests.log");
+  mockLogStream = fs.createWriteStream(logFile, { flags: "a" });
+  originalConsole = {
+    log: console.log,
+    warn: console.warn,
+    error: console.error,
+  };
+
+  const wrap =
+    (method) =>
+    (...args) => {
+      const line = args.map((item) => String(item)).join(" ");
+      mockLogStream.write(`${line}\n`);
+      method.apply(console, args);
+    };
+
+  console.log = wrap(originalConsole.log);
+  console.warn = wrap(originalConsole.warn);
+  console.error = wrap(originalConsole.error);
+}
+
+function isLocalhostUrl(url) {
+  if (!url) return true;
+  if (url.startsWith("/")) return true;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch (_err) {
+    return true;
+  }
+  return (
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "::1"
+  );
+}
+
+function recordExternalAttempt(url) {
+  if (!isLocalhostUrl(url)) {
+    externalNetworkAttempts += 1;
+    throw new Error(`[mock-external] Blocked network request to ${url}`);
+  }
+}
+
+function installMockExternalStubs() {
+  const llmFallbackPath = path.join(PROJECT_ROOT, "lib", "llm-fallback.js");
+  require.cache[llmFallbackPath] = {
+    id: llmFallbackPath,
+    filename: llmFallbackPath,
+    loaded: true,
+    exports: {
+      callWithFallback: async () => ({
+        response: MOCK_ASSISTANT_REPLY,
+        providerUsed: "openai",
+        attempts: [
+          { provider: "openai", status: "success", outcome: "success" },
+        ],
+      }),
+      hasConfiguredProvider: () => true,
+      resetProviderCooldowns: () => {},
+    },
+  };
+
+  const mcpClientPath = path.join(PROJECT_ROOT, "services", "mcp-client.js");
+  require.cache[mcpClientPath] = {
+    id: mcpClientPath,
+    filename: mcpClientPath,
+    loaded: true,
+    exports: {
+      getSnailLeaderboard: async () => ({
+        rows: [
+          { name: "Mock Snail", value: 12345 },
+          { name: "Mock Snail 2", value: 11000 },
+        ],
+      }),
+      getUserStats: async () => ({
+        userId: "mock-user",
+        period: "30d",
+        stats: { wins: 1, losses: 0 },
+      }),
+      getGuildActivity: async () => ({
+        guildId: "mock-guild",
+        period: "7d",
+        events: 5,
+      }),
+      callTool: async () => ({}),
+      callAnalytics: async () => ({}),
+      callSheets: async () => ({}),
+      callDatabase: async () => ({}),
+      createUserSheet: async () => ({ sheetId: "mock-sheet" }),
+      appendSnailData: async () => ({ ok: true }),
+      getSheetData: async () => ({ rows: [] }),
+      queryUsers: async () => ({ rows: [] }),
+      queryMemories: async () => ({ rows: [] }),
+      healthCheck: async () => ({ mocked: true }),
+    },
+  };
+
+  global.fetch = async (input) => {
+    const url = typeof input === "string" ? input : input?.url;
+    recordExternalAttempt(url);
+    return Promise.reject(
+      new Error(`[mock-external] Blocked fetch to ${url}`),
+    );
+  };
+
+  try {
+    const axiosPath = require.resolve("axios");
+    const axiosStub = function axiosStub(config) {
+      const url = config?.url || config;
+      recordExternalAttempt(url);
+      return Promise.reject(
+        new Error(`[mock-external] Blocked axios request to ${url}`),
+      );
+    };
+    axiosStub.get = (url) => {
+      recordExternalAttempt(url);
+      return Promise.reject(
+        new Error(`[mock-external] Blocked axios request to ${url}`),
+      );
+    };
+    axiosStub.post = (url) => {
+      recordExternalAttempt(url);
+      return Promise.reject(
+        new Error(`[mock-external] Blocked axios request to ${url}`),
+      );
+    };
+    require.cache[axiosPath] = {
+      id: axiosPath,
+      filename: axiosPath,
+      loaded: true,
+      exports: axiosStub,
+    };
+  } catch (_err) {
+    // axios may not be installed in all environments
+  }
+}
+
+async function finalizeMockProofPack() {
+  const summaryFile = path.join(MOCK_PROOF_DIR, "SUMMARY.txt");
+  const summary = [
+    "MOCK_EXTERNAL=1",
+    `external_network_attempts=${externalNetworkAttempts}`,
+    externalNetworkAttempts === 0
+      ? "no network calls occurred"
+      : "network calls were blocked",
+  ].join("\n");
+  fs.writeFileSync(summaryFile, `${summary}\n`);
+  if (mockLogStream) {
+    mockLogStream.end();
+  }
+  if (originalConsole) {
+    console.log = originalConsole.log;
+    console.warn = originalConsole.warn;
+    console.error = originalConsole.error;
+  }
+
+  if (externalNetworkAttempts > 0) {
+    console.error(
+      `[slash-tests] External network calls blocked: ${externalNetworkAttempts}`,
+    );
+    process.exit(1);
+  } else {
+    console.log(`[slash-tests] Mocked run complete: ${MOCK_PROOF_DIR}`);
   }
 }
 
@@ -325,6 +529,12 @@ async function executeTest(testCase) {
   let status = "PASS";
   let error = null;
 
+  if (MOCK_EXTERNAL && interaction?.user) {
+    if (typeof interaction.user.displayAvatarURL !== "function") {
+      interaction.user.displayAvatarURL = () => null;
+    }
+  }
+
   try {
     const execution = command.module.execute(interaction);
     await withTimeout(execution, timeoutMs);
@@ -347,6 +557,19 @@ async function executeTest(testCase) {
 
   if (error) {
     note = error.message || String(error);
+    if (!MOCK_EXTERNAL) {
+      const message = error.message || "";
+      const status = error.status || error?.response?.status;
+      if (
+        status === 401 ||
+        message.includes("Incorrect API key") ||
+        message.includes("OPENAI_API_KEY")
+      ) {
+        console.warn(
+          "[slash-tests] Hint: OPENAI_API_KEY appears invalid or missing. Configure a valid key or set GEMINI_API_KEY / ANTHROPIC_API_KEY to enable fallback.",
+        );
+      }
+    }
   }
 
   return {
