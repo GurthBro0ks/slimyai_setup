@@ -18,6 +18,9 @@ function attachSnailAutoDetect(client) {
       if (message.author.bot) return;
       if (!message.attachments.size) return;
 
+      // Feature gate — skip entirely if not enabled
+      if (process.env.FEATURE_SNAIL_AUTO_DETECT !== "true") return;
+
       // Check if super_snail mode is active in this channel
       const effectiveModes = modes.getEffectiveModesForChannel(
         message.guild,
@@ -31,6 +34,34 @@ function attachSnailAutoDetect(client) {
       );
 
       if (!imageAttachment) return;
+
+      // Role gating — only Admin and Managers can trigger auto-detect
+      const allowedRoleIds = (process.env.SNAIL_ALLOWED_ROLE_IDS || "")
+        .split(",")
+        .filter(Boolean);
+      if (allowedRoleIds.length > 0 && message.member) {
+        const hasRole = allowedRoleIds.some((roleId) =>
+          message.member.roles.cache.has(roleId.trim()),
+        );
+        if (!hasRole) return;
+      }
+
+      // Channel containment — also allow threads inside permitted forum channels
+      const allowedChannelIds = (process.env.SNAIL_AUTO_DETECT_CHANNEL_IDS || "")
+        .split(",")
+        .filter(Boolean);
+      if (allowedChannelIds.length > 0) {
+        const channelId = message.channel.id;
+        const parentId = message.channel.parentId || "";
+        const grandparentId = message.channel.parent?.parentId || "";
+        const isAllowed = allowedChannelIds.some((id) => {
+          const trimmed = id.trim();
+          return (
+            channelId === trimmed || parentId === trimmed || grandparentId === trimmed
+          );
+        });
+        if (!isAllowed) return;
+      }
 
       // Cooldown check
       const key = `${message.guildId || "dm"}:${message.author.id}`;
