@@ -34,6 +34,9 @@ const { pushLatest } = TEST ? stubs.clubSheets : require("../lib/club-sheets");
 const guildSettings = TEST
   ? stubs.guildSettings
   : require("../lib/guild-settings");
+const { generateClubExport } = TEST
+  ? { generateClubExport: async () => null }
+  : require("../utils/xlsx-export");
 
 const LOW_CONFIDENCE_THRESHOLD = 0.7;
 const MIN_ROWS_FOR_COMMIT = 3;
@@ -1263,11 +1266,28 @@ async function startClubAnalyze(context) {
       embeds: [embed],
       components: [],
     });
-    await responder.followUp({
+    let xlsxAttachment = null;
+    try {
+      const xlsxResult = await generateClubExport(
+        session.guildId,
+        commitSummary.snapshotAt,
+      );
+      if (xlsxResult) {
+        xlsxAttachment = { attachment: xlsxResult.filePath, name: xlsxResult.fileName };
+      }
+    } catch (xlsxErr) {
+      logger.warn("[club-analyze] xlsx export failed", { error: xlsxErr.message });
+    }
+
+    const followupPayload = {
       content: null,
       embeds: [embed],
       ephemeral: false,
-    });
+    };
+    if (xlsxAttachment) {
+      followupPayload.files = [xlsxAttachment];
+    }
+    await responder.followUp(followupPayload);
     if (commitSummary.sheetSync && !commitSummary.sheetSync.ok) {
       const followMessage = [
         "⚠️ Google Sheets sync failed:",
@@ -1430,11 +1450,36 @@ async function handleApprove(interaction, session) {
       content: "Commit successful.",
       embeds: [embed],
     });
-    await session.responder.followUp({
+
+    // Generate .xlsx export and attach to follow-up
+    let xlsxAttachment = null;
+    try {
+      const xlsxResult = await generateClubExport(
+        session.guildId,
+        commitSummary.snapshotAt,
+      );
+      if (xlsxResult) {
+        xlsxAttachment = {
+          attachment: xlsxResult.filePath,
+          name: xlsxResult.fileName,
+        };
+      }
+    } catch (xlsxErr) {
+      logger.warn("[club-analyze] xlsx export failed", {
+        error: xlsxErr.message,
+      });
+    }
+
+    const followupPayload = {
       content: null,
       embeds: [embed],
       ephemeral: false,
-    });
+    };
+    if (xlsxAttachment) {
+      followupPayload.files = [xlsxAttachment];
+    }
+    await session.responder.followUp(followupPayload);
+
     if (commitSummary.sheetSync && !commitSummary.sheetSync.ok) {
       const warningLines = [
         "⚠️ Google Sheets sync failed:",
