@@ -18,6 +18,14 @@ const metrics = require("./lib/metrics");
 const alert = require("./lib/alert");
 const modeStore = require("./lib/mode-store");
 
+// Import farming module for daily summary
+let farming;
+try {
+    farming = require("./commands/farming");
+} catch (err) {
+    console.warn("[farming] Module not available:", err?.message || err);
+}
+
 db.initialize();
 
 try {
@@ -190,6 +198,27 @@ client.once(Events.ClientReady, async (c) => {
     console.log("[mode] cache primed from database");
   } catch (err) {
     console.warn("[mode] cache not primed:", err?.message || err);
+  }
+
+  // Schedule daily farming summary at 8 AM UTC
+  if (farming?.postDailySummary && process.env.FARMING_CHANNEL) {
+    const farmingChannelId = process.env.FARMING_CHANNEL;
+    setInterval(async () => {
+      const now = new Date();
+      // Check if it's around 8 AM UTC (within 5 minute window)
+      if (now.getUTCHours() === 8 && now.getUTCMinutes() < 5) {
+        try {
+          const channel = await client.channels.fetch(farmingChannelId);
+          if (channel) {
+            await farming.postDailySummary(channel);
+            console.log("[farming] Daily summary posted");
+          }
+        } catch (e) {
+          console.error("[farming] Daily summary failed:", e.message);
+        }
+      }
+    }, 5 * 60 * 1000); // Check every 5 minutes
+    console.log("[farming] Daily summary scheduled for 8:00 AM UTC");
   }
 });
 

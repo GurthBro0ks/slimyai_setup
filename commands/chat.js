@@ -153,7 +153,7 @@ async function runConversation({
   const messages = [{ role: "system", content: systemPrompt }, ...history];
 
   const completion = await openaiClient.chat.completions.create({
-    model: process.env.OPENAI_MODEL || "gpt-4o",
+    model: process.env.CHAT_MODEL || process.env.OPENAI_MODEL || "glm-4.7-flash",
     messages,
     temperature: 0.8,
     max_tokens: 1000,
