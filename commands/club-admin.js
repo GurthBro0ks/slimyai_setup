@@ -202,7 +202,7 @@ async function handleStats(interaction) {
   if ((urlOption || clearOption) && !hasManagePermission) {
     return interaction.reply({
       content:
-        "Only administrators or the configured club role can update the spreadsheet link.",
+        "Only administrators or the configured club role can update settings.",
       ephemeral: true,
     });
   }
@@ -210,81 +210,118 @@ async function handleStats(interaction) {
   if (clearOption) {
     await guildSettings.clearSheetConfig(interaction.guildId);
     return interaction.reply({
-      content: "🧹 Cleared the stored spreadsheet link.",
+      content: "🧹 Cleared stored settings.",
       ephemeral: true,
     });
   }
 
   if (urlOption) {
     const normalized = guildSettings.normalizeSheetInput(urlOption);
-    if (!normalized.sheetId && !normalized.url) {
-      return interaction.reply({
-        content:
-          "❌ Could not recognise that as a Google Sheets URL or ID. Paste the full link from your browser or supply the spreadsheet ID.",
-        ephemeral: true,
-      });
-    }
-
     await database.ensureGuildRecord(
       interaction.guildId,
       interaction.guild?.name,
     );
     await guildSettings.setSheetConfig(interaction.guildId, normalized);
-
     return interaction.reply({
-      content: "✅ Updated the club spreadsheet link for this server.",
+      content: "✅ Settings updated for this server.",
       ephemeral: true,
     });
   }
 
-  const { url: sheetUrl } = await guildSettings.getSheetConfig(
-    interaction.guildId,
-  );
+  // Pull club data from MySQL
+  const latest = await getLatestForGuild(interaction.guildId);
 
-  const weeklyBoundary =
-    process.env.CLUB_WEEKLY_BOUNDARY || "FRI_00:00_America/Detroit";
-  const boundaryDisplay = weeklyBoundary.replace(/_/g, " ");
-
-  if (!sheetUrl) {
+  if (!latest.length) {
     const embed = new EmbedBuilder()
-      .setTitle("Club Analytics Spreadsheet Not Configured")
-      .setColor(0xf97316)
+      .setTitle("📊 Club Stats")
+      .setColor(0x6366f1)
       .setDescription(
-        [
-          "No spreadsheet link is configured yet.",
-          "Use `/club-admin stats url:<link>` to store the Google Sheets link for this guild, or set `GOOGLE_SHEETS_SPREADSHEET_ID` in `.env`.",
-          "After updating the environment or command settings, restart the bot so sync jobs can push data.",
-        ].join("\n\n"),
+        "No club data available yet.\n\n" +
+          "Run `/club analyze` with Manage Members screenshots to generate your first snapshot.",
       )
-      .setFooter({ text: `Weekly window: ${boundaryDisplay}` });
+      .setFooter({ text: "Run /club analyze to get started" });
 
-    return interaction.reply({
-      embeds: [embed],
-    });
+    return interaction.editReply({ embeds: [embed] });
   }
 
+  // Build summary from club_latest
+  const totalMembers = latest.length;
+
+  // Top 5 by Total Power
+  const byTotal = [...latest]
+    .filter((r) => r.total_power != null)
+    .sort((a, b) => Number(b.total_power) - Number(a.total_power))
+    .slice(0, 5);
+
+  // Top 5 by SIM Power
+  const bySim = [...latest]
+    .filter((r) => r.sim_power != null)
+    .sort((a, b) => Number(b.sim_power) - Number(a.sim_power))
+    .slice(0, 5);
+
+  // Most recent snapshot timestamp
+  const latestAt = latest
+    .map((r) => r.latest_at)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  const lastUpdated = latestAt
+    ? new Date(latestAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Unknown";
+
+  const fmt = (n) =>
+    n == null ? "—" : Number(n).toLocaleString("en-US");
+
   const embed = new EmbedBuilder()
-    .setTitle("Club Analytics Spreadsheet")
+    .setTitle("📊 Club Stats — Cormys Bar")
     .setColor(0x3b82f6)
-    .setDescription(
-      [
-        "Latest snapshots sync here automatically after `/club analyze` commits.",
-        `[Open Club Latest tab](${sheetUrl})`,
-      ].join("\n\n"),
+    .addFields(
+      {
+        name: "Total Members",
+        value: String(totalMembers),
+        inline: true,
+      },
+      {
+        name: "Last Updated",
+        value: lastUpdated,
+        inline: true,
+      },
     )
-    .setFooter({ text: `Weekly window: ${boundaryDisplay}` });
+    .addFields({
+      name: "Top 5 by Total Power",
+      value:
+        byTotal.length
+          ? byTotal
+              .map(
+                (r, i) =>
+                  `${i + 1}. **${r.name_display}** — ${fmt(r.total_power)}`,
+              )
+              .join("\n")
+          : "—",
+      inline: false,
+    })
+    .addFields({
+      name: "Top 5 by SIM Power",
+      value:
+        bySim.length
+          ? bySim
+              .map(
+                (r, i) =>
+                  `${i + 1}. **${r.name_display}** — ${fmt(r.sim_power)}`,
+              )
+              .join("\n")
+          : "—",
+      inline: false,
+    })
+    .setFooter({
+      text: "Run /club analyze to update | /club export coming soon",
+    });
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setLabel("Open Spreadsheet")
-      .setStyle(ButtonStyle.Link)
-      .setURL(sheetUrl),
-  );
-
-  return interaction.reply({
-    embeds: [embed],
-    components: [row],
-  });
+  return interaction.editReply({ embeds: [embed] });
 }
 
 async function handleRollback(interaction) {
@@ -961,6 +998,7 @@ module.exports = {
       } else if (subcommand === "export") {
         await handleExport(interaction);
       } else if (subcommand === "stats") {
+        await interaction.deferReply({ ephemeral: true });
         await handleStats(interaction);
       } else if (subcommand === "correct") {
         await handleCorrect(interaction);
