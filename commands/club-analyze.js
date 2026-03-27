@@ -1718,6 +1718,12 @@ module.exports = {
       logger[logMethod]("[club-analyze] Initial run failed", {
         error: err.message,
       });
+      // "Unknown interaction" means Discord auto-acknowledged or the token is stale.
+      // In this case we cannot send any further response.
+      if (err.message === "Unknown interaction") {
+        logger.warn("[club-analyze] Interaction token unknown/stale, cannot respond");
+        return;
+      }
       if (context.responder.isDeferred) {
         await context.responder.edit({
           content: `❌ ${err.message}`,
@@ -1728,10 +1734,18 @@ module.exports = {
           ephemeral: true,
         });
       } else {
-        await context.responder.reply({
-          content: `❌ ${err.message}`,
-          ephemeral: true,
-        });
+        try {
+          await context.responder.reply({
+            content: `❌ ${err.message}`,
+            ephemeral: true,
+          });
+        } catch (replyErr) {
+          // "Interaction has already been acknowledged" — Discord replied before we could.
+          // No point trying further; just log it.
+          if (replyErr.code !== 40060) {
+            logger.error("[club-analyze] Failed to send error reply", { code: replyErr.code });
+          }
+        }
       }
     }
   },
