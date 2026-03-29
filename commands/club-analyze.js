@@ -30,7 +30,6 @@ const {
   addAlias,
   findLikelyMemberId,
 } = clubStore;
-const { pushLatest } = TEST ? stubs.clubSheets : require("../lib/club-sheets");
 const guildSettings = TEST
   ? stubs.guildSettings
   : require("../lib/guild-settings");
@@ -1081,38 +1080,6 @@ async function commitSession(session, source) {
 
   await recomputeLatestForGuild(session.guildId, snapshotAt);
 
-  let sheetSync = null;
-  try {
-    sheetSync = await pushLatest(session.guildId);
-  } catch (err) {
-    const errorMessage = err?.message || "Unknown Sheets error";
-    let fallbackSheetUrl = session.sheetConfig?.url || null;
-    if (!fallbackSheetUrl && session.guildId) {
-      try {
-        const cfg = await guildSettings.getSheetConfig(session.guildId);
-        if (cfg?.sheetId) {
-          fallbackSheetUrl = `https://docs.google.com/spreadsheets/d/${cfg.sheetId}`;
-        }
-      } catch (lookupErr) {
-        logger.warn("[club-analyze] Failed to load sheet config for fallback", {
-          guildId: session.guildId,
-          error: lookupErr.message,
-        });
-      }
-    }
-    sheetSync = {
-      ok: false,
-      error: errorMessage,
-      code: err?.code || err?.cause?.code || err?.cause?.response?.status || null,
-      sheetUrl: fallbackSheetUrl,
-    };
-    logger.warn("[club-analyze] pushLatest failed", {
-      guildId: session.guildId,
-      error: errorMessage,
-      code: sheetSync.code,
-    });
-  }
-
   sessions.delete(session.id);
 
   logger.info("[club-analyze] Commit successful", {
@@ -1125,7 +1092,6 @@ async function commitSession(session, source) {
     snapshotId,
     rows: metricsPayload.length,
     snapshotAt,
-    sheetSync,
   };
 }
 
@@ -1137,32 +1103,6 @@ function buildSuccessEmbed(session, commitSummary) {
       `Snapshot \`#${commitSummary.snapshotId}\` saved with ${commitSummary.rows} metric rows.`,
     )
     .setTimestamp(commitSummary.snapshotAt);
-
-  if (commitSummary.sheetSync) {
-    const sync = commitSummary.sheetSync;
-    const sheetLink =
-      sync.sheetUrl ||
-      session.sheetConfig?.url ||
-      (sync.spreadsheetId
-        ? `https://docs.google.com/spreadsheets/d/${sync.spreadsheetId}`
-        : null);
-    if (sync.ok) {
-      const rowLabel = sync.rowCount === 1 ? "row" : "rows";
-      const linkLabel = sync.sheetName || "Club Latest";
-      const linkText = sheetLink ? `[${linkLabel}](${sheetLink})` : linkLabel;
-      embed.addFields({
-        name: "Sheet Sync",
-        value: `✅ Synced ${sync.rowCount} ${rowLabel} to ${linkText}.`,
-      });
-    } else {
-      const details = sync.error || "Failed to update Google Sheet.";
-      const hint = sheetLink ? `\n${sheetLink}` : "";
-      embed.addFields({
-        name: "Sheet Sync",
-        value: `⚠️ ${details}${hint}`,
-      });
-    }
-  }
 
   if (session.qa.newNames.length) {
     embed.addFields({
@@ -1288,17 +1228,6 @@ async function startClubAnalyze(context) {
       followupPayload.files = [xlsxAttachment];
     }
     await responder.followUp(followupPayload);
-    if (commitSummary.sheetSync && !commitSummary.sheetSync.ok) {
-      const followMessage = [
-        "⚠️ Google Sheets sync failed:",
-        commitSummary.sheetSync.error ||
-          "Share the sheet with the service account listed in your credentials.",
-      ].join(" ");
-      await responder.followUp({
-        content: followMessage,
-        ephemeral: true,
-      });
-    }
     metrics.trackCommand("club-analyze", 0, true);
     return;
   }
@@ -1479,21 +1408,6 @@ async function handleApprove(interaction, session) {
       followupPayload.files = [xlsxAttachment];
     }
     await session.responder.followUp(followupPayload);
-
-    if (commitSummary.sheetSync && !commitSummary.sheetSync.ok) {
-      const warningLines = [
-        "⚠️ Google Sheets sync failed:",
-        commitSummary.sheetSync.error ||
-          "Share the sheet with the service account email configured for the bot.",
-      ];
-      if (commitSummary.sheetSync.sheetUrl) {
-        warningLines.push(commitSummary.sheetSync.sheetUrl);
-      }
-      await interaction.followUp({
-        content: warningLines.join(" "),
-        ephemeral: true,
-      });
-    }
     metrics.trackCommand("club-analyze", 0, true);
   } catch (err) {
     await interaction.editReply({
