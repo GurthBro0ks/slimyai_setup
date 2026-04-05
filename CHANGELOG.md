@@ -1,0 +1,11 @@
+# Changelog — app
+
+All notable changes are documented here.
+
+## [2026-04-05] — Initial scaffold
+### Added
+- Initial CHANGELOG.md scaffold via kb-project-doc-sync.sh
+- README.md via kb-project-doc-sync.sh
+
+### Notes
+- Automated documentation bootstrap on 2026-04-05
